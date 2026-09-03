@@ -1,0 +1,62 @@
+@import 'tailwindcss';
+
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+@source '../../storage/framework/views/*.php';
+
+/*
+ * As-Is-Commerce design tokens.
+ *
+ * Brand is a deep indigo-navy (trust, premium retail); accent is a warm gold
+ * used sparingly for value, winning and calls to action. Auction-specific
+ * states (live, ending soon) are deliberately not defined yet -- they belong
+ * with the auction stage that will actually use them.
+ */
+@theme {
+    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+        'Segoe UI Symbol', 'Noto Color Emoji';
+
+    --color-brand-50: #f0f4ff;
+    --color-brand-100: #dde6ff;
+    --color-brand-200: #c2d2ff;
+    --color-brand-300: #9bb4ff;
+    --color-brand-400: #6d8bfb;
+    --color-brand-500: #4a63f0;
+    --color-brand-600: #3446e0;
+    --color-brand-700: #2a37bd;
+    --color-brand-800: #253099;
+    --color-brand-900: #1f2878;
+    --color-brand-950: #131845;
+
+    --color-accent-50: #fffaeb;
+    --color-accent-100: #fff1c6;
+    --color-accent-200: #ffe088;
+    --color-accent-300: #ffc94a;
+    --color-accent-400: #ffb020;
+    --color-accent-500: #f98e07;
+    --color-accent-600: #dd6902;
+    --color-accent-700: #b74906;
+    --color-accent-800: #94390c;
+    --color-accent-900: #7a300d;
+}
+
+@layer base {
+    html {
+        scroll-behavior: smooth;
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+        text-rendering: optimizeLegibility;
+    }
+
+    /* A single visible focus treatment across every interactive element. */
+    :focus-visible {
+        outline: 2px solid var(--color-brand-500);
+        outline-offset: 2px;
+    }
+}
+
+/* Prevents Alpine-controlled elements flashing before Alpine initialises. */
+[x-cloak] {
+    display: none !important;
+}

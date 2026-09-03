@@ -7,8 +7,11 @@ use App\Http\Controllers\HealthController;
 use App\Livewire\Admin\Rulesets\RulesetForm;
 use App\Livewire\Admin\Rulesets\RulesetIndex;
 use App\Livewire\Admin\Settings\ManageSettings;
+use App\Livewire\Admin\Wallets\WalletDetail;
+use App\Livewire\Admin\Wallets\WalletIndex;
 use App\Livewire\Auth\Login;
 use App\Livewire\Auth\Register;
+use App\Livewire\Wallet\WalletOverview;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -50,6 +53,12 @@ Route::middleware('auth')->group(function (): void {
     Route::view('/dashboard', 'pages.dashboard')->name('dashboard');
     Route::view('/profile', 'pages.profile')->name('profile.edit');
     Route::post('/logout', LogoutController::class)->name('logout');
+
+    // A customer's own wallets. Read-only: buying credits needs payment
+    // processing, which belongs to a later stage.
+    Route::get('/wallet', WalletOverview::class)
+        ->middleware('can:wallets.view')
+        ->name('wallet');
 });
 
 /*
@@ -86,4 +95,14 @@ Route::middleware(['auth', 'role:admin|super_admin'])
         Route::get('/rulesets/{ruleset}/edit', RulesetForm::class)
             ->middleware('can:auction_rulesets.update')
             ->name('rulesets.edit');
+
+        // Gated on wallets.inspect, not wallets.view: every customer holds
+        // wallets.view for their own wallet, so it would not restrict this.
+        Route::get('/wallets', WalletIndex::class)
+            ->middleware('can:wallets.inspect')
+            ->name('wallets.index');
+
+        Route::get('/wallets/{user}', WalletDetail::class)
+            ->middleware('can:wallets.inspect')
+            ->name('wallets.show');
     });

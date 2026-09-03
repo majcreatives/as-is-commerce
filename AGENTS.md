@@ -5,11 +5,13 @@ This file records the rules that are not obvious from the code.
 
 ## Current stage
 
-**Foundation.** Authentication, roles, application shell, tooling.
+**Settings & auction rules engine.** Foundation (auth, roles, shell) plus the
+configuration layer governing auction behaviour.
 
-The wallet, credit ledger, payments, auction engine, orders, referrals,
-gamification and admin tooling do **not** exist yet and must not be built
-ahead of their stage. The next stage is the Settings & Auction Rules Engine.
+The wallet, credit ledger, payments, auction engine, bidding, orders,
+delivery, referrals and gamification do **not** exist yet and must not be
+built ahead of their stage. There is deliberately no `auctions` or `bids`
+table. The next stage is the Wallet & Credit Ledger.
 
 ## Stack
 
@@ -54,6 +56,90 @@ These exist because this application handles money and competitive outcomes.
 - Use PHP enums instead of magic strings.
 - Bind interfaces in `AppServiceProvider` so implementations stay swappable —
   see `PhoneNumberNormalizer` and `OtpChannel` for the pattern.
+
+## Auction rules — the snapshot rule
+
+The single most important invariant in this codebase.
+
+An auction takes an **immutable copy** of its rules when it is created:
+
+```php
+$rules = $ruleset->toRules($checkoutPrice);   // AuctionRules value object
+$auction->rules_snapshot = $rules->toArray(); // stored as JSON on the auction
+```
+
+Never give an auction a foreign key to `auction_rulesets` and read rules
+through it at runtime. If you do, an administrator editing configuration
+retroactively changes how past auctions behaved, and a disputed result becomes
+unexplainable.
+
+Rules are read from the snapshot, always. `AuctionRuleset` is mutable
+configuration for *creating* auctions; `AuctionRules` is what the engine runs
+on.
+
+Consequences to respect:
+
+- `AuctionRules` is a `readonly` class. Keep it that way.
+- Bump `AuctionRules::SNAPSHOT_VERSION` if its serialized shape changes, and
+  handle older versions in `fromArray()`. Stored snapshots must stay readable.
+- Only **draft** rulesets are editable. Changing an active one means drafting
+  a new version, never mutating it.
+- Archived rulesets are never deleted.
+
+## Bid cost and checkout price are unrelated
+
+Credits spent bidding do **not** determine what the winner pays. `bid_cost_credits`
+and `checkout_price` are separate values and must never be derived from one
+another. The checkout price belongs to the product and is supplied at auction
+creation; the ruleset's `default_checkout_price_minor` is a nullable fallback
+that normally stays null.
+
+## Money
+
+Integer minor units (pesewas), in a `Money` value object, in `BIGINT` columns
+named `*_minor`. Never float, never `DECIMAL` arithmetic in PHP, never a
+currency symbol stored with an amount.
+
+Parse with `Money::fromDecimalString()`, which does integer string parsing.
+Do not write `(int) ($value * 100)` anywhere — it is wrong for most decimals.
+
+Rates and percentages are **basis points** as integers: 1000 = 10%.
+
+## Settings
+
+Read through `settings()`, never by querying the `Setting` model directly, so
+reads stay cached and casting stays in one place. Use the typed accessor you
+need (`getString`, `getInt`, `getBool`, `getMoney`) rather than casting at the
+call site.
+
+Adding a setting means adding it to `SettingsSeeder::definitions()`. The
+seeder owns structure (key, type, group, label); administrators own values.
+
+## Authorization
+
+Gate on **permissions**, not role names, so narrower administrative roles can
+be introduced later without editing call sites:
+
+```php
+$this->authorize('auction_rulesets.activate');   // yes
+if ($user->hasRole('admin')) { ... }             // no
+```
+
+Add new permissions to `PermissionSeeder::PERMISSIONS`. A super admin passes
+every check via a `Gate::before` hook, so it does not need re-seeding.
+
+## Audit logging
+
+Configuration changes are logged with `spatie/laravel-activitylog`. Two things
+to know about v5:
+
+- Model-event diffs land in the **`attribute_changes`** column.
+  `properties` holds only what you attach manually with `withProperties()`.
+- Pass the actor explicitly through `CauserResolver::withCauser()` in actions,
+  so console commands and queued jobs attribute changes correctly rather than
+  recording a null causer.
+
+Never log passwords, tokens or payment credentials.
 
 ## Phone numbers
 

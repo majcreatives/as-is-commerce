@@ -8,11 +8,12 @@ right to buy the product at the auction's checkout price.
 All monetary values are in Ghana Cedis (GH₵) and are stored as integer minor
 units (pesewas). Never as floating point.
 
-> **Development status — Foundation stage.**
-> This repository currently contains the application foundation only:
-> authentication, roles, the application shell and the tooling around them.
-> The wallet, credit ledger, payments, auction engine, orders and admin tooling
-> are built in later stages and are deliberately absent.
+> **Development status — Settings & rules engine.**
+> This repository currently contains the application foundation
+> (authentication, roles, application shell) and the configuration layer that
+> governs auction behaviour. The wallet, credit ledger, payments, auction
+> engine, bidding, orders and delivery are built in later stages and are
+> deliberately absent — there is no `auctions` or `bids` table yet.
 
 ---
 
@@ -141,6 +142,160 @@ confidence in the area where correctness matters most.
 
 ---
 
+## The rules engine
+
+The platform runs **Last Bidder Standing** auctions: bidding spends credits,
+and whoever holds the lead when the server-side countdown expires wins the
+right to buy the product at a separate, predetermined checkout price. The
+credits spent bidding never determine that price.
+
+Nothing about that behaviour is hard-coded. Configuration flows in one
+direction:
+
+```
+Auction ruleset  (mutable, versioned configuration)
+       │
+       │  toRules(checkoutPrice)   ← taken once, when an auction is created
+       ▼
+AuctionRules     (immutable value object)
+       │
+       │  toArray() → JSON, stored on the auction row
+       ▼
+Auction engine   (reads the snapshot, never the ruleset)
+```
+
+### Why the snapshot exists
+
+An auction must never hold a live reference to configuration an administrator
+can edit. If it did, changing the closing window on a Tuesday would silently
+rewrite how an auction that ran on Monday is explained — and with money and
+competitive outcomes involved, that is not recoverable.
+
+So an auction takes a **complete copy** of its rules at creation, as an
+immutable `AuctionRules` value object serialized into its own row. Editing,
+archiving or even deleting the ruleset afterwards has no effect on it. This is
+covered by tests that assert exactly that property.
+
+### Ruleset lifecycle
+
+```
+Draft ──activate──► Active ──archive──► Archived
+  │                                        ▲
+  └────────────────archive─────────────────┘
+```
+
+- **Draft** — freely editable. New rulesets always start here; nothing takes
+  effect until it is explicitly activated.
+- **Active** — in service, and **no longer editable**. To change an active
+  ruleset, draft a new version of it.
+- **Archived** — retired, never deleted, so past configuration stays readable.
+
+Rulesets are versioned per name: activating `Standard Auction v2` archives
+`v1` automatically. At most one version of a name may be active, and exactly
+one ruleset may be the global default — both enforced by unique indexes in the
+database, not only in application code.
+
+The default ruleset cannot be archived while it is the default. Designate
+another first, so auction creation is never left with nothing to fall back on.
+
+### Where the checkout price comes from
+
+A ruleset carries auction *defaults*. The checkout price belongs to the
+**product** being auctioned, so it is supplied when the auction is created:
+
+```php
+$rules = app(RulesetResolver::class)->rulesFor(
+    Money::fromDecimalString('5500.00'),   // this product's price
+    'Standard Auction',                    // optional; omit for the default
+);
+```
+
+`default_checkout_price_minor` on a ruleset is nullable and normally stays
+null. Building rules with neither a caller-supplied price nor a default is an
+error, rather than a guess.
+
+### Validation
+
+Three layers, deliberately:
+
+1. **Form** — per-field rules with messages an administrator can act on.
+2. **Domain** — `RulesetInvariants` catches contradictions no single-field
+   check can see: a closing window longer than the auction, an extension
+   budget shorter than one extension, extensions configured with no closing
+   window to trigger them.
+3. **Database** — `CHECK` constraints and unique indexes, so a bad row cannot
+   be written by any path, including a hand-run SQL statement.
+
+---
+
+## Settings
+
+Application configuration that is *not* auction-specific — site name,
+currency, display timezone, support contacts — lives in the `settings` table
+and is read through a typed, cached repository:
+
+```php
+settings()->getString('site_name');
+settings()->getInt('some_number');
+settings()->getBool('some_flag');
+settings()->getMoney('some_amount');   // returns a Money, not a float
+```
+
+Each setting declares its own type, so no caller writes its own cast. The
+whole table is read once per request and cached, so a page rendering a dozen
+settings costs one query. Writes flush the cache immediately.
+
+The cache is reached through Laravel's cache contract, so moving to Redis
+later is a configuration change and touches no caller.
+
+Settings marked `is_public` are safe to render publicly; everything else stays
+server-side by default.
+
+---
+
+## Money
+
+**Money is never a float.** Amounts are integer minor units — for Ghana,
+pesewas — held in a `Money` value object and stored in `BIGINT` columns
+suffixed `_minor`.
+
+```
+GH₵ 100.00   → 10000
+GH₵ 5,500.00 → 550000
+```
+
+Parsing splits the decimal string and works on the halves as integers.
+`(int) (0.29 * 100)` is `28`, not `29`, and that class of silent error has no
+place in a system that handles real payments. `Money::fromDecimalString()`
+never touches a float, and there is a test asserting exactly this.
+
+Currency symbols are never stored alongside an amount. The currency is a
+separate ISO 4217 code, and the symbol is a display setting.
+
+Percentages — tax, commissions — are stored as **basis points**: `1000` is
+10%, `0` is none. Integers again, so repeated calculation cannot drift.
+
+---
+
+## Time
+
+Durations are integers in explicit units, never formatted strings:
+
+- seconds — `base_duration_seconds`, `closing_window_seconds`,
+  `extension_seconds`, `max_extension_total_seconds`
+- milliseconds — `minimum_bid_interval_ms`
+- minutes — `checkout_deadline_minutes`
+
+Timestamps are persisted in **UTC** without exception (`APP_TIMEZONE=UTC`).
+Ghana local time is applied at the presentation layer only, using the
+`display_timezone` setting.
+
+The auction engine will be entirely server-authoritative: browser clocks are
+never trusted to decide whether an auction is live, whether a bid is accepted,
+or who is leading.
+
+---
+
 ## Architecture notes
 
 The application is a **modular monolith**. Business logic lives under
@@ -151,6 +306,9 @@ invoked from thin controllers and Livewire components.
 app/
 ├── Console/Commands/     Administrative commands
 ├── Domain/
+│   ├── Auction/          Ruleset lifecycle, invariants, immutable rules
+│   ├── Settings/         Typed, cached application settings
+│   ├── Shared/Money/     Exact integer money
 │   ├── Shared/Phone/     Phone normalization (E.164), swappable per country
 │   └── User/             Registration, OTP contract, user exceptions
 ├── Enums/                UserStatus and future domain enums

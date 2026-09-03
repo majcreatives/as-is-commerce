@@ -1,0 +1,21 @@
+includes:
+    - vendor/larastan/larastan/extension.neon
+
+parameters:
+    level: 6
+
+    # Tests are deliberately outside the analysed paths.
+    #
+    # Pest binds $this inside its closures to the TestCase at runtime, but
+    # statically it resolves to Pest\PendingCalls\TestCall, so every
+    # $this->actingAs(...) and $this->assertGuest() reports as an undefined
+    # method. Those are false positives, not defects -- the suite passes.
+    # Analysing the directory would mean suppressing dozens of errors
+    # individually, which buys nothing: the tests are verified by running them.
+    paths:
+        - app
+        - database
+        - routes
+
+    excludePaths:
+        - bootstrap/cache

@@ -14,6 +14,21 @@
                     :active="request()->routeIs('admin.wallets.*')">Wallets</x-nav-link>
     @endcan
 
+    @can('credit_packages.view')
+        <x-nav-link href="{{ route('admin.credit-packages') }}" wire:navigate
+                    :active="request()->routeIs('admin.credit-packages')">Credit packages</x-nav-link>
+    @endcan
+
+    @can('credit_purchases.view')
+        <x-nav-link href="{{ route('admin.credit-purchases') }}" wire:navigate
+                    :active="request()->routeIs('admin.credit-purchases')">Purchases</x-nav-link>
+    @endcan
+
+    @can('payment_events.view')
+        <x-nav-link href="{{ route('admin.payment-events') }}" wire:navigate
+                    :active="request()->routeIs('admin.payment-events')">Payment events</x-nav-link>
+    @endcan
+
     @can('settings.view')
         <x-nav-link href="{{ route('admin.settings') }}" wire:navigate
                     :active="request()->routeIs('admin.settings')">Settings</x-nav-link>

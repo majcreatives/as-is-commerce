@@ -42,6 +42,15 @@ class PermissionSeeder extends Seeder
         'wallets.inspect',
         'wallets.reconcile',
         'cash.view',
+
+        'credit_packages.view',
+        'credit_packages.create',
+        'credit_packages.update',
+        'credit_packages.activate',
+        'credit_packages.archive',
+        'credit_purchases.view',
+        'credit_purchases.inspect',
+        'payment_events.view',
     ];
 
     /**

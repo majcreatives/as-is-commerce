@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 use App\Http\Controllers\Auth\LogoutController;
 use App\Http\Controllers\HealthController;
+use App\Livewire\Admin\Rulesets\RulesetForm;
+use App\Livewire\Admin\Rulesets\RulesetIndex;
+use App\Livewire\Admin\Settings\ManageSettings;
 use App\Livewire\Auth\Login;
 use App\Livewire\Auth\Register;
 use Illuminate\Support\Facades\Route;
@@ -64,4 +67,23 @@ Route::middleware(['auth', 'role:admin|super_admin'])
     ->name('admin.')
     ->group(function (): void {
         Route::view('/', 'pages.admin.dashboard')->name('dashboard');
+
+        // Individual capabilities are gated by permission, not by role, so a
+        // narrower administrative role can be introduced later without
+        // touching these routes.
+        Route::get('/settings', ManageSettings::class)
+            ->middleware('can:settings.view')
+            ->name('settings');
+
+        Route::get('/rulesets', RulesetIndex::class)
+            ->middleware('can:auction_rulesets.view')
+            ->name('rulesets.index');
+
+        Route::get('/rulesets/create', RulesetForm::class)
+            ->middleware('can:auction_rulesets.create')
+            ->name('rulesets.create');
+
+        Route::get('/rulesets/{ruleset}/edit', RulesetForm::class)
+            ->middleware('can:auction_rulesets.update')
+            ->name('rulesets.edit');
     });

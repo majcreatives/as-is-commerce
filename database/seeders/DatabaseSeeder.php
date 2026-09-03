@@ -21,6 +21,7 @@ class DatabaseSeeder extends Seeder
             PermissionSeeder::class,
             SettingsSeeder::class,
             AuctionRulesetSeeder::class,
+            CreditPackageSeeder::class,
         ]);
     }
 }

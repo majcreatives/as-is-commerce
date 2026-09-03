@@ -8,12 +8,13 @@ right to buy the product at the auction's checkout price.
 All monetary values are in Ghana Cedis (GH₵) and are stored as integer minor
 units (pesewas). Never as floating point.
 
-> **Development status — Settings & rules engine.**
+> **Development status — Wallet & credit ledger.**
 > This repository currently contains the application foundation
-> (authentication, roles, application shell) and the configuration layer that
-> governs auction behaviour. The wallet, credit ledger, payments, auction
-> engine, bidding, orders and delivery are built in later stages and are
-> deliberately absent — there is no `auctions` or `bids` table yet.
+> (authentication, roles, application shell), the auction rules engine, and
+> the credit and cash accounting beneath them. Payments, the auction engine,
+> bidding, orders and delivery are built in later stages and are deliberately
+> absent — there is no `auctions` or `bids` table, and credit consumption is
+> not yet wired to anything.
 
 ---
 
@@ -128,10 +129,18 @@ php artisan test
 ```
 
 Tests run against MySQL using the `as_is_commerce_testing` schema, which is
-migrated fresh for each run. They do **not** use SQLite: the auction engine
-will depend on MySQL row-locking semantics (`SELECT ... FOR UPDATE`) that
-SQLite cannot reproduce, so testing on a different engine would give false
-confidence in the area where correctness matters most.
+migrated fresh for each run. They do **not** use SQLite: the ledger depends on
+MySQL row-locking semantics (`SELECT ... FOR UPDATE`), CHECK constraints and
+triggers that SQLite cannot reproduce, so testing on a different engine would
+give false confidence in the area where correctness matters most.
+
+The `Concurrency` suite is separate because it opens a second database
+connection, which cannot see rows written by an uncommitted transaction on the
+first. Those tests truncate between runs instead of wrapping in a transaction:
+
+```bash
+php artisan test --testsuite=Concurrency
+```
 
 ### Code quality
 
@@ -228,6 +237,109 @@ Three layers, deliberately:
 
 ---
 
+## The ledger
+
+Two separate accounting systems: **bidding credits** and **real money**. They
+are not interchangeable, and there is deliberately no shared balance — a
+single mixed balance would make it possible for a credit refund to settle as a
+cash liability.
+
+### The ledger is the truth
+
+```
+credit_transactions   ← authoritative, append-only
+       │
+       ├── credit_lots                  which credits, from where, expiring when
+       │      └── credit_lot_consumptions   which lot each debit drew from
+       │
+       └── credit_wallets.balance       a cached projection, never the truth
+```
+
+`credit_wallets.balance` exists so a balance can be read without summing every
+transaction. It is written **only** inside a ledger service, in the same
+database transaction as the row that justifies it, and application code cannot
+write it at all — the attempt throws.
+
+### Append-only, enforced by the database
+
+Ledger rows and consumption records are never updated or deleted. That is not
+a convention; MySQL triggers refuse both, so it holds for a raw SQL session,
+a console command or a bad migration:
+
+```sql
+UPDATE credit_transactions SET amount = 999 WHERE id = 1;
+-- ERROR 1644: Financial history is append-only ...
+```
+
+A mistake is corrected by posting the opposite:
+
+```
+PURCHASE   +100      ← the mistake, left on the record
+REVERSAL   -100      ← the correction
+PURCHASE   +50       ← what should have happened
+```
+
+### Credit lots and consumption order
+
+Credits arrive in **lots**, each carrying its source and its expiry. Promotional
+credits may lapse; purchased credits do not by default. Tracking lots is what
+lets the system answer *which* credits were spent — a question a flat balance
+cannot answer, and which both expiry and refunds depend on.
+
+Debits draw from lots in a fixed, deterministic order:
+
+1. **Source** — promotional, then referral, then adjustment, then purchased.
+   Promotional credits are the ones that can be lost by expiring, so spending
+   them first is the outcome that favours the customer. Purchased credits are
+   preserved longest.
+2. **Soonest expiry first**, within a source.
+3. **Lots with no expiry last**, since they cannot be lost by waiting.
+4. **Oldest lot first**, to break any remaining tie.
+
+### Concurrency
+
+The locking order, observed everywhere:
+
+```
+1. the wallet row              SELECT ... FOR UPDATE
+2. that wallet's credit lots   SELECT ... FOR UPDATE ORDER BY id
+```
+
+Always the wallet first, always lots by ascending id, so concurrent operations
+queue rather than deadlock. Lots are *locked* in id order but *consumed* in
+business order — the allocator reorders them once the locks are held.
+
+Because the wallet row is locked before its balance is read, two simultaneous
+debits cannot both see the same starting balance. The second waits, then reads
+what the first left behind. A wallet holding 10 credits cannot pay out 10
+twice, and there is a test that proves the lock actually blocks a second
+connection rather than assuming it does.
+
+### Idempotency
+
+Payment providers retry webhooks. Customers double-tap buttons. Queued jobs run
+twice. Any of those would otherwise grant credits a second time.
+
+`IdempotencyGuard::execute($operation, $key, $userId, $work)` runs the work at
+most once per key. The claim and the work share one transaction, so a failure
+rolls back both and the key is free to retry — claiming separately would leave
+a key marked as taken for an operation that never happened. Concurrency is
+handled by a unique index on `(operation, key)`: the loser's insert blocks
+until the winner commits, then fails and returns the winner's stored result.
+
+### Reconciliation
+
+`CreditLedgerReconciler` checks that the stored balance, the sum of ledger
+movements, the remaining credit in lots, and every row's `balance_after` all
+agree.
+
+It **reports** discrepancies and never repairs them. A silent fix would
+destroy the evidence needed to find the cause, and would let a real bug keep
+producing wrong numbers while looking healthy. Repair is a human decision,
+made with a compensating entry.
+
+---
+
 ## Settings
 
 Application configuration that is *not* auction-specific — site name,
@@ -307,7 +419,11 @@ app/
 ├── Console/Commands/     Administrative commands
 ├── Domain/
 │   ├── Auction/          Ruleset lifecycle, invariants, immutable rules
+│   ├── Cash/             Real-money ledger
+│   ├── Credit/           Credit ledger, lots, allocation, reconciliation
 │   ├── Settings/         Typed, cached application settings
+│   ├── Shared/Idempotency/  At-most-once execution of financial operations
+│   ├── Shared/Ledger/    Guards shared by both ledgers
 │   ├── Shared/Money/     Exact integer money
 │   ├── Shared/Phone/     Phone normalization (E.164), swappable per country
 │   └── User/             Registration, OTP contract, user exceptions

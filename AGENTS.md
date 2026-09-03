@@ -5,13 +5,79 @@ This file records the rules that are not obvious from the code.
 
 ## Current stage
 
-**Settings & auction rules engine.** Foundation (auth, roles, shell) plus the
-configuration layer governing auction behaviour.
+**Wallet & credit ledger.** Foundation (auth, roles, shell), the auction rules
+engine, and the credit and cash accounting that later stages will consume.
 
-The wallet, credit ledger, payments, auction engine, bidding, orders,
-delivery, referrals and gamification do **not** exist yet and must not be
-built ahead of their stage. There is deliberately no `auctions` or `bids`
-table. The next stage is the Wallet & Credit Ledger.
+Payments, Paystack, the auction engine, bidding, orders, delivery, referrals
+and gamification do **not** exist yet and must not be built ahead of their
+stage. There is deliberately no `auctions` or `bids` table, and credit
+consumption is not wired to anything. The next stage is Payments & Credit
+Packages.
+
+## Financial rules — non-negotiable
+
+This codebase handles real money and virtual credits. These ten rules are the
+ones that must never be relaxed:
+
+1. **The ledger is authoritative.** `credit_wallets.balance` and
+   `cash_wallets.balance_minor` are materialized projections of it, never the
+   source of truth.
+2. **Transactions are append-only.** `credit_transactions`,
+   `cash_transactions` and `credit_lot_consumptions` are never updated or
+   deleted. Database triggers enforce this, not just the models.
+3. **No direct balance mutation.** Never write a balance column. Post a
+   transaction through the ledger service; the guard trait will reject
+   anything else.
+4. **Credits and cash are separate systems.** Different tables, different
+   services, different enums. Never introduce a shared or convertible balance.
+5. **Money is integer minor units** (pesewas) in a `Money` value object.
+6. **Credits are `BIGINT` integers.** Never fractional.
+7. **Financial writes are transactional.** Wallet, ledger, lots and
+   consumptions all succeed together or none of them do.
+8. **Idempotency is required** for anything an external system may retry —
+   webhooks, payments, refunds, adjustments. Use `IdempotencyGuard`.
+9. **Credit consumption uses deterministic lot ordering** — promotional first,
+   then soonest-expiring, then oldest. Never ad hoc.
+10. **Corrections use compensating entries.** Never edit history.
+
+### Locking order
+
+Always the same sequence, or concurrent operations will deadlock:
+
+```
+1. the wallet row              SELECT ... FOR UPDATE
+2. that wallet's credit lots   SELECT ... FOR UPDATE ORDER BY id
+```
+
+Lots are **locked** in id order but **consumed** in business order — the
+allocator reorders them after the locks are held. Keep those two orders
+separate.
+
+The wallet lock is taken before the balance is read, which is what makes
+overspending impossible rather than merely unlikely: a second debit blocks
+until the first commits and then reads the balance the first left behind.
+
+### Never do these
+
+- `$wallet->balance += 100` — there is no code path that permits it.
+- `$transaction->update(...)` on any ledger row.
+- Compute a balance by summing lots and writing it back outside a service.
+- Add a "set balance" admin control. Adjustments only, with a reason.
+- Repair a reconciliation discrepancy automatically. Report it; a human
+  decides, and fixes it with a compensating entry.
+
+### Credit expiry
+
+Lots carry a nullable `expires_at`. Purchased credits do not expire by
+default; promotional credits may. `CreditLedgerService::expireLots()` writes
+off the unspent remainder with an `EXPIRATION` transaction.
+
+The scheduled worker that calls it belongs to a later stage. When it is built:
+it must stay transactional, and it is already naturally idempotent because an
+expired lot's remainder reaches zero on the first run and is skipped
+thereafter. There is a test asserting exactly that.
+
+## Auction rules — the snapshot rule
 
 ## Stack
 

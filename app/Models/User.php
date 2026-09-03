@@ -9,6 +9,7 @@ use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
@@ -44,6 +45,37 @@ class User extends Authenticatable
             'password' => 'hashed',
             'status' => UserStatus::class,
         ];
+    }
+
+    /**
+     * Give every new account its wallets immediately.
+     *
+     * Both start at zero, which is a real balance rather than a placeholder.
+     * Creating them here rather than lazily means every query and screen can
+     * assume a wallet exists, and there is no window in which a user has none.
+     */
+    protected static function booted(): void
+    {
+        static::created(function (self $user): void {
+            $user->creditWallet()->create();
+            $user->cashWallet()->create(['currency' => 'GHS']);
+        });
+    }
+
+    /**
+     * @return HasOne<CreditWallet, $this>
+     */
+    public function creditWallet(): HasOne
+    {
+        return $this->hasOne(CreditWallet::class);
+    }
+
+    /**
+     * @return HasOne<CashWallet, $this>
+     */
+    public function cashWallet(): HasOne
+    {
+        return $this->hasOne(CashWallet::class);
     }
 
     public function hasVerifiedPhone(): bool

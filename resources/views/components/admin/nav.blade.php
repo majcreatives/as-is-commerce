@@ -9,6 +9,11 @@
                     :active="request()->routeIs('admin.rulesets.*')">Auction rulesets</x-nav-link>
     @endcan
 
+    @can('wallets.inspect')
+        <x-nav-link href="{{ route('admin.wallets.index') }}" wire:navigate
+                    :active="request()->routeIs('admin.wallets.*')">Wallets</x-nav-link>
+    @endcan
+
     @can('settings.view')
         <x-nav-link href="{{ route('admin.settings') }}" wire:navigate
                     :active="request()->routeIs('admin.settings')">Settings</x-nav-link>

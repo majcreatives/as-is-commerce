@@ -22,6 +22,22 @@
             </x-card>
         @endcan
 
+        @can('wallets.inspect')
+            <x-card title="Wallets" subtitle="Credit and cash ledgers.">
+                <p class="text-sm text-slate-600">
+                    Inspect a user's credit batches, ledger entries and cash history, run
+                    reconciliation, and post credit adjustments. Balances are derived from the
+                    ledger and cannot be edited directly.
+                </p>
+
+                <div class="mt-4">
+                    <x-button href="{{ route('admin.wallets.index') }}" wire:navigate variant="secondary" size="sm">
+                        Inspect wallets
+                    </x-button>
+                </div>
+            </x-card>
+        @endcan
+
         @can('settings.view')
             <x-card title="Settings" subtitle="Application-wide configuration.">
                 <p class="text-sm text-slate-600">

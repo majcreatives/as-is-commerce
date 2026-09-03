@@ -35,7 +35,42 @@ class PermissionSeeder extends Seeder
         'auction_rulesets.update',
         'auction_rulesets.activate',
         'auction_rulesets.archive',
+
+        'credits.view',
+        'credits.adjust',
+        'wallets.view',
+        'wallets.inspect',
+        'wallets.reconcile',
+        'cash.view',
     ];
+
+    /**
+     * Permissions a customer holds, which govern their own wallet only.
+     *
+     * Seeing your own balance and history is not an administrative act, so
+     * these are granted to every customer.
+     *
+     * The distinction that matters: `wallets.view` means "see my wallet";
+     * `wallets.inspect` means "see anyone's wallet" and is staff-only. Gating
+     * an admin screen on `wallets.view` would open it to every customer, so
+     * the two are deliberately separate permissions rather than one.
+     *
+     * @var list<string>
+     */
+    public const CUSTOMER_PERMISSIONS = [
+        'credits.view',
+        'wallets.view',
+    ];
+
+    /**
+     * Permissions only staff hold. No customer is ever granted these.
+     *
+     * @return list<string>
+     */
+    public static function staffPermissions(): array
+    {
+        return array_values(array_diff(self::PERMISSIONS, self::CUSTOMER_PERMISSIONS));
+    }
 
     public function run(): void
     {
@@ -50,7 +85,7 @@ class PermissionSeeder extends Seeder
             Role::findOrCreate($roleName, 'web')->givePermissionTo(self::PERMISSIONS);
         }
 
-        // Customers hold none of these, and are never granted them implicitly.
+        Role::findOrCreate('customer', 'web')->givePermissionTo(self::CUSTOMER_PERMISSIONS);
 
         app(PermissionRegistrar::class)->forgetCachedPermissions();
     }

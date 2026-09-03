@@ -12,6 +12,8 @@ use Database\Seeders\RoleSeeder;
 use Database\Seeders\SettingsSeeder;
 use Illuminate\Foundation\Testing\DatabaseTruncation;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Factory;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 /*
@@ -93,6 +95,75 @@ function userWithRole(string $role): User
 function creditWalletFor(User $user): CreditWallet
 {
     return app(CreditLedgerService::class)->walletFor($user);
+}
+
+/**
+ * Replace every HTTP stub with the given set.
+ *
+ * Http::fake() appends rather than replaces, and the first matching stub wins.
+ * A test that fakes a failure after a beforeEach faked success would therefore
+ * silently keep getting the success -- and would pass while proving nothing.
+ * Swapping the factory guarantees exactly the stubs asked for.
+ *
+ * @param  array<string, mixed>  $responses
+ */
+function fakeHttp(array $responses): void
+{
+    Http::swap(new Factory);
+    Http::fake($responses);
+}
+
+/**
+ * Stub the Paystack verify endpoint, replacing any previous stub.
+ *
+ * @param  array<string, mixed>  $data
+ */
+function fakePaystackVerify(array $data): void
+{
+    fakeHttp([
+        'api.paystack.co/transaction/verify/*' => Http::response([
+            'status' => true,
+            'data' => $data,
+        ]),
+    ]);
+}
+
+/**
+ * A signature computed the way Paystack computes it.
+ *
+ * Tests never need real credentials: the verifier works against whatever
+ * secret is configured, and the HTTP client is faked.
+ */
+function paystackSignature(string $rawPayload, ?string $secret = null): string
+{
+    return hash_hmac('sha512', $rawPayload, $secret ?? (string) config('paystack.secret_key'));
+}
+
+/**
+ * A Paystack charge.success webhook body.
+ *
+ * @param  array<string, mixed>  $overrides
+ * @return array<string, mixed>
+ */
+function paystackChargePayload(
+    string $reference,
+    int $amountMinor,
+    string $currency = 'GHS',
+    int $transactionId = 1234567890,
+    array $overrides = [],
+): array {
+    return array_replace_recursive([
+        'event' => 'charge.success',
+        'data' => [
+            'id' => $transactionId,
+            'reference' => $reference,
+            'status' => 'success',
+            'amount' => $amountMinor,
+            'currency' => $currency,
+            'channel' => 'mobile_money',
+            'paid_at' => now()->toIso8601String(),
+        ],
+    ], $overrides);
 }
 
 /**

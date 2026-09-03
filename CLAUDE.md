@@ -5,14 +5,116 @@ This file records the rules that are not obvious from the code.
 
 ## Current stage
 
-**Wallet & credit ledger.** Foundation (auth, roles, shell), the auction rules
-engine, and the credit and cash accounting that later stages will consume.
+**Payments & credit packages.** Foundation (auth, roles, shell), the auction
+rules engine, the credit and cash ledgers, and buying credits with real GHS
+through Paystack.
 
-Payments, Paystack, the auction engine, bidding, orders, delivery, referrals
-and gamification do **not** exist yet and must not be built ahead of their
-stage. There is deliberately no `auctions` or `bids` table, and credit
-consumption is not wired to anything. The next stage is Payments & Credit
-Packages.
+The auction engine, bidding, product catalog, Buy Now, orders, delivery,
+referrals and gamification do **not** exist yet and must not be built ahead of
+their stage. There is deliberately no `auctions`, `bids` or `products` table,
+and credit *consumption* is still wired to nothing. The next stage is the
+Product Catalog & Inventory Foundation.
+
+## Three things that must never be conflated
+
+This is the distinction most likely to be broken by someone moving fast:
+
+```
+Credit purchase   GHS buys a fixed number of credits.  A package price.
+Bid               N credits, spent to bid.            Never money.
+Buy Now price     GHS a product costs outright.       Never credits.
+```
+
+There is **no** arithmetic relationship between them. 500 credits costing
+GH₵45 does not make one credit worth 9 pesewas, and a product priced at
+GH₵5,500 has nothing to do with either. Never write code that converts credits
+to money or money to credits outside the explicit credit-package purchase.
+
+Credits never become cash. Credits spent bidding are gone — for losing and
+winning bidders alike.
+
+Terminology: say **Highest Bid (Credits)**, never "auction price"; say
+**Credits**, **Credit Package**, **Credit Balance**, never "credit value" in
+money.
+
+## Payments
+
+### A browser callback is not proof of payment
+
+A customer returning from Paystack proves only that a browser arrived. They
+may have abandoned the payment or edited the URL. The callback takes the
+reference, looks up a purchase **the signed-in user owns**, and then runs the
+same verified fulfilment path the webhook uses. It is not a second, weaker way
+to obtain credits.
+
+### Credits are granted only through verified, idempotent server-side fulfilment
+
+`FulfillCreditPurchase` is the only path. Every route into it does this:
+
+1. **Verify server-to-server.** A webhook body is a claim, not evidence. Ask
+   Paystack directly what happened to the transaction.
+2. **Check against the purchase snapshot** — status success, reference,
+   currency, amount. Any mismatch is a refusal, never "close enough".
+3. **Run under `IdempotencyGuard`**, keyed on the purchase, so repeated
+   deliveries produce one grant.
+4. **Inside one transaction**: lock the purchase row, re-check it is not
+   fulfilled, post cash, post credits, mark fulfilled.
+
+A purchase is marked `FULFILLED` only after credits exist. If posting fails,
+everything rolls back and the purchase stays visibly outstanding rather than
+looking complete — that is what lets a retry put it right.
+
+### Webhook security
+
+- Public and unauthenticated; Paystack cannot log in.
+- Signature is HMAC SHA512 over the **raw body**, keyed with the secret,
+  compared with `hash_equals`. Never re-encode a decoded payload before
+  verifying — the bytes change and the signature fails.
+- Verified before anything is stored, parsed for meaning, or acted on.
+- Events are stored under a unique `(provider, provider_event_id)` before
+  processing, so a redelivery is recognised by the database rather than by an
+  application check that would race.
+- Returns 2xx promptly. A processing failure returns 5xx so Paystack retries;
+  the event is already stored, so a retry is safe.
+- CSRF is exempted for this route only, in `bootstrap/app.php`.
+
+### The package snapshot
+
+`credit_purchases` carries `package_name_snapshot`, `credit_amount`,
+`amount_minor` and `currency`, frozen when the transaction was opened.
+Fulfilment reads the snapshot and **never** the package record. Repricing a
+package must not change what an already-open purchase costs or grants.
+
+### Refunds and reversals
+
+A refund event is recorded but **does not** claw credits back. They may
+already have been spent, and reversing a spend is a business decision, not
+something to infer from a provider event. Do not invent a claw-back policy.
+
+### Environment
+
+```
+PAYSTACK_SECRET_KEY     server-only, never sent to a browser, never committed
+PAYSTACK_PUBLIC_KEY
+PAYSTACK_BASE_URL       https://api.paystack.co
+PAYSTACK_CURRENCY       GHS
+PAYSTACK_TIMEOUT        seconds; short, since verify runs inside the webhook
+```
+
+Never disable TLS verification. Never log the secret, a full payload
+containing authorization data, or card details.
+
+### Testing payments
+
+Tests need no real credentials: the HTTP client is faked and the signature
+verifier works against whatever secret is configured.
+
+`Http::fake()` **appends** stubs and the first match wins, so faking again
+inside a test does not override a `beforeEach` stub — the test would pass
+while proving nothing. Use `fakeHttp()` / `fakePaystackVerify()` from
+`tests/Pest.php`, which swap the factory and genuinely replace the stubs.
+
+## Financial rules — non-negotiable
 
 ## Financial rules — non-negotiable
 

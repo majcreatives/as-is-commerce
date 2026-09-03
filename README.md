@@ -8,13 +8,14 @@ right to buy the product at the auction's checkout price.
 All monetary values are in Ghana Cedis (GH₵) and are stored as integer minor
 units (pesewas). Never as floating point.
 
-> **Development status — Wallet & credit ledger.**
+> **Development status — Payments & credit packages.**
 > This repository currently contains the application foundation
-> (authentication, roles, application shell), the auction rules engine, and
-> the credit and cash accounting beneath them. Payments, the auction engine,
-> bidding, orders and delivery are built in later stages and are deliberately
-> absent — there is no `auctions` or `bids` table, and credit consumption is
-> not yet wired to anything.
+> (authentication, roles, application shell), the auction rules engine, the
+> credit and cash ledgers, and buying credits with real GHS through Paystack.
+> The auction engine, bidding, product catalog, Buy Now, orders and delivery
+> are built in later stages and are deliberately absent — there is no
+> `auctions`, `bids` or `products` table, and credit *consumption* is not yet
+> wired to anything.
 
 ---
 
@@ -153,10 +154,22 @@ php artisan test --testsuite=Concurrency
 
 ## The rules engine
 
-The platform runs **Last Bidder Standing** auctions: bidding spends credits,
-and whoever holds the lead when the server-side countdown expires wins the
-right to buy the product at a separate, predetermined checkout price. The
-credits spent bidding never determine that price.
+> **Unresolved: the winning mechanic.**
+> This layer was built for **Last Bidder Standing**, as specified at the time.
+> The Stage 4 brief instead states that the auction rule is *highest valid
+> credit bid wins*. The two are not compatible: the ruleset's closing window,
+> extension length, maximum extensions and unique-leader rule exist only to
+> serve a countdown that late bids extend, and a highest-bid auction needs
+> none of them.
+>
+> Nothing has been rewritten on that basis, because the decision is the
+> business's to make. Payments and the ledger are unaffected either way. This
+> must be settled before the auction engine is built. See the Stage 4 report.
+
+As built, the rules engine describes **Last Bidder Standing**: bidding spends
+credits, and whoever holds the lead when the server-side countdown expires
+wins the right to buy the product at a separate, predetermined checkout price.
+The credits spent bidding never determine that price.
 
 Nothing about that behaviour is hard-coded. Configuration flows in one
 direction:
@@ -340,6 +353,100 @@ made with a compensating entry.
 
 ---
 
+## Buying credits
+
+Customers buy **credit packages**: a fixed number of bidding credits for a
+fixed price in GHS, paid through Paystack.
+
+### Three things that are never the same
+
+```
+Credit purchase   GHS buys a fixed number of credits.  A package price.
+Bid               N credits, spent to bid.            Never money.
+Buy Now price     GHS a product costs outright.       Never credits.
+```
+
+There is no arithmetic relationship between them. 500 credits costing GH 45
+does not make one credit worth 9 pesewas, and a product's price has nothing to
+do with either. Credits never convert back into money.
+
+### The flow
+
+```
+Customer picks a package
+        │  the browser sends a slug -- never a price, never a quantity
+        ▼
+Purchase created, carrying an immutable snapshot of what was bought
+        │
+        ▼
+Paystack transaction opened server-side, for the snapshot amount
+        │
+        ▼
+Customer pays  ──►  webhook (signed)      ──┐
+                    callback (browser)    ──┤  both go through the same path
+                                            ▼
+                              Verify server-to-server with Paystack
+                                            │
+                              Check status, reference, currency, amount
+                                            │
+                              IdempotencyGuard, keyed on the purchase
+                                            ▼
+                    Cash ledger  ──  Credit ledger  ──  FULFILLED
+```
+
+### A browser callback is not proof of payment
+
+A customer returning from Paystack proves only that a browser arrived — they
+may have abandoned the payment or edited the URL. The callback takes the
+reference, looks up a purchase the signed-in user owns, and runs the same
+verified fulfilment the webhook uses. It is not a weaker way in, and
+refreshing it cannot produce a second grant.
+
+Mobile money settles asynchronously, so arriving before payment completes is
+normal. That shows as pending, honestly, rather than as success or failure.
+
+### Webhook security
+
+The endpoint is public because Paystack cannot log in, so its signature is the
+only thing separating the provider from anyone else who finds the URL.
+
+- HMAC SHA512 over the **raw body**, compared with `hash_equals`.
+- Verified before anything is stored, parsed for meaning, or acted on.
+- Events stored under a unique `(provider, provider_event_id)` before
+  processing, so a redelivery is caught by the database rather than by an
+  application check that would race.
+- Failures return 5xx so Paystack retries; the event is already stored, so a
+  retry is safe.
+
+### The snapshot
+
+A purchase carries the package name, credit quantity, price and currency,
+frozen when the transaction was opened. Fulfilment reads the snapshot and never
+the package record, so repricing a package cannot change what an already-open
+purchase costs or grants.
+
+### What fulfilment produces
+
+One verified payment produces exactly one of each:
+
+- a `PURCHASE` credit ledger entry, referencing the purchase;
+- a `PURCHASED` credit lot with **no expiry** — purchased credits do not
+  expire;
+- two cash entries: money in, then immediately out to buy the credits, netting
+  to zero, because the customer now holds credits rather than a cash balance;
+- a purchase marked `FULFILLED` — but only after the credits exist.
+
+If any step fails, the whole transaction rolls back and the purchase stays
+visibly outstanding rather than looking complete, so a retry can put it right.
+
+### Refunds
+
+A refund event is recorded but does **not** claw credits back. They may
+already have been spent, and reversing a spend is a business decision rather
+than something to infer from a provider event.
+
+---
+
 ## Settings
 
 Application configuration that is *not* auction-specific — site name,
@@ -420,6 +527,7 @@ app/
 ├── Domain/
 │   ├── Auction/          Ruleset lifecycle, invariants, immutable rules
 │   ├── Cash/             Real-money ledger
+│   ├── Payments/         Gateway boundary, Paystack adapter, purchase flow
 │   ├── Credit/           Credit ledger, lots, allocation, reconciliation
 │   ├── Settings/         Typed, cached application settings
 │   ├── Shared/Idempotency/  At-most-once execution of financial operations

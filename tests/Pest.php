@@ -2,7 +2,10 @@
 
 declare(strict_types=1);
 
+use App\Models\User;
+use Database\Seeders\PermissionSeeder;
 use Database\Seeders\RoleSeeder;
+use Database\Seeders\SettingsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -33,4 +36,34 @@ pest()->extend(TestCase::class)
 function seedRoles(): void
 {
     app(RoleSeeder::class)->run();
+}
+
+/**
+ * Seeds roles and the permissions attached to them.
+ */
+function seedPermissions(): void
+{
+    seedRoles();
+    app(PermissionSeeder::class)->run();
+}
+
+/**
+ * Seeds the application's settings definitions.
+ */
+function seedSettings(): void
+{
+    app(SettingsSeeder::class)->run();
+}
+
+/**
+ * A user holding the given role, with permissions already seeded.
+ */
+function userWithRole(string $role): User
+{
+    seedPermissions();
+
+    $user = User::factory()->create();
+    $user->assignRole($role);
+
+    return $user->fresh();
 }

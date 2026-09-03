@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Domain\Payments\Contracts\PaymentGateway;
+use App\Domain\Payments\Paystack\PaystackGateway;
 use App\Domain\Settings\SettingsRepository;
 use App\Domain\Shared\Phone\GhanaPhoneNumberNormalizer;
 use App\Domain\Shared\Phone\PhoneNumberNormalizer;
@@ -12,6 +14,7 @@ use App\Domain\User\Support\UnconfiguredOtpChannel;
 use App\Models\User;
 use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\ServiceProvider;
@@ -38,6 +41,17 @@ class AppServiceProvider extends ServiceProvider
             SettingsRepository::class,
             fn ($app): SettingsRepository => new SettingsRepository($app->make(CacheRepository::class)),
         );
+
+        // The payment provider sits behind an interface so the credit and
+        // wallet domains never name Paystack. Swapping provider later is a
+        // change to this binding and one adapter class.
+        $this->app->bind(PaymentGateway::class, fn ($app): PaystackGateway => new PaystackGateway(
+            http: $app->make(HttpFactory::class),
+            secretKey: config('paystack.secret_key'),
+            baseUrl: (string) config('paystack.base_url'),
+            currency: (string) config('paystack.currency'),
+            timeout: (int) config('paystack.timeout'),
+        ));
     }
 
     /**

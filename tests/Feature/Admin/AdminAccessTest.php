@@ -33,11 +33,35 @@ it('grants the stage permissions to both administrative roles', function (string
     }
 })->with(['admin', 'super_admin']);
 
-it('grants a customer none of the stage permissions', function (string $permission): void {
+/*
+ * Customers hold two permissions of their own -- credits.view and
+ * wallets.view -- which govern their own wallet only. They must hold none of
+ * the staff permissions.
+ */
+it('grants a customer none of the staff permissions', function (string $permission): void {
     $customer = userWithRole('customer');
 
     expect($customer->can($permission))->toBeFalse();
-})->with(PermissionSeeder::PERMISSIONS);
+})->with(PermissionSeeder::staffPermissions());
+
+it('grants a customer only their own wallet permissions', function (): void {
+    $customer = userWithRole('customer');
+
+    // getAllPermissions, not getPermissionNames: these are held through the
+    // customer role rather than assigned directly to the user.
+    expect($customer->getAllPermissions()->pluck('name')->sort()->values()->all())
+        ->toBe(collect(PermissionSeeder::CUSTOMER_PERMISSIONS)->sort()->values()->all());
+});
+
+/*
+ * The distinction that keeps the admin screens closed: every customer can see
+ * their own wallet, but only staff can see anyone else's.
+ */
+it('separates viewing your own wallet from inspecting another', function (): void {
+    expect(userWithRole('customer')->can('wallets.view'))->toBeTrue()
+        ->and(userWithRole('customer')->can('wallets.inspect'))->toBeFalse()
+        ->and(userWithRole('admin')->can('wallets.inspect'))->toBeTrue();
+});
 
 /*
  * A super admin passes checks for permissions that have not been seeded onto

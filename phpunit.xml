@@ -11,6 +11,15 @@
         <testsuite name="Feature">
             <directory>tests/Feature</directory>
         </testsuite>
+
+        <!--
+            Concurrency tests use a second database connection and therefore
+            truncate rather than wrap each test in a transaction. Kept in their
+            own suite so that difference is explicit.
+        -->
+        <testsuite name="Concurrency">
+            <directory>tests/Concurrency</directory>
+        </testsuite>
     </testsuites>
     <source>
         <include>

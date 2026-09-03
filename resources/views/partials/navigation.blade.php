@@ -13,6 +13,7 @@
                 @auth
                     <x-nav-link href="{{ route('dashboard') }}" :active="request()->routeIs('dashboard')">Dashboard</x-nav-link>
                     <x-nav-link href="{{ route('wallet') }}" :active="request()->routeIs('wallet')">Wallet</x-nav-link>
+                    <x-nav-link href="{{ route('credits.packages') }}" :active="request()->routeIs('credits.*')">Credits</x-nav-link>
 
                     @role('admin|super_admin')
                         <x-nav-link href="{{ route('admin.dashboard') }}" :active="request()->routeIs('admin.*')">Admin</x-nav-link>
@@ -57,6 +58,7 @@
             @auth
                 <x-nav-link href="{{ route('dashboard') }}" class="block" :active="request()->routeIs('dashboard')">Dashboard</x-nav-link>
                 <x-nav-link href="{{ route('wallet') }}" class="block" :active="request()->routeIs('wallet')">Wallet</x-nav-link>
+                <x-nav-link href="{{ route('credits.packages') }}" class="block" :active="request()->routeIs('credits.*')">Credits</x-nav-link>
                 <x-nav-link href="{{ route('profile.edit') }}" class="block" :active="request()->routeIs('profile.*')">Profile</x-nav-link>
 
                 @role('admin|super_admin')

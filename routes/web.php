@@ -4,6 +4,11 @@ declare(strict_types=1);
 
 use App\Http\Controllers\Auth\LogoutController;
 use App\Http\Controllers\HealthController;
+use App\Http\Controllers\Payments\PaystackCallbackController;
+use App\Http\Controllers\Payments\PaystackWebhookController;
+use App\Livewire\Admin\Payments\PackageManager;
+use App\Livewire\Admin\Payments\PurchaseIndex;
+use App\Livewire\Admin\Payments\WebhookEventIndex;
 use App\Livewire\Admin\Rulesets\RulesetForm;
 use App\Livewire\Admin\Rulesets\RulesetIndex;
 use App\Livewire\Admin\Settings\ManageSettings;
@@ -11,6 +16,8 @@ use App\Livewire\Admin\Wallets\WalletDetail;
 use App\Livewire\Admin\Wallets\WalletIndex;
 use App\Livewire\Auth\Login;
 use App\Livewire\Auth\Register;
+use App\Livewire\Credits\CreditPackages;
+use App\Livewire\Credits\PurchaseHistory;
 use App\Livewire\Wallet\WalletOverview;
 use Illuminate\Support\Facades\Route;
 
@@ -21,6 +28,21 @@ use Illuminate\Support\Facades\Route;
 */
 
 Route::get('/health', HealthController::class)->name('health');
+
+/*
+|--------------------------------------------------------------------------
+| Payment provider webhooks
+|--------------------------------------------------------------------------
+|
+| Public and unauthenticated: a payment provider cannot log in. Each request
+| is authenticated by its HMAC signature instead, verified before anything
+| is stored or acted on. CSRF is exempted in bootstrap/app.php for the same
+| reason.
+|
+*/
+
+Route::post('/webhooks/paystack', PaystackWebhookController::class)
+    ->name('webhooks.paystack');
 
 /*
 |--------------------------------------------------------------------------
@@ -59,6 +81,13 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/wallet', WalletOverview::class)
         ->middleware('can:wallets.view')
         ->name('wallet');
+
+    // Buying credits. The browser sends a package, never a price.
+    Route::get('/credits', CreditPackages::class)->name('credits.packages');
+    Route::get('/credits/history', PurchaseHistory::class)->name('credits.history');
+
+    // Where the provider returns the customer's browser. Not proof of payment.
+    Route::get('/credits/callback', PaystackCallbackController::class)->name('credits.callback');
 });
 
 /*
@@ -105,4 +134,16 @@ Route::middleware(['auth', 'role:admin|super_admin'])
         Route::get('/wallets/{user}', WalletDetail::class)
             ->middleware('can:wallets.inspect')
             ->name('wallets.show');
+
+        Route::get('/credit-packages', PackageManager::class)
+            ->middleware('can:credit_packages.view')
+            ->name('credit-packages');
+
+        Route::get('/credit-purchases', PurchaseIndex::class)
+            ->middleware('can:credit_purchases.view')
+            ->name('credit-purchases');
+
+        Route::get('/payment-events', WebhookEventIndex::class)
+            ->middleware('can:payment_events.view')
+            ->name('payment-events');
     });

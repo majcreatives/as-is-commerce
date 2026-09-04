@@ -1,14 +1,14 @@
 # As-Is-Commerce
 
 A credit-based auction marketplace for the Ghanaian market. Users buy virtual
-bidding credits, spend them to place bids on live auctions, and the account
-holding the leading position when the server-side countdown expires wins the
-right to buy the product at the auction's checkout price.
+bidding credits and commit them as bids on live auctions. **The highest valid
+credit bid wins** when an auction closes — unless a customer buys the product
+outright first, which ends the auction immediately.
 
 All monetary values are in Ghana Cedis (GH₵) and are stored as integer minor
 units (pesewas). Never as floating point.
 
-> **Development status — Product catalog & inventory.**
+> **Development status — Auction rules corrected; engine not built.**
 > This repository currently contains the application foundation
 > (authentication, roles, application shell), the auction rules engine, the
 > credit and cash ledgers, Paystack credit purchases, and the product catalog
@@ -154,32 +154,107 @@ php artisan test --testsuite=Concurrency
 
 ## The rules engine
 
-> **Unresolved: the winning mechanic.**
-> This layer was built for **Last Bidder Standing**, as specified at the time.
-> The Stage 4 brief instead states that the auction rule is *highest valid
-> credit bid wins*. The two are not compatible: the ruleset's closing window,
-> extension length, maximum extensions and unique-leader rule exist only to
-> serve a countdown that late bids extend, and a highest-bid auction needs
-> none of them.
->
-> Nothing has been rewritten on that basis, because the decision is the
-> business's to make. Payments and the ledger are unaffected either way. This
-> must be settled before the auction engine is built. See the Stage 4 report.
+**The highest valid credit bid wins.** When an auction closes normally, the
+participant holding the highest valid credit bid takes the item -- not the last
+bidder, not whoever bid most often, and not whoever held the lead longest. A
+bidder who is overtaken and later bids higher still wins on that highest bid.
 
-As built, the rules engine describes **Last Bidder Standing**: bidding spends
-credits, and whoever holds the lead when the server-side countdown expires
-wins the right to buy the product at a separate, predetermined checkout price.
-The credits spent bidding never determine that price.
+The one thing that overrides it: **a successful Buy Now purchase ends the
+auction immediately**, and the standing highest bidder does not win.
 
-Nothing about that behaviour is hard-coded. Configuration flows in one
-direction:
+> This layer was originally built for Last Bidder Standing and was corrected in
+> a dedicated stage before the auction engine. The obsolete columns --
+> `unique_leader`, `bid_cost_credits` and a default checkout price -- were
+> dropped rather than reinterpreted, so nothing survives that would send a
+> future developer back to the old model.
+
+### Bids carry their own amounts
+
+There is no fixed cost per bid. A bidder chooses how many credits to commit:
+
+```
+A bids 20 → B bids 50 → C bids 100 → A bids 150
+Highest valid bid: A, with 150 credits. A wins.
+```
+
+Every accepted bid consumes the credits it commits, permanently. Losing
+bidders do not get them back, and neither does the winner.
+
+The rules constrain which amounts are acceptable:
+
+| Rule | Meaning | Status |
+| --- | --- | --- |
+| `minimum_bid_credits` | Smallest bid that can ever be submitted | **Not decided** — null |
+| `minimum_bid_increment_credits` | How far a bid must exceed the standing highest | **Not decided** — null |
+| `allow_bid_increase` | Whether a bidder may raise their own bid | **Not decided** — null |
+| `minimum_bid_interval_ms` | Anti-spam gap between a user's bids | 1000 |
+
+Null means *no rule*, which is deliberately different from any particular
+number. The business has not chosen these values, and seeding one would make
+the choice by default. `AuctionRules::smallestValidBid()` returns null when
+nothing is configured, so the engine cannot invent a floor of its own.
+
+The upper bound is not a rule at all: a bid may not exceed the bidder's
+spendable credits, which the wallet decides.
+
+### Buy Now
+
+`buy_now_enabled` says whether the product can be bought outright while its
+auction runs. When that purchase succeeds the auction ends at once.
+
+`buy_now_credit_discount_enabled` and
+`buy_now_credit_discount_minor_per_credit` express the one place in the whole
+system where credits relate to money:
+
+> **One consumed bid credit gives GH₵1 off the Buy Now price.**
+
+Stored as `100` — pesewas per credit — so the rate is an explicit integer,
+versioned with everything else, rather than a conversion assumed in code.
+
+```
+Product Buy Now price     GH₵5,500
+Credits consumed bidding      150
+Discount                  GH₵  150
+Payable                   GH₵5,350
+```
+
+The credits stay consumed. This reduces a separate purchase price; it does not
+give them back. Only credits a user actually consumed bidding *on that
+auction* count — not a wallet balance, not credits bought and never bid, not
+credits spent elsewhere.
+
+### Settlement is deliberately undecided
+
+**What a normal auction winner pays has not been decided, and no amount is
+encoded anywhere.** The rules carry no settlement price, `toRules()` takes no
+price argument, and there is a test asserting no such field exists.
+
+The auction engine must not assume one, and must not reuse the product's Buy
+Now price as a settlement amount. Auction winner and Buy Now buyer are
+different roles.
+
+### Timing
+
+Auction duration and late-bid extension are separate concerns.
+
+`base_duration_seconds` is how long an auction runs. The extension fields
+(`closing_window_seconds`, `extension_seconds`, `max_extensions`,
+`max_extension_total_seconds`) are anti-sniping: a bid near the end can push
+the clock back so others can respond.
+
+Extension survived the correction because it is still useful, but it is now
+**independent of who wins** — it changes how long bidding lasts, never the
+rule by which the winner is chosen. It is also **off by default**: whether to
+use it, and with what window, has not been decided.
+
+### Configuration flows in one direction
 
 ```
 Auction ruleset  (mutable, versioned configuration)
        │
-       │  toRules(checkoutPrice)   ← taken once, when an auction is created
+       │  toRules()   ← taken once, when an auction is created
        ▼
-AuctionRules     (immutable value object)
+AuctionRules     (immutable value object, snapshot version 2)
        │
        │  toArray() → JSON, stored on the auction row
        ▼
@@ -189,14 +264,22 @@ Auction engine   (reads the snapshot, never the ruleset)
 ### Why the snapshot exists
 
 An auction must never hold a live reference to configuration an administrator
-can edit. If it did, changing the closing window on a Tuesday would silently
-rewrite how an auction that ran on Monday is explained — and with money and
-competitive outcomes involved, that is not recoverable.
+can edit. If it did, changing a rule on a Tuesday would silently rewrite how an
+auction that ran on Monday is explained — and with money and competitive
+outcomes involved, that is not recoverable.
 
 So an auction takes a **complete copy** of its rules at creation, as an
 immutable `AuctionRules` value object serialized into its own row. Editing,
-archiving or even deleting the ruleset afterwards has no effect on it. This is
-covered by tests that assert exactly that property.
+archiving or even deleting the ruleset afterwards has no effect on it,
+including the Buy Now discount rate. Tests assert exactly that.
+
+Every snapshot records `winner_rule` explicitly, so the engine reads its
+winner rule from the auction's own frozen configuration rather than inferring
+it from whatever the code happens to do that week.
+
+Snapshot version 2 is the corrected model. A version 1 snapshot is refused
+rather than reinterpreted — its fields do not mean what version 2 would read
+them as. None exist: no auction has ever been created.
 
 ### Ruleset lifecycle
 
@@ -219,22 +302,6 @@ database, not only in application code.
 
 The default ruleset cannot be archived while it is the default. Designate
 another first, so auction creation is never left with nothing to fall back on.
-
-### Where the checkout price comes from
-
-A ruleset carries auction *defaults*. The checkout price belongs to the
-**product** being auctioned, so it is supplied when the auction is created:
-
-```php
-$rules = app(RulesetResolver::class)->rulesFor(
-    Money::fromDecimalString('5500.00'),   // this product's price
-    'Standard Auction',                    // optional; omit for the default
-);
-```
-
-`default_checkout_price_minor` on a ruleset is nullable and normally stays
-null. Building rules with neither a caller-supplied price nor a default is an
-error, rather than a guess.
 
 ### Validation
 

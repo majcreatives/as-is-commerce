@@ -5,9 +5,10 @@ This file records the rules that are not obvious from the code.
 
 ## Current stage
 
-**Product catalog & inventory.** Foundation (auth, roles, shell), the auction
-rules engine, the credit and cash ledgers, Paystack credit purchases, and the
-platform's product catalog with an auditable inventory ledger.
+**Auction rules corrected; engine not built.** Foundation (auth, roles,
+shell), the credit and cash ledgers, Paystack credit purchases, the product
+catalog with an auditable inventory ledger, and an auction rules engine that
+now describes the definitive model: **the highest valid credit bid wins**.
 
 The auction engine, bidding, Buy Now checkout, orders, delivery, referrals and
 gamification do **not** exist yet and must not be built ahead of their stage.
@@ -30,11 +31,16 @@ a product priced at GH₵5,500 has nothing to do with either. A product has no
 column referring to credits, wallets, bids or packages, and there is a test
 asserting that.
 
-**The one future exception, not implemented anywhere yet:** a customer who
-consumed credits bidding on a product's auction will eventually get GH₵1 off
-that product's Buy Now price per consumed credit. 150 credits spent → GH₵150
-off. That calculation belongs to the Auction/Buy Now engine. Until it is built,
-no code may convert credits to money or money to credits for any other reason.
+**The one exception, represented but not yet calculated anywhere:** a customer
+who consumed credits bidding on a product's auction gets GH₵1 off that
+product's Buy Now price per consumed credit. 150 credits spent → GH₵150 off.
+
+The *rate* is now an explicit versioned ruleset value
+(`buy_now_credit_discount_minor_per_credit = 100`), and `AuctionRules::buyNowDiscountFor()`
+computes the amount. Nothing calls it: deciding which credits qualify, and
+applying the discount to a real purchase, belongs to the Auction/Buy Now
+engine. Outside that one path, no code converts credits to money or money to
+credits.
 
 Credits never become cash. Credits spent bidding are gone — for losing and
 winning bidders alike, and the Buy Now discount does not give them back, it
@@ -114,8 +120,6 @@ A successful Buy Now purchase will eventually terminate the product's active
 auction atomically — the buyer wins, the highest bidder does not, and later
 Buy Now attempts fail. None of that exists yet, and Stage 5 built no checkout,
 no payment path for products, and no auction termination.
-
-## Payments
 
 ## Payments
 
@@ -305,6 +309,81 @@ These exist because this application handles money and competitive outcomes.
 - Bind interfaces in `AppServiceProvider` so implementations stay swappable —
   see `PhoneNumberNormalizer` and `OtpChannel` for the pattern.
 
+## The auction model
+
+**The highest valid credit bid wins** when an auction closes normally. Not the
+last bidder, not whoever bid most often, not whoever held the lead longest. A
+bidder who is overtaken and later bids higher still wins on that highest bid.
+
+**A successful Buy Now purchase ends the auction immediately**, and the
+standing highest bidder does not win.
+
+This model replaced Last Bidder Standing in a dedicated correction stage. If
+you find anything implying a last-bidder winner, a "leader" who must be
+unique, or a fixed cost per bid, it is wrong — those columns were dropped, and
+tests assert they stay gone.
+
+### Bids carry their own amounts
+
+There is no fixed cost per bid. A bidder commits however many credits they
+choose, and every accepted bid consumes exactly that many, permanently.
+Losing bidders do not get them back, and neither does the winner.
+
+The future bid record must therefore hold an explicit amount. Never write code
+that assumes one credit per bid, or reads a per-bid price from the ruleset —
+there is no such field.
+
+### Undecided rules stay null
+
+`minimum_bid_credits`, `minimum_bid_increment_credits` and
+`allow_bid_increase` are nullable, and are null. The business has not chosen
+these values.
+
+**Do not invent one.** Null means "no rule", which is different from any
+number, and a value seeded to fill the schema becomes the number everyone
+designs around. `AuctionRules::smallestValidBid()` returns null when nothing
+is configured; the engine must not substitute a floor of its own.
+
+### Settlement is not decided
+
+**What a normal auction winner pays has not been decided, and no amount is
+encoded anywhere in the system.**
+
+The rules carry no settlement price. `toRules()` takes no price. Do not add
+one, do not reuse a product's Buy Now price as a settlement amount, and do not
+assume the auction winner and the Buy Now buyer are the same role. This will
+be settled explicitly before the settlement stage.
+
+### The one place credits meet money
+
+One consumed bid credit gives **GH₵1 off the Buy Now price**, stored as
+`buy_now_credit_discount_minor_per_credit = 100` — pesewas per credit, an
+explicit versioned integer rather than a conversion assumed in code.
+
+```
+Buy Now price   GH₵5,500
+150 credits consumed bidding on that auction
+Discount        GH₵  150
+Payable         GH₵5,350
+```
+
+The credits stay consumed. This reduces a separate purchase price; it does not
+refund them. Only credits a user actually consumed bidding **on that auction**
+qualify — never a wallet balance, credits bought and never bid, or credits
+spent on something else. The future engine must derive the figure from
+auditable bid and ledger records.
+
+Outside this one path, no code converts credits to money or money to credits.
+
+### Timing
+
+`base_duration_seconds` is how long an auction runs. The extension fields are
+anti-sniping and are **independent of who wins** — extending the clock gives
+others a chance to bid higher, it does not change how the winner is chosen.
+
+Extensions are off by default because the rule is unfinalized. Do not switch
+them on with invented numbers.
+
 ## Auction rules — the snapshot rule
 
 The single most important invariant in this codebase.
@@ -312,7 +391,7 @@ The single most important invariant in this codebase.
 An auction takes an **immutable copy** of its rules when it is created:
 
 ```php
-$rules = $ruleset->toRules($checkoutPrice);   // AuctionRules value object
+$rules = $ruleset->toRules();                 // AuctionRules value object
 $auction->rules_snapshot = $rules->toArray(); // stored as JSON on the auction
 ```
 
@@ -323,24 +402,29 @@ unexplainable.
 
 Rules are read from the snapshot, always. `AuctionRuleset` is mutable
 configuration for *creating* auctions; `AuctionRules` is what the engine runs
-on.
+on. Every snapshot records `winner_rule` explicitly, so the engine reads that
+from the auction rather than inferring it from the code of the day.
 
 Consequences to respect:
 
 - `AuctionRules` is a `readonly` class. Keep it that way.
-- Bump `AuctionRules::SNAPSHOT_VERSION` if its serialized shape changes, and
-  handle older versions in `fromArray()`. Stored snapshots must stay readable.
+- Bump `AuctionRules::SNAPSHOT_VERSION` if its serialized shape changes.
+  Version 2 is the corrected model; version 1 was the last-bidder shape and is
+  refused rather than reinterpreted.
 - Only **draft** rulesets are editable. Changing an active one means drafting
   a new version, never mutating it.
 - Archived rulesets are never deleted.
 
-## Bid cost and checkout price are unrelated
+## Product price, credits and bids are separate
 
-Credits spent bidding do **not** determine what the winner pays. `bid_cost_credits`
-and `checkout_price` are separate values and must never be derived from one
-another. The checkout price belongs to the product and is supplied at auction
-creation; the ruleset's `default_checkout_price_minor` is a nullable fallback
-that normally stays null.
+Credits spent bidding do **not** determine what anyone pays. A product's
+`buy_now_price_minor` is its own figure in GHS pesewas, and is never derived
+from a bid, a balance, or a credit package price. Never subtract bids from it,
+never update it as bidding proceeds, and never express a product price in
+credits.
+
+The only relationship is the Buy Now discount described above, which computes
+against the price without changing it.
 
 ## Money
 

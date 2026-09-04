@@ -133,11 +133,22 @@
 
             {{-- ------------------------------------------------------- Outcome --}}
             @if ($auction->endedByBuyNow())
-                <x-card title="This auction ended early">
+                <x-card title="Sold via Buy Now">
                     <p class="text-sm text-slate-700">
                         Someone bought this product outright, which ends the auction immediately.
-                        The highest bidder did not win, and credits already committed stay consumed.
+                        There is no auction winner: the highest bidder did not win, and credits
+                        already committed stay consumed.
                     </p>
+
+                    @if ($this->viewerLost())
+                        <x-alert variant="info" class="mt-4">
+                            You bid on this auction and it was bought outright before it closed.
+                            The
+                            <strong>{{ number_format($this->myBids()->sum('amount_credits')) }}
+                            credits</strong> you committed remain consumed, as bid credits always
+                            are.
+                        </x-alert>
+                    @endif
                 </x-card>
             @elseif ($auction->hasBidWinner())
                 <x-card title="Result">
@@ -160,12 +171,63 @@
                             </p>
                         </x-alert>
 
+                        @if ($auction->settlement_due_at)
+                            <p class="mt-3 text-sm text-slate-600">
+                                Settle by
+                                <strong>{{ $auction->settlement_due_at->timezone(settings()->getString('display_timezone', 'UTC'))->format('j M Y, H:i') }}</strong>.
+                                After that the auction is forfeited and the product goes back on
+                                sale. Your consumed credits are not returned.
+                            </p>
+                        @endif
+
                         @can('checkout.create')
-                            <x-button wire:click="settle" class="mt-4">
-                                Settle this auction
-                            </x-button>
+                            @if ($settlementOrder && $settlementOrder->isPayable())
+                                {{-- Opened when the auction closed, so the deadline is not
+                                     already running against a winner who had not visited. --}}
+                                <x-button href="{{ route('checkout.show', $settlementOrder) }}"
+                                          wire:navigate class="mt-4">
+                                    Go to settlement checkout
+                                </x-button>
+                            @elseif ($settlementOrder?->isPaid())
+                                <x-alert variant="success" class="mt-4">
+                                    Settled. Order
+                                    <a href="{{ route('orders.show', $settlementOrder) }}"
+                                       wire:navigate class="font-semibold underline">{{ $settlementOrder->order_number }}</a>.
+                                </x-alert>
+                            @else
+                                <x-button wire:click="settle" class="mt-4">
+                                    Settle this auction
+                                </x-button>
+                            @endif
                         @endcan
+                    @elseif ($this->viewerLost())
+                        {{-- A losing bidder is owed a straight answer, and the truth
+                             about their credits. There is deliberately no refund
+                             control here, because there is no refund. --}}
+                        <x-alert variant="info" class="mt-4">
+                            <p class="font-semibold">You did not win this auction.</p>
+                            <p class="mt-1">
+                                The winning bid was
+                                {{ number_format($auction->winningBid?->amount_credits ?? 0) }}
+                                credits. The
+                                <strong>{{ number_format($this->myBids()->sum('amount_credits')) }}
+                                credits</strong> you committed remain consumed — bid credits are
+                                spent when the bid is accepted and are not returned.
+                            </p>
+                        </x-alert>
                     @endif
+                </x-card>
+            @elseif ($auction->hasEnded() && $this->viewerLost())
+                <x-card title="This auction ended">
+                    <p class="text-sm text-slate-700">
+                        {{ $auction->closure_reason?->label() ?? $auction->status->label() }}.
+                        Nobody won it on a bid.
+                    </p>
+                    <p class="mt-2 text-sm text-slate-600">
+                        The
+                        <strong>{{ number_format($this->myBids()->sum('amount_credits')) }}
+                        credits</strong> you committed remain consumed.
+                    </p>
                 </x-card>
             @endif
 
@@ -300,6 +362,22 @@
             </x-card>
 
             @auth
+                <x-card title="Your credits">
+                    <p class="text-2xl font-bold tabular-nums text-slate-900">
+                        {{ number_format(auth()->user()->creditWallet?->balance ?? 0) }}
+                        <span class="text-sm font-semibold text-slate-500">credits</span>
+                    </p>
+                    <p class="mt-2 text-xs text-slate-500">
+                        Your spendable balance. Credits are not money and are never converted to
+                        GH&#8373;.
+                    </p>
+
+                    <x-button variant="secondary" size="sm" class="mt-4"
+                              href="{{ route('credits.packages') }}" wire:navigate>
+                        Buy more credits
+                    </x-button>
+                </x-card>
+
                 <x-card title="Your bids on this auction">
                     @php($mine = $this->myBids())
 

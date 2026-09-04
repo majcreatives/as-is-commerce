@@ -218,11 +218,37 @@ class AuctionRoom extends Component
             ->get();
     }
 
+    /**
+     * Whether the signed-in user bid on this auction and did not win.
+     *
+     * Asked plainly so the page can say so plainly. A losing bidder is owed a
+     * clear answer, not an absence of one -- and their credits stay consumed,
+     * which the page also says rather than leaving them to wonder.
+     */
+    public function viewerLost(): bool
+    {
+        if (! auth()->check() || ! $this->auction->hasEnded()) {
+            return false;
+        }
+
+        if ($this->auction->winner_user_id === auth()->id()) {
+            return false;
+        }
+
+        return $this->auction->bids()->where('user_id', auth()->id())->exists();
+    }
+
     public function render(HighestBidResolver $bids, AuctionClock $clock): View
     {
         $this->auction->refresh();
 
         return view('livewire.auctions.auction-room', [
+            // The winner's checkout, opened when the auction closed. Shown so
+            // they can reach it from here rather than hunting for it while a
+            // deadline runs.
+            'settlementOrder' => $this->auction->settlementOrder()
+                ->where('user_id', auth()->id())
+                ->first(),
             // The authoritative reading, not the cached projection: this is
             // the number the page is about.
             'highestBid' => $bids->highestBid($this->auction),

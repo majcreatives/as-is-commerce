@@ -128,6 +128,77 @@
                 @endif
             </x-card>
 
+            {{-- ------------------------------------------------- Settlement --}}
+            @if ($settlementOrder || $buyNowOrders->isNotEmpty())
+                <x-card title="Orders from this auction"
+                        subtitle="What was owed, and what actually acquired the product."
+                        :padded="false">
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-slate-200 text-sm">
+                            <thead class="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                                <tr>
+                                    <th class="px-5 py-3 font-semibold">Order</th>
+                                    <th class="px-5 py-3 font-semibold">Customer</th>
+                                    <th class="px-5 py-3 font-semibold">Kind</th>
+                                    <th class="px-5 py-3 font-semibold">Total</th>
+                                    <th class="px-5 py-3 font-semibold">State</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100">
+                                @foreach (collect([$settlementOrder])->filter()->concat($buyNowOrders) as $order)
+                                    <tr class="{{ $order->isFulfilmentBlocked() ? 'bg-amber-50/60' : '' }}">
+                                        <td class="px-5 py-3">
+                                            <a href="{{ route('admin.orders.show', $order) }}" wire:navigate
+                                               class="font-semibold text-brand-800 underline">
+                                                {{ $order->order_number }}
+                                            </a>
+                                        </td>
+                                        <td class="px-5 py-3 text-slate-700">{{ $order->user?->name }}</td>
+                                        <td class="px-5 py-3">
+                                            <x-badge :classes="$order->source->badgeClasses()">
+                                                {{ $order->source->label() }}
+                                            </x-badge>
+                                        </td>
+                                        <td class="px-5 py-3 tabular-nums text-slate-900">
+                                            <x-money :amount="$order->total()" />
+                                        </td>
+                                        <td class="px-5 py-3">
+                                            <x-badge :classes="$order->status->badgeClasses()">
+                                                {{ $order->status->label() }}
+                                            </x-badge>
+
+                                            @if ($order->isFulfilmentBlocked())
+                                                <p class="mt-1 text-xs font-semibold text-amber-800">
+                                                    fulfilment blocked
+                                                </p>
+                                            @endif
+                                        </td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+
+                    @if ($buyNowOrders->where('fulfilment_blocked_reason', '!=', null)->isNotEmpty())
+                        <div class="border-t border-slate-100 px-5 py-4">
+                            <x-alert variant="warning">
+                                One or more payments succeeded against this auction but could not be
+                                fulfilled — another transaction acquired the unit first. Those orders
+                                stay Paid and are in the attention queue. No refund is issued
+                                automatically.
+                            </x-alert>
+                        </div>
+                    @endif
+                </x-card>
+            @elseif ($auction->hasBidWinner())
+                <x-card title="Settlement">
+                    <x-alert variant="warning">
+                        This auction has a winner but no settlement checkout was opened. The winner
+                        cannot pay until one exists.
+                    </x-alert>
+                </x-card>
+            @endif
+
             {{-- --------------------------------------------- Frozen snapshot --}}
             <x-card title="Frozen rules snapshot"
                     subtitle="Taken when the auction was created. Nothing can change it now.">

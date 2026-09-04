@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace App\Livewire\Admin\Auctions;
 
+use App\Domain\Auction\Actions\CancelAuction;
 use App\Domain\Auction\Actions\CloseAuction;
 use App\Domain\Auction\Actions\RelistAuction;
 use App\Domain\Auction\Services\AuctionClock;
 use App\Domain\Auction\Services\AuctionLifecycle;
 use App\Domain\Auction\Services\HighestBidResolver;
 use App\Domain\Shared\Money\Money;
+use App\Enums\OrderSource;
 use App\Models\Auction;
 use App\Models\AuctionRuleset;
 use DomainException;
@@ -101,7 +103,7 @@ class AuctionDetail extends Component
         $this->attempt(fn () => $close->handle($this->auction, force: true));
     }
 
-    public function cancel(AuctionLifecycle $lifecycle): void
+    public function cancel(CancelAuction $cancel): void
     {
         $this->authorize('auctions.cancel');
 
@@ -112,7 +114,10 @@ class AuctionDetail extends Component
             'cancelReason' => ['required', 'string', 'min:5', 'max:500'],
         ]);
 
-        $this->attempt(fn () => $lifecycle->cancel(
+        // Through the action, which also closes any settlement checkout the
+        // winner was holding -- a cancelled auction releases its unit, and a
+        // payable order pointing at it would be racing whoever buys it next.
+        $this->attempt(fn () => $cancel->handle(
             $this->auction,
             $validated['cancelReason'],
             auth()->user(),
@@ -176,6 +181,16 @@ class AuctionDetail extends Component
             'history' => $bids->history($this->auction, 100),
             'secondsRemaining' => $clock->secondsRemaining($this->auction),
             'rulesets' => AuctionRuleset::query()->active()->orderBy('name')->get(),
+            // The winner's settlement checkout, and every Buy Now order opened
+            // against this auction. Several of the latter can exist at once --
+            // opening one reserves nothing -- so operations needs to see which
+            // one actually acquired the product and which were blocked.
+            'settlementOrder' => $this->auction->settlementOrder()->with('successfulPayment')->first(),
+            'buyNowOrders' => $this->auction->orders()
+                ->where('source', OrderSource::BuyNow)
+                ->with('user')
+                ->orderByDesc('id')
+                ->get(),
         ])->title('Auction #'.$this->auction->id);
     }
 }

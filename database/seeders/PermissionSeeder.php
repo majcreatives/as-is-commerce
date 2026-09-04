@@ -87,6 +87,17 @@ class PermissionSeeder extends Seeder
         // seeing your own -- is `bids.place` below.
         'bids.inspect',
         'bids.place',
+
+        // Order administration. Staff-only: `orders.view` means "see every
+        // order", which is not what a customer looking at their own history is
+        // doing -- that is `orders.view_own` below.
+        'orders.view',
+        'orders.manage',
+        'order_payments.view',
+
+        // Buying. Held by every customer.
+        'orders.view_own',
+        'checkout.create',
     ];
 
     /**
@@ -111,6 +122,13 @@ class PermissionSeeder extends Seeder
         // only -- the same distinction, and for the same reason, as
         // `wallets.view` against `wallets.inspect`.
         'bids.place',
+
+        // Buying, and seeing what you bought. The staff equivalents --
+        // `orders.view` for everyone's orders, `orders.manage` for moving one
+        // along -- are deliberately different permissions, for the same
+        // reason.
+        'checkout.create',
+        'orders.view_own',
     ];
 
     /**

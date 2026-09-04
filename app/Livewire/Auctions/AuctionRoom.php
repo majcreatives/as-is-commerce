@@ -11,9 +11,14 @@ use App\Domain\Auction\Services\BidValidator;
 use App\Domain\Auction\Services\BuyNowPricer;
 use App\Domain\Auction\Services\HighestBidResolver;
 use App\Domain\Auction\ValueObjects\BuyNowQuote;
+use App\Domain\Orders\Actions\StartBuyNowCheckout;
+use App\Domain\Orders\Actions\StartSettlementCheckout;
+use App\Domain\Orders\Exceptions\InvalidCheckout;
 use App\Domain\Shared\Idempotency\ConcurrentOperationInProgress;
 use App\Models\Auction;
 use App\Models\Bid;
+use DomainException;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
@@ -38,11 +43,14 @@ use Livewire\Component;
  * A bid is a number of credits, and what those credits are worth is not a
  * question the interface is allowed to answer.
  *
- * BUY NOW IS QUOTED, NOT SOLD. The page shows what buying outright would cost
- * this bidder after their consumed credits are taken off, and stops there.
- * Completing a purchase needs a payment, and payments belong to a later stage
- * -- wiring a button straight to the termination action would be fabricating
- * a payment that never happened.
+ * BUY NOW OPENS A CHECKOUT; IT DOES NOT END THE AUCTION. The button creates an
+ * order at a frozen price and sends the bidder to pay. The auction runs on,
+ * other people keep bidding, and the standing highest bidder is still in the
+ * running until a payment is verified server-side. Terminating on a click
+ * would let an abandoned checkout kill a live auction.
+ *
+ * The winner's settlement works the same way: winning creates an obligation,
+ * and paying it is what completes the sale.
  */
 #[Layout('components.layouts.app')]
 class AuctionRoom extends Component
@@ -142,6 +150,55 @@ class AuctionRoom extends Component
     public function buyNowQuote(BuyNowPricer $pricer): BuyNowQuote
     {
         return $pricer->quote($this->auction, auth()->user());
+    }
+
+    /**
+     * Open a checkout to buy this product outright.
+     *
+     * Creates an order at a price the server computes and freezes, then sends
+     * the customer to review and pay it. Nothing about the auction changes
+     * here: it is still live, still taking bids, and still winnable by the
+     * highest bidder until a payment is actually verified.
+     */
+    public function buyNow(StartBuyNowCheckout $checkout): ?RedirectResponse
+    {
+        $this->authorize('checkout.create');
+
+        try {
+            $order = $checkout->handle(
+                buyer: auth()->user(),
+                product: $this->auction->product,
+                auction: $this->auction->fresh(),
+            );
+        } catch (DomainException $e) {
+            $this->addError('checkout', $e->getMessage());
+            $this->auction->refresh();
+
+            return null;
+        }
+
+        return redirect()->route('checkout.show', $order);
+    }
+
+    /**
+     * Open the checkout this auction's winner settles through.
+     *
+     * Refused for anybody but the winner, in the domain rather than here: who
+     * won is not a question the interface gets to answer.
+     */
+    public function settle(StartSettlementCheckout $checkout): ?RedirectResponse
+    {
+        $this->authorize('checkout.create');
+
+        try {
+            $order = $checkout->handle($this->auction->fresh(), auth()->user());
+        } catch (InvalidCheckout $e) {
+            $this->addError('checkout', $e->getMessage());
+
+            return null;
+        }
+
+        return redirect()->route('checkout.show', $order);
     }
 
     /**

@@ -27,6 +27,10 @@
         <x-alert variant="success" class="mb-6">{{ session('bid-placed') }}</x-alert>
     @endif
 
+    @error('checkout')
+        <x-alert variant="danger" class="mb-6">{{ $message }}</x-alert>
+    @enderror
+
     <div class="grid gap-6 lg:grid-cols-3">
         {{-- ---------------------------------------------------- The auction --}}
         <div class="space-y-6 lg:col-span-2">
@@ -147,9 +151,20 @@
 
                     @if (auth()->id() === $auction->winner_user_id)
                         <x-alert variant="success" class="mt-4">
-                            You won this auction. Settlement checkout is not available yet — it arrives
-                            in a later stage of the platform.
+                            <p class="font-semibold">You won this auction.</p>
+                            <p class="mt-1">
+                                Your bid credits are already consumed. What is left to pay is the
+                                settlement amount of
+                                <strong><x-money :amount="$auction->settlementAmount()" /></strong>
+                                plus applicable charges — not your bid converted into GH&#8373;.
+                            </p>
                         </x-alert>
+
+                        @can('checkout.create')
+                            <x-button wire:click="settle" class="mt-4">
+                                Settle this auction
+                            </x-button>
+                        @endcan
                     @endif
                 </x-card>
             @endif
@@ -237,14 +252,31 @@
                 @endif
 
                 @if ($quote->available)
-                    {{-- Deliberately not a purchase button. Buying outright needs a
-                         payment, and payments for products arrive in a later stage.
-                         A button that ended the auction without one would be
-                         recording a sale that never happened. --}}
-                    <x-alert variant="info" class="mt-4">
-                        Buy Now checkout is not available yet. When it opens, a completed purchase
-                        will end this auction immediately and the highest bidder will not win.
-                    </x-alert>
+                    @auth
+                        @can('checkout.create')
+                            {{-- Opens a checkout at a frozen price. It does NOT end the
+                                 auction: only a payment we have verified with Paystack
+                                 does that. --}}
+                            <x-button wire:click="buyNow" class="mt-4 w-full"
+                                      wire:loading.attr="disabled">
+                                <span wire:loading.remove wire:target="buyNow">
+                                    Buy now for <x-money :amount="$quote->payable" />
+                                </span>
+                                <span wire:loading wire:target="buyNow">Opening checkout…</span>
+                            </x-button>
+
+                            <p class="mt-3 text-xs text-slate-500">
+                                Starting a checkout does not end this auction. It ends the moment we
+                                have confirmed your payment — and then the highest bidder does not
+                                win.
+                            </p>
+                        @endcan
+                    @else
+                        <x-alert variant="info" class="mt-4">
+                            <a href="{{ route('login') }}" wire:navigate class="font-semibold underline">Sign in</a>
+                            to buy this outright.
+                        </x-alert>
+                    @endauth
                 @elseif ($quote->unavailableReason)
                     <x-alert variant="info" class="mt-4">{{ $quote->unavailableReason }}</x-alert>
                 @endif

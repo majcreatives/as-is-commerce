@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Http\Controllers\Auth\LogoutController;
 use App\Http\Controllers\Catalog\ProductDetailController;
 use App\Http\Controllers\HealthController;
+use App\Http\Controllers\Orders\CheckoutCallbackController;
 use App\Http\Controllers\Payments\PaystackCallbackController;
 use App\Http\Controllers\Payments\PaystackWebhookController;
 use App\Livewire\Admin\Auctions\AuctionDetail as AdminAuctionDetail;
@@ -12,6 +13,8 @@ use App\Livewire\Admin\Auctions\AuctionManager;
 use App\Livewire\Admin\Catalog\InventoryManager;
 use App\Livewire\Admin\Catalog\ProductManager;
 use App\Livewire\Admin\Catalog\TaxonomyManager;
+use App\Livewire\Admin\Orders\OrderDetail as AdminOrderDetail;
+use App\Livewire\Admin\Orders\OrderManager;
 use App\Livewire\Admin\Payments\PackageManager;
 use App\Livewire\Admin\Payments\PurchaseIndex;
 use App\Livewire\Admin\Payments\WebhookEventIndex;
@@ -25,8 +28,11 @@ use App\Livewire\Auctions\AuctionRoom;
 use App\Livewire\Auth\Login;
 use App\Livewire\Auth\Register;
 use App\Livewire\Catalog\ProductCatalog;
+use App\Livewire\Checkout\CheckoutPage;
 use App\Livewire\Credits\CreditPackages;
 use App\Livewire\Credits\PurchaseHistory;
+use App\Livewire\Orders\OrderDetail;
+use App\Livewire\Orders\OrderIndex;
 use App\Livewire\Wallet\WalletOverview;
 use Illuminate\Support\Facades\Route;
 
@@ -105,6 +111,25 @@ Route::middleware('auth')->group(function (): void {
 
     // Where the provider returns the customer's browser. Not proof of payment.
     Route::get('/credits/callback', PaystackCallbackController::class)->name('credits.callback');
+
+    /*
+     | Checkout and orders.
+     |
+     | Every one of these resolves an order the signed-in user owns; an order
+     | number in a URL is not a capability to view or pay for somebody else's
+     | purchase. The browser never sends an amount to any of them.
+     */
+    // Declared before the {order} route, which would otherwise capture
+    // "callback" as an order number and 404 every returning payer.
+    //
+    // Where Paystack returns the browser after paying for a product. Verified
+    // server-side before it says anything, exactly like the credits callback.
+    Route::get('/checkout/callback', CheckoutCallbackController::class)->name('checkout.callback');
+
+    Route::get('/checkout/{order}', CheckoutPage::class)->name('checkout.show');
+
+    Route::get('/orders', OrderIndex::class)->name('orders.index');
+    Route::get('/orders/{order}', OrderDetail::class)->name('orders.show');
 });
 
 /*
@@ -186,4 +211,14 @@ Route::middleware(['auth', 'role:admin|super_admin'])
         Route::get('/auctions/{auction}', AdminAuctionDetail::class)
             ->middleware('can:auctions.view')
             ->name('auctions.show');
+
+        // Gated on orders.view, which is staff-only. A customer's own order
+        // history is `orders.view_own` and lives on entirely separate routes.
+        Route::get('/orders', OrderManager::class)
+            ->middleware('can:orders.view')
+            ->name('orders.index');
+
+        Route::get('/orders/{order}', AdminOrderDetail::class)
+            ->middleware('can:orders.view')
+            ->name('orders.show');
     });

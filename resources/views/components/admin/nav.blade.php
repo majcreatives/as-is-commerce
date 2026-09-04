@@ -4,6 +4,11 @@
     <x-nav-link href="{{ route('admin.dashboard') }}" wire:navigate
                 :active="request()->routeIs('admin.dashboard')">Overview</x-nav-link>
 
+    @can('auctions.view')
+        <x-nav-link href="{{ route('admin.auctions.index') }}" wire:navigate
+                    :active="request()->routeIs('admin.auctions.*')">Auctions</x-nav-link>
+    @endcan
+
     @can('auction_rulesets.view')
         <x-nav-link href="{{ route('admin.rulesets.index') }}" wire:navigate
                     :active="request()->routeIs('admin.rulesets.*')">Auction rulesets</x-nav-link>

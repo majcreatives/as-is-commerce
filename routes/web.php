@@ -7,6 +7,8 @@ use App\Http\Controllers\Catalog\ProductDetailController;
 use App\Http\Controllers\HealthController;
 use App\Http\Controllers\Payments\PaystackCallbackController;
 use App\Http\Controllers\Payments\PaystackWebhookController;
+use App\Livewire\Admin\Auctions\AuctionDetail as AdminAuctionDetail;
+use App\Livewire\Admin\Auctions\AuctionManager;
 use App\Livewire\Admin\Catalog\InventoryManager;
 use App\Livewire\Admin\Catalog\ProductManager;
 use App\Livewire\Admin\Catalog\TaxonomyManager;
@@ -18,6 +20,8 @@ use App\Livewire\Admin\Rulesets\RulesetIndex;
 use App\Livewire\Admin\Settings\ManageSettings;
 use App\Livewire\Admin\Wallets\WalletDetail;
 use App\Livewire\Admin\Wallets\WalletIndex;
+use App\Livewire\Auctions\AuctionIndex;
+use App\Livewire\Auctions\AuctionRoom;
 use App\Livewire\Auth\Login;
 use App\Livewire\Auth\Register;
 use App\Livewire\Catalog\ProductCatalog;
@@ -56,7 +60,10 @@ Route::post('/webhooks/paystack', PaystackWebhookController::class)
 */
 
 Route::view('/', 'pages.home')->name('home');
-Route::view('/auctions', 'pages.auctions')->name('auctions.index');
+// Auctions. Both routes resolve only publicly visible auctions, so a draft
+// 404s rather than existing at a guessable URL.
+Route::get('/auctions', AuctionIndex::class)->name('auctions.index');
+Route::get('/auctions/{auction}', AuctionRoom::class)->name('auctions.show');
 Route::view('/how-it-works', 'pages.how-it-works')->name('how-it-works');
 
 // The catalog. Both routes resolve only publicly visible products, so a
@@ -168,4 +175,15 @@ Route::middleware(['auth', 'role:admin|super_admin'])
         Route::get('/inventory', InventoryManager::class)
             ->middleware('can:inventory.view')
             ->name('inventory');
+
+        // Gated on auctions.view, which is staff-only. The public auction
+        // pages need no permission at all -- browsing an auction and
+        // administering one are different things.
+        Route::get('/auctions', AuctionManager::class)
+            ->middleware('can:auctions.view')
+            ->name('auctions.index');
+
+        Route::get('/auctions/{auction}', AdminAuctionDetail::class)
+            ->middleware('can:auctions.view')
+            ->name('auctions.show');
     });

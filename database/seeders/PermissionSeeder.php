@@ -72,6 +72,21 @@ class PermissionSeeder extends Seeder
 
         'inventory.view',
         'inventory.adjust',
+
+        // Auction administration. Staff-only, all of them: `auctions.view`
+        // means "see every auction, including drafts", which is not what a
+        // customer browsing the public listing is doing.
+        'auctions.view',
+        'auctions.create',
+        'auctions.update',
+        'auctions.publish',
+        'auctions.cancel',
+        'auctions.relist',
+
+        // Seeing anyone's bids. The customer equivalent -- placing a bid, and
+        // seeing your own -- is `bids.place` below.
+        'bids.inspect',
+        'bids.place',
     ];
 
     /**
@@ -90,6 +105,12 @@ class PermissionSeeder extends Seeder
     public const CUSTOMER_PERMISSIONS = [
         'credits.view',
         'wallets.view',
+
+        // Bidding is what a customer account is for. Kept deliberately apart
+        // from `bids.inspect`, which is seeing everyone's bids and is staff
+        // only -- the same distinction, and for the same reason, as
+        // `wallets.view` against `wallets.inspect`.
+        'bids.place',
     ];
 
     /**

@@ -5,24 +5,24 @@ This file records the rules that are not obvious from the code.
 
 ## Current stage
 
-**Auction engine built; no payment can be taken for a product.** Foundation
-(auth, roles, shell), the credit and cash ledgers, Paystack credit purchases,
-the product catalog with an auditable inventory ledger, the auction rules
-engine, and the auction engine itself: `auctions`, `bids`, the highest-bid
-winner rule, the server clock and its extensions, and the Buy Now termination
-path.
+**A product can be bought, paid for and owned.** Foundation (auth, roles,
+shell), the credit and cash ledgers, Paystack credit purchases, the product
+catalog with an auditable inventory ledger, the auction rules engine, the
+auction engine, and checkout: `orders`, `order_items`, `order_payments`,
+Paystack payments for products, verified idempotent fulfilment, and the
+inventory and auction completion that follows.
 
-Credit *consumption* is now wired: an accepted bid consumes exactly the credits
-it commits, through the Stage 3 ledger, permanently.
+Both acquisition paths run end to end. A customer buys outright — ending the
+auction if there was one — or wins and settles, and in both cases the product
+changes hands only after a payment verified with Paystack.
 
-What must not be built ahead of its stage: the Buy Now checkout, the winner's
-settlement checkout, any payment path for a product, orders, delivery,
-referrals, gamification, and real-time delivery (Redis, Reverb, WebSockets).
+What must not be built ahead of its stage: refunds, disputes, delivery and
+courier integration, tracking, notifications, a tax engine, referrals,
+gamification, and real-time delivery (Redis, Reverb, WebSockets).
 
-`CompleteBuyNow` and `AuctionLifecycle::settle()` exist, are tested, and are
-called by nothing. They are the point a server-confirmed payment will attach
-to. **Do not wire either to a button.** Doing so would end an auction, or
-record a sale, on a payment that never happened.
+**There is no refund path, and do not invent one.** A paid order that could not
+be completed is recorded with `fulfilment_blocked_reason` and queued for a
+person. What is owed is a business decision, not something to infer.
 
 ## Three things that must never be conflated
 
@@ -556,6 +556,97 @@ auction, because there is no code path that would let one succeed.
 They are separate lifecycles. An auction closing does not archive a product,
 and a product going Active does not open an auction.
 
+## Checkout, orders and payment
+
+An order is a GHS obligation. It is not an auction, not a payment and not an
+inventory movement — each owns its own table and its own lifecycle, and an
+order relates to them.
+
+### Nothing marks an order paid
+
+`Paid` is reachable only through `FulfillOrderPayment`, which asks Paystack
+server-to-server first. There is no method, no admin control and no code path
+that asserts money arrived — `OrderLifecycle::advance()` refuses any target
+but `Processing` and `Fulfilled`.
+
+**Do not add one.** If you find yourself wanting a "mark as paid" button, what
+you actually want is a way to re-run verification.
+
+### The browser never sends an amount
+
+A request names a product or an auction. `CheckoutPricer` computes every figure
+from server-side reads and freezes it on the order; `InitializeOrderPayment`
+takes an order and nothing else. Never add a price, total or discount
+parameter to any of that path.
+
+### Verify against the attempt, not the order
+
+`order_payments` records what the provider was actually asked for, and a
+trigger refuses to let its amount, currency, reference or order change.
+Checking a provider's answer against the order would be checking against a
+figure that could have moved, which is not a check at all.
+
+### The lock order
+
+```
+1. the order row     SELECT ... FOR UPDATE
+2. the auction row   inside CompleteBuyNow / settle()
+3. the product row   inside InventoryService
+4. the wallet row    then its lots, by id
+```
+
+The auction engine's order with one step added at the front. Every race —
+two Buy Nows, Buy Now against settlement, webhook against callback — is
+decided at step 1. Do not reorder it.
+
+### Opening a checkout ends nothing
+
+It creates an obligation. The auction stays live, bidding continues, and the
+highest bidder is still in the running until a payment is verified. A click, a
+checkout screen, a redirect and a payment attempt are none of them the point
+of no return.
+
+### Reservations have a deadline, always
+
+A Buy Now checkout with no auction holds one unit and sets `payment_due_at`;
+`orders:expire-checkouts` releases it if nobody pays. An auction-linked order
+holds nothing — the auction already reserved that unit.
+
+`holds_reservation` says which, explicitly. Never infer it: releasing a
+reservation nobody took overstates available stock.
+
+**Never create a hold without an expiry.** One abandoned checkout would take a
+product off sale permanently.
+
+### A settlement carries no discount
+
+Consumed credits reduce a Buy Now price. They bought the winner the win and do
+not also reduce what winning costs. A CHECK constraint refuses a settlement
+order with a discount on it.
+
+### Credits are never charged at checkout
+
+They were consumed at bid time. No checkout or payment path posts a credit
+transaction in either direction — not a charge, and not a refund.
+
+### One successful payment, one sale
+
+Three routes hand the product over and each produces exactly one inventory
+sale. If you add a fourth, it goes through `InventoryService` like the others,
+inside the same transaction, after verification.
+
+### Paid orders are historical fact
+
+Amounts, source, auction, winning bid and customer freeze the moment a payment
+is verified — model guard and database trigger both. A correction is a separate
+financial act with its own records, never an edit.
+
+### When a payment succeeds but nothing can be delivered
+
+Record it: `Paid`, plus `fulfilment_blocked_reason`. Do not mark it fulfilled,
+do not swallow it, and do not invent a refund. It goes in the admin queue for
+a person.
+
 ## Product price, credits and bids are separate
 
 Credits spent bidding do **not** determine what anyone pays. A product's
@@ -636,6 +727,19 @@ engine depends on `SELECT ... FOR UPDATE` semantics SQLite cannot model.
 
 Write tests for financial and auction-critical behaviour. Do not write tests
 that assert nothing in order to raise coverage.
+
+Two traps worth knowing, both discovered the hard way:
+
+`Http::fake()` **appends** stubs and the first match wins, so faking again
+inside a test does not override a `beforeEach` stub. Use `fakeHttp()` /
+`fakePaystackVerify()` from `tests/Pest.php`, which swap the factory and
+genuinely replace them.
+
+**Resolve anything that talks to a provider after the stubs are installed.**
+The Paystack gateway is constructed with the HTTP factory injected into it, so
+a service resolved in `beforeEach` keeps the real factory and tries to reach
+Paystack for real. Same for `config(['paystack.secret_key' => ...])`, which the
+gateway reads when it is constructed.
 
 ## Before finishing any change
 

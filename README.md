@@ -8,21 +8,24 @@ outright first, which ends the auction immediately.
 All monetary values are in Ghana Cedis (GH₵) and are stored as integer minor
 units (pesewas). Never as floating point.
 
-> **Development status — Auction engine built; payments for products not.**
+> **Development status — a product can now be bought, paid for and owned.**
 > This repository contains the application foundation (authentication, roles,
 > application shell), the auction rules engine, the credit and cash ledgers,
 > Paystack credit purchases, the product catalog with an auditable inventory
-> ledger, and the auction engine: auctions, bids, the highest-bid winner rule,
-> the clock and its extensions, and the Buy Now termination path.
+> ledger, the auction engine, and checkout: orders, payment attempts, Paystack
+> payments for products, verified idempotent fulfilment, and the inventory and
+> auction completion that follows.
 >
-> What is deliberately absent: **taking money for a product**. Neither the
-> Buy Now checkout nor the winner's settlement checkout exists, so nothing in
-> the interface can complete a purchase. `CompleteBuyNow` and
-> `AuctionLifecycle::settle()` are written, tested and called by nothing —
-> they are the point a confirmed payment will attach to, and wiring a button
-> to either without a payment would be recording a sale that never happened.
-> Real-time delivery (Redis, Reverb, WebSockets), orders and delivery are also
-> later stages.
+> Both acquisition paths are complete end to end. A customer can buy a product
+> outright — ending its auction if it had one — or win an auction and settle
+> it, and in both cases the product changes hands only after a payment this
+> platform has verified with Paystack itself.
+>
+> What is deliberately absent: refunds, disputes, delivery and courier
+> integration, tracking, notifications, a tax engine, and real-time delivery
+> (Redis, Reverb, WebSockets). A paid order that could not be completed is
+> recorded and queued for a person rather than resolved automatically, because
+> deciding what is owed is a business decision and refunds do not exist yet.
 
 ---
 
@@ -773,6 +776,168 @@ An auction's `rules_snapshot`, `snapshot_version`, `settlement_amount_minor`,
 refuses it and a database trigger refuses it again, so a console command or a
 hand-run statement cannot rewrite the terms people are bidding under. There is
 deliberately no admin form for editing a live auction.
+
+---
+
+## Checkout, orders and payment
+
+An **order** is one customer's obligation to pay for one thing, in GHS. A
+**payment attempt** is one try at settling it. Neither is an auction and
+neither is an inventory movement — each of those owns its own table and its
+own lifecycle.
+
+```
+orders             the obligation: frozen amounts, source, status
+order_items        what was bought, with the name, SKU and price snapshotted
+order_payments     what was asked of the provider, and what came back
+order_transitions  append-only lifecycle history
+```
+
+### Two paths, two different amounts
+
+| | Buy Now | Auction win |
+| --- | --- | --- |
+| Subtotal | the product's own Buy Now price | the auction's own settlement amount |
+| Discount | GH₵1 per credit consumed bidding on that auction | **none** |
+| Ends the auction | yes, once paid | no — it already closed |
+
+A winner's consumed credits bought them the win; they do not also reduce what
+winning costs. A CHECK constraint refuses a settlement order carrying a
+discount at all.
+
+```
+Product Buy Now price      GH₵5,500.00   what buying it outright costs
+Auction settlement amount  GH₵  100.00   what a normal winner pays
+Winning bid                       180    credits, consumed and gone
+```
+
+None of those is derived from another. `discount_credits` on an order is a
+count kept as evidence for the cedis in `discount_minor`; it is not money, and
+nothing converts one into the other.
+
+### The components stay separate
+
+```
+subtotal - discount + delivery + tax = total
+```
+
+Asserted in `CheckoutPricing` and again by a database CHECK constraint.
+Delivery is never folded into a product price and a discount is never folded
+into a delivery charge, so a customer disputing a total can be shown which
+part they are disputing.
+
+Delivery and tax come from the auction's frozen snapshot when there is one,
+and otherwise from settings an administrator owns. Both are seeded at zero:
+no delivery charge and no tax rate is invented anywhere.
+
+### The browser never sends an amount
+
+A request names a product or an auction. That is the whole of its influence.
+`CheckoutPricer` reads the product row, the auction's frozen snapshot and the
+bid records, computes every figure, and freezes them onto the order before the
+provider is contacted. `InitializeOrderPayment` takes an order and nothing
+else — there is no parameter through which a price could enter, and a test
+asserts the method has exactly one.
+
+### Opening a checkout does not end an auction
+
+It creates an obligation. The auction runs on, other people keep bidding, and
+the standing highest bidder is still in the running. Only a payment verified
+with Paystack ends it. Terminating on a click would let an abandoned checkout
+kill a live auction that other people were still competing in.
+
+### Reservations, and why only sometimes
+
+A Buy Now checkout on a plain catalog product holds one unit aside so it
+cannot be sold from under a customer who is paying — with an explicit
+deadline, after which `orders:expire-checkouts` gives it back. That deadline is
+the reason the hold is safe: without it, one abandoned checkout would take a
+product off sale permanently.
+
+An auction-linked order holds nothing. The auction reserved that unit when it
+was published and it is the same unit being bought; reserving again would take
+two units off the shelf for one sale. The `holds_reservation` column says
+which, explicitly, because releasing a reservation nobody took would overstate
+available stock.
+
+### Fulfilment: one path, four steps
+
+`FulfillOrderPayment` is the only way an order becomes paid. The webhook and
+the browser callback both arrive here; the callback does not get to skip
+verification because a customer is watching.
+
+1. **Ask Paystack server-to-server.** A webhook body says what someone sent
+   us, not what was paid. A browser returning proves only that a browser
+   returned.
+2. **Check against the frozen payment attempt** — status, reference, currency,
+   amount. Against the attempt, not the order: the attempt records what the
+   provider was actually asked for, and a trigger refuses to let it change.
+   Any mismatch is a refusal, never "close enough".
+3. **Run under the idempotency guard**, keyed on the attempt, so five
+   deliveries produce one fulfilment.
+4. **Inside one transaction**: lock the order, re-check it is not already
+   paid, mark the payment successful, hand the product over, then mark the
+   order paid.
+
+The order is marked paid **last**, after the product has changed hands. If
+anything fails the whole transaction rolls back and the order stays visibly
+outstanding rather than looking complete.
+
+### The lock order
+
+```
+1. the order row     SELECT ... FOR UPDATE
+2. the auction row   inside CompleteBuyNow / AuctionLifecycle::settle
+3. the product row   inside InventoryService
+4. the wallet row    (untouched by checkout, but the order is unchanged)
+```
+
+The same sequence as the auction engine, extended by one step at the front.
+Every race — two Buy Nows, a Buy Now against a settlement, a webhook against a
+callback — serializes on step 1.
+
+### One successful payment, one sale
+
+Three routes hand the product over, and each produces exactly one inventory
+sale:
+
+| Order | How the product is handed over |
+| --- | --- |
+| Buy Now with an auction | `CompleteBuyNow` sells the unit the auction held and ends it |
+| Buy Now on its own | the order sells the unit it reserved at checkout |
+| Auction win | `AuctionLifecycle::settle()` sells the unit the auction held |
+
+### When a payment succeeds but nothing can be delivered
+
+Somebody else acquires the item while a customer is paying. The payment is
+real, so it is recorded: the order becomes `Paid`, and
+`fulfilment_blocked_reason` records why nothing further happened. It appears in
+the admin "needs attention" queue.
+
+It is not marked fulfilled, and it is not silently swallowed. What is owed to
+that customer is a decision for a person, and refunds are not built into the
+platform.
+
+### Nothing marks an order paid by hand
+
+There is no such method and no such control, anywhere. `Paid` is reachable
+only through a verified payment, so an administrative button would have
+nothing to call. `OrderLifecycle::advance()` refuses any target but
+`Processing` and `Fulfilled`, which are ordinary operational work and are
+audited like everything else.
+
+### Frozen once paid
+
+From the moment a payment is verified, an order's amounts, source, auction,
+winning bid and customer are historical fact. The model guard refuses a change
+and a database trigger refuses it again. A correction is a separate, explicit
+financial act — not a rewrite of the original transaction.
+
+### Credits are never charged at checkout
+
+They were consumed when the bids were placed, permanently. No checkout or
+payment path posts a credit transaction in either direction, and a regression
+test asserts the count does not move.
 
 ---
 

@@ -7,6 +7,10 @@ use App\Domain\Auction\Actions\PlaceBid;
 use App\Domain\Auction\Services\AuctionLifecycle;
 use App\Domain\Catalog\Services\InventoryService;
 use App\Domain\Credit\Services\CreditLedgerService;
+use App\Domain\Orders\Actions\FulfillOrderPayment;
+use App\Domain\Orders\Actions\InitializeOrderPayment;
+use App\Domain\Orders\Actions\StartBuyNowCheckout;
+use App\Domain\Orders\Actions\StartSettlementCheckout;
 use App\Domain\Shared\Money\Money;
 use App\Enums\CreditTransactionType;
 use App\Models\Auction;
@@ -14,6 +18,8 @@ use App\Models\AuctionRuleset;
 use App\Models\Bid;
 use App\Models\CreditTransaction;
 use App\Models\CreditWallet;
+use App\Models\Order;
+use App\Models\OrderPayment;
 use App\Models\Product;
 use App\Models\User;
 use Database\Seeders\PermissionSeeder;
@@ -261,4 +267,80 @@ function placeBid(Auction $auction, User $user, int $amountCredits, ?string $key
         amountCredits: $amountCredits,
         idempotencyKey: $key ?? ('bid-'.Str::uuid()->toString()),
     );
+}
+
+/**
+ * Open a Buy Now checkout the way the application does.
+ *
+ * Through the real action, so the pricing is frozen, the reservation is taken
+ * where one is due, and the order that comes back is a state the application
+ * genuinely produces.
+ */
+function buyNowCheckout(User $buyer, Product $product, ?Auction $auction = null): Order
+{
+    return app(StartBuyNowCheckout::class)->handle($buyer, $product->fresh(), $auction?->fresh());
+}
+
+/**
+ * Open the checkout an auction winner settles through.
+ */
+function settlementCheckout(Auction $auction, User $winner): Order
+{
+    return app(StartSettlementCheckout::class)->handle($auction->fresh(), $winner);
+}
+
+/**
+ * Open a payment with the (faked) provider for an order.
+ *
+ * The amount is never passed: the action reads it off the frozen order, which
+ * is the whole point of the design being tested.
+ */
+function initializePayment(Order $order): OrderPayment
+{
+    // A configured secret, never a real one. The HTTP client is faked and the
+    // signature verifier works against whatever is configured, so tests need
+    // no credentials -- but the gateway refuses to run without one at all,
+    // which is itself the right behaviour.
+    config(['paystack.secret_key' => 'sk_test_orders']);
+
+    fakeHttp([
+        'api.paystack.co/transaction/initialize' => Http::response([
+            'status' => true,
+            'data' => [
+                'reference' => 'ignored-the-server-sends-its-own',
+                'authorization_url' => 'https://checkout.paystack.com/test',
+                'access_code' => 'test-access-code',
+            ],
+        ]),
+    ]);
+
+    return app(InitializeOrderPayment::class)->handle($order->fresh());
+}
+
+/**
+ * Take an order all the way through a successful, verified payment.
+ *
+ * Stubs the provider's verify endpoint to agree with what the attempt was
+ * actually opened for, then runs the one fulfilment path. Anything testing a
+ * mismatch stubs its own disagreeing response instead.
+ *
+ * @return array{order_id: int, payment_id: int, already_fulfilled: bool}
+ */
+function payOrder(Order $order, ?OrderPayment $payment = null): array
+{
+    config(['paystack.secret_key' => 'sk_test_orders']);
+
+    $payment ??= initializePayment($order);
+
+    fakePaystackVerify([
+        'reference' => $payment->provider_reference,
+        'status' => 'success',
+        'amount' => $payment->amount_minor,
+        'currency' => $payment->currency,
+        'id' => random_int(1, PHP_INT_MAX),
+        'channel' => 'mobile_money',
+        'paid_at' => now()->toIso8601String(),
+    ]);
+
+    return app(FulfillOrderPayment::class)->handle($payment->fresh());
 }

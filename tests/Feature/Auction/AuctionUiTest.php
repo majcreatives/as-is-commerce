@@ -134,15 +134,21 @@ it('does not offer another bidder discount to a different customer', function ()
         ->assertDontSee('GH₵ 5,350.00', escape: false);
 });
 
-it('offers no Buy Now purchase button, because no payment exists yet', function (): void {
+/*
+ * This asserted the opposite until checkout existed: with no payment path, a
+ * Buy Now button would have ended an auction on a payment that never happened.
+ * There is a payment path now, and the button opens a checkout -- which still
+ * does not end the auction. Only a verified payment does.
+ */
+it('offers a Buy Now button that opens a checkout without ending the auction', function (): void {
     $auction = liveAuction();
 
     Livewire::actingAs(bidder())
         ->test(AuctionRoom::class, ['auction' => $auction])
-        // Quoted, not sold. A button here would end an auction without a
-        // payment ever happening.
-        ->assertSee('Buy Now checkout is not available yet')
-        ->assertDontSee('Buy this now');
+        ->assertSee('Buy now for')
+        ->assertSee('does not end this auction');
+
+    expect($auction->fresh()->status->acceptsBids())->toBeTrue();
 });
 
 // --------------------------------------------------------------- Bidding

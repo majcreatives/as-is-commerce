@@ -12,10 +12,12 @@ use Illuminate\Database\Seeder;
 /**
  * Reference data: a safe starting auction configuration.
  *
- * This is a real, conservative default -- not sample data. It carries no
- * checkout price, because a price belongs to the product being auctioned and
- * inventing one here would be fabricating a figure the business never chose.
- * Auction creation supplies the price; this ruleset supplies everything else.
+ * This is a real, conservative default -- not sample data.
+ *
+ * It carries no settlement price: what a normal auction winner pays has not
+ * been decided, and encoding an amount would be inventing that decision. It
+ * also leaves every undecided bid rule null rather than filling the schema
+ * with numbers nobody chose.
  *
  * Safe to run repeatedly: it will not overwrite a ruleset an administrator
  * has since edited or superseded.
@@ -32,36 +34,45 @@ class AuctionRulesetSeeder extends Seeder
 
         $ruleset = new AuctionRuleset([
             'name' => self::DEFAULT_NAME,
-            'description' => 'Conservative starting configuration for Last Bidder Standing auctions. '
-                .'Create a new version rather than editing this one once it is active.',
+            'description' => 'Conservative starting configuration. The highest valid credit bid wins '
+                .'at normal closure. Create a new version rather than editing this one once it is active.',
 
-            // One credit per bid.
-            'bid_cost_credits' => 1,
-
-            // A user cannot hold the lead twice in a row, so bidding against
-            // yourself is impossible.
-            'unique_leader' => true,
+            // Bid rules are deliberately unset. The minimum bid, the minimum
+            // increment, and whether a participant may raise their own
+            // standing bid have not been decided by the business, and null
+            // says "no rule" honestly where a number would look like a
+            // decision nobody made.
+            'minimum_bid_credits' => null,
+            'minimum_bid_increment_credits' => null,
+            'allow_bid_increase' => null,
 
             // One second between bids from the same user on the same auction.
+            // Anti-spam rather than a business rule, so a value is safe here.
             'minimum_bid_interval_ms' => 1000,
 
-            // Five minutes, extended by ten seconds whenever a bid lands in
-            // the final ten seconds.
+            // Five minutes.
             'base_duration_seconds' => 300,
-            'closing_window_seconds' => 10,
-            'extension_seconds' => 10,
 
-            // Both limits apply. Twenty extensions of ten seconds is 200
-            // seconds, comfortably inside the 300-second absolute ceiling, so
-            // an auction can never run more than five minutes past its close.
-            'max_extensions' => 20,
-            'max_extension_total_seconds' => 300,
+            // Late-bid extension is switched off. It remains meaningful under
+            // a highest-bid auction -- it stops sniping -- but whether to use
+            // it, and with what window, has not been decided. Seeding it on
+            // with invented numbers would make that choice by default.
+            'closing_window_seconds' => 0,
+            'extension_seconds' => 0,
+            'max_extensions' => 0,
+            'max_extension_total_seconds' => 0,
 
             'checkout_deadline_minutes' => 60,
             'forfeit_policy' => ForfeitPolicy::Relist,
 
-            // Deliberately null. See the class comment.
-            'default_checkout_price_minor' => null,
+            // Buy Now is available and ends the auction when it succeeds.
+            'buy_now_enabled' => true,
+
+            // One consumed bid credit gives GH1 off the Buy Now price. Stored
+            // as 100 pesewas per credit: the conversion is explicit and
+            // versioned rather than assumed in code.
+            'buy_now_credit_discount_enabled' => true,
+            'buy_now_credit_discount_minor_per_credit' => 100,
 
             'delivery_fee_minor' => 0,
             'currency' => 'GHS',

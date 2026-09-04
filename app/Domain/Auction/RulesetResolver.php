@@ -6,7 +6,6 @@ namespace App\Domain\Auction;
 
 use App\Domain\Auction\Exceptions\InvalidAuctionRules;
 use App\Domain\Auction\ValueObjects\AuctionRules;
-use App\Domain\Shared\Money\Money;
 use App\Models\AuctionRuleset;
 use Illuminate\Contracts\Cache\Repository as CacheRepository;
 
@@ -59,11 +58,11 @@ class RulesetResolver
     /**
      * Build the immutable rules a new auction will be created with.
      *
-     * The checkout price always comes from the caller, because it is a
-     * property of the product being auctioned rather than of the rules. The
-     * ruleset supplies it only as a fallback default.
+     * Takes no price. The rules carry no settlement amount, because what a
+     * normal auction winner pays has not been decided; a product's own Buy Now
+     * price lives on the product and is a separate matter entirely.
      */
-    public function rulesFor(?Money $checkoutPrice = null, ?string $rulesetName = null): AuctionRules
+    public function rulesFor(?string $rulesetName = null): AuctionRules
     {
         $ruleset = $rulesetName === null
             ? $this->default()
@@ -77,7 +76,7 @@ class RulesetResolver
             );
         }
 
-        return $ruleset->toRules($checkoutPrice);
+        return $ruleset->toRules();
     }
 
     public function flush(): void

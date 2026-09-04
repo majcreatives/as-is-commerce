@@ -12,48 +12,86 @@ use JsonSerializable;
 /**
  * The complete, self-contained rule set governing a single auction.
  *
- * This is the object the auction engine will read from, and it is deliberately
- * a value object rather than an Eloquent model. Once an auction is created its
- * rules are frozen: the auction stores a serialized copy of this object, not a
- * foreign key to a mutable `auction_rulesets` row. An administrator editing
- * global defaults tomorrow therefore cannot alter how an auction that is
- * already running behaves, or how a closed auction is explained months later.
+ * THE WINNER RULE. The participant holding the highest valid credit bid at
+ * normal closure wins. Not the last bidder, not the most frequent bidder, not
+ * the one who held the lead longest -- simply the highest valid bid. A
+ * participant who bid early, was overtaken, and later bid higher still wins on
+ * that highest bid.
  *
- * Every value is an integer or an integer-backed Money. Nothing here is a
- * float, and no duration is a formatted string.
+ * The one thing that overrides it: a successful Buy Now purchase ends the
+ * auction immediately, and the standing highest bidder does not win.
  *
- * Invariants are enforced in the constructor as well as in the form layer.
- * The form layer produces friendly messages for administrators; this layer
- * guarantees that an invalid rule set cannot exist at all, including when
- * constructed from a snapshot, a console command or a future import.
+ * WHAT IS DELIBERATELY ABSENT. There is no settlement price here. What a
+ * normal auction winner ultimately pays has not been decided, and encoding an
+ * amount would be inventing that decision. The auction engine must not assume
+ * one.
+ *
+ * This is a value object rather than an Eloquent model because an auction
+ * freezes its rules at creation: it stores a serialized copy of this object,
+ * not a foreign key to a mutable row. An administrator editing configuration
+ * tomorrow cannot alter how an auction already running behaves, or how a
+ * closed one is explained months later.
+ *
+ * Every value is an integer, a boolean or an integer-backed Money. Nothing is
+ * a float, and no duration is a formatted string.
  */
 final readonly class AuctionRules implements JsonSerializable
 {
     /**
-     * Incremented if the serialized shape ever changes, so historical
-     * snapshots can still be read after a schema evolution.
+     * Incremented when the serialized shape changes, so a historical snapshot
+     * can still be recognised -- or refused -- after a schema evolution.
+     *
+     * Version 2 corrects the model from Last Bidder Standing to highest valid
+     * credit bid. No version 1 snapshot exists anywhere: no auction has ever
+     * been created, because the auction engine does not exist yet.
      */
-    public const SNAPSHOT_VERSION = 1;
+    public const SNAPSHOT_VERSION = 2;
+
+    /**
+     * How the winner is determined, stated rather than implied.
+     *
+     * Recorded in every snapshot so the future engine reads its winner rule
+     * from the auction's own frozen configuration instead of inferring it from
+     * whatever the code happens to do that week.
+     */
+    public const WINNER_RULE = 'highest_valid_credit_bid';
 
     public function __construct(
-        // Bidding
-        public int $bidCostCredits,
-        public bool $uniqueLeader,
+        // ---- Bidding ------------------------------------------------------
+        //
+        // Bids carry their own amounts; there is no fixed cost per bid. These
+        // constrain what amount is acceptable, and each is nullable because
+        // its business value has not been decided. Null means "no rule",
+        // which is honestly different from any particular number.
+        public ?int $minimumBidCredits,
+        public ?int $minimumBidIncrementCredits,
+        public ?bool $allowBidIncrease,
         public int $minimumBidIntervalMs,
 
-        // Timing (integer seconds; the engine is server-authoritative)
+        // ---- Timing (integer seconds; the engine is server-authoritative) --
+        //
+        // Late-bid extension is anti-sniping. Under this model it is entirely
+        // independent of who wins: extending the clock gives others a chance
+        // to bid higher, it does not change how the winner is chosen.
         public int $baseDurationSeconds,
         public int $closingWindowSeconds,
         public int $extensionSeconds,
         public int $maxExtensions,
         public int $maxExtensionTotalSeconds,
 
-        // Winner and checkout
+        // ---- Buy Now ------------------------------------------------------
+        public bool $buyNowEnabled,
+        public bool $buyNowCreditDiscountEnabled,
+        public int $buyNowCreditDiscountMinorPerCredit,
+
+        // ---- Post-win obligations -----------------------------------------
+        //
+        // A time limit and a lapse policy, both independent of the amount a
+        // winner pays -- which remains undecided.
         public int $checkoutDeadlineMinutes,
         public ForfeitPolicy $forfeitPolicy,
 
-        // Pricing (integer minor units)
-        public Money $checkoutPrice,
+        // ---- Transaction economics (integer minor units) -------------------
         public Money $deliveryFee,
         public int $taxBps,
 
@@ -67,14 +105,87 @@ final readonly class AuctionRules implements JsonSerializable
 
     public function currency(): string
     {
-        return $this->checkoutPrice->currency;
+        return $this->deliveryFee->currency;
     }
 
     /**
-     * Whether the closing window can ever extend this auction.
+     * The winner rule, for a caller that would otherwise guess.
+     */
+    public function winnerRule(): string
+    {
+        return self::WINNER_RULE;
+    }
+
+    // ------------------------------------------------------------ Bid rules
+
+    public function hasMinimumBid(): bool
+    {
+        return $this->minimumBidCredits !== null;
+    }
+
+    public function hasMinimumIncrement(): bool
+    {
+        return $this->minimumBidIncrementCredits !== null;
+    }
+
+    /**
+     * The smallest bid that could be valid given a standing highest bid.
      *
-     * False when extensions are switched off by any of the three limits, which
-     * lets the engine skip the extension path entirely.
+     * Returns null when neither rule is configured, which means the engine
+     * must not invent a floor of its own -- an unset rule is not the same as
+     * a rule of one.
+     */
+    public function smallestValidBid(?int $currentHighestBid = null): ?int
+    {
+        $floors = [];
+
+        if ($this->minimumBidCredits !== null) {
+            $floors[] = $this->minimumBidCredits;
+        }
+
+        if ($currentHighestBid !== null && $this->minimumBidIncrementCredits !== null) {
+            $floors[] = $currentHighestBid + $this->minimumBidIncrementCredits;
+        }
+
+        return $floors === [] ? null : max($floors);
+    }
+
+    // ------------------------------------------------------------- Buy Now
+
+    /**
+     * The GHS a given number of consumed bid credits takes off Buy Now.
+     *
+     * Integer arithmetic on minor units: one credit maps to a fixed number of
+     * pesewas, so the discount is exact however many credits are involved.
+     *
+     * This is the only place credits relate to money anywhere in the system,
+     * and it applies solely to the Buy Now path. It does not give the credits
+     * back -- they stay consumed -- it reduces a separate purchase price.
+     *
+     * The future Buy Now engine calls this with credits it has established
+     * were actually consumed by that user on that auction. Deciding which
+     * credits qualify is that engine's job, not this object's.
+     */
+    public function buyNowDiscountFor(int $consumedBidCredits): Money
+    {
+        if (! $this->buyNowCreditDiscountEnabled || $consumedBidCredits <= 0) {
+            return Money::zero($this->currency());
+        }
+
+        return Money::fromMinor(
+            $consumedBidCredits * $this->buyNowCreditDiscountMinorPerCredit,
+            $this->currency(),
+        );
+    }
+
+    // -------------------------------------------------------------- Timing
+
+    /**
+     * Whether a late bid can extend this auction.
+     *
+     * False when switched off by any of the limits, which lets the engine skip
+     * the extension path entirely. Extensions are optional: an auction that
+     * simply ends at its scheduled time is a valid configuration.
      */
     public function extensionsEnabled(): bool
     {
@@ -86,7 +197,7 @@ final readonly class AuctionRules implements JsonSerializable
     /**
      * Longest the auction can run if every permitted extension is used.
      *
-     * Both limits apply, so the smaller of the two governs.
+     * Both limits apply, so the smaller governs.
      */
     public function maximumPossibleDurationSeconds(): int
     {
@@ -99,12 +210,13 @@ final readonly class AuctionRules implements JsonSerializable
         return $this->baseDurationSeconds + min($byCount, $this->maxExtensionTotalSeconds);
     }
 
+    // ------------------------------------------------------------ Snapshot
+
     /**
-     * Serialized form for persistence in a future `auctions.rules_snapshot`
-     * JSON column.
+     * Serialized form, for persistence in a future auction's snapshot column.
      *
-     * Money is written as minor units plus currency so the value survives a
-     * round trip with no precision loss and no locale dependence.
+     * Money is written as minor units plus currency so it survives a round
+     * trip with no precision loss and no locale dependence.
      *
      * @return array<string, mixed>
      */
@@ -112,9 +224,11 @@ final readonly class AuctionRules implements JsonSerializable
     {
         return [
             'snapshot_version' => self::SNAPSHOT_VERSION,
+            'winner_rule' => self::WINNER_RULE,
 
-            'bid_cost_credits' => $this->bidCostCredits,
-            'unique_leader' => $this->uniqueLeader,
+            'minimum_bid_credits' => $this->minimumBidCredits,
+            'minimum_bid_increment_credits' => $this->minimumBidIncrementCredits,
+            'allow_bid_increase' => $this->allowBidIncrease,
             'minimum_bid_interval_ms' => $this->minimumBidIntervalMs,
 
             'base_duration_seconds' => $this->baseDurationSeconds,
@@ -123,12 +237,15 @@ final readonly class AuctionRules implements JsonSerializable
             'max_extensions' => $this->maxExtensions,
             'max_extension_total_seconds' => $this->maxExtensionTotalSeconds,
 
+            'buy_now_enabled' => $this->buyNowEnabled,
+            'buy_now_credit_discount_enabled' => $this->buyNowCreditDiscountEnabled,
+            'buy_now_credit_discount_minor_per_credit' => $this->buyNowCreditDiscountMinorPerCredit,
+
             'checkout_deadline_minutes' => $this->checkoutDeadlineMinutes,
             'forfeit_policy' => $this->forfeitPolicy->value,
 
-            'checkout_price_minor' => $this->checkoutPrice->minor,
             'delivery_fee_minor' => $this->deliveryFee->minor,
-            'currency' => $this->checkoutPrice->currency,
+            'currency' => $this->deliveryFee->currency,
             'tax_bps' => $this->taxBps,
 
             'ruleset_id' => $this->rulesetId,
@@ -153,8 +270,11 @@ final readonly class AuctionRules implements JsonSerializable
         $currency = (string) ($data['currency'] ?? 'GHS');
 
         return new self(
-            bidCostCredits: (int) $data['bid_cost_credits'],
-            uniqueLeader: (bool) $data['unique_leader'],
+            minimumBidCredits: isset($data['minimum_bid_credits']) ? (int) $data['minimum_bid_credits'] : null,
+            minimumBidIncrementCredits: isset($data['minimum_bid_increment_credits'])
+                ? (int) $data['minimum_bid_increment_credits']
+                : null,
+            allowBidIncrease: isset($data['allow_bid_increase']) ? (bool) $data['allow_bid_increase'] : null,
             minimumBidIntervalMs: (int) $data['minimum_bid_interval_ms'],
 
             baseDurationSeconds: (int) $data['base_duration_seconds'],
@@ -163,10 +283,13 @@ final readonly class AuctionRules implements JsonSerializable
             maxExtensions: (int) $data['max_extensions'],
             maxExtensionTotalSeconds: (int) $data['max_extension_total_seconds'],
 
+            buyNowEnabled: (bool) $data['buy_now_enabled'],
+            buyNowCreditDiscountEnabled: (bool) $data['buy_now_credit_discount_enabled'],
+            buyNowCreditDiscountMinorPerCredit: (int) $data['buy_now_credit_discount_minor_per_credit'],
+
             checkoutDeadlineMinutes: (int) $data['checkout_deadline_minutes'],
             forfeitPolicy: ForfeitPolicy::from((string) $data['forfeit_policy']),
 
-            checkoutPrice: Money::fromMinor((int) $data['checkout_price_minor'], $currency),
             deliveryFee: Money::fromMinor((int) $data['delivery_fee_minor'], $currency),
             taxBps: (int) $data['tax_bps'],
 
@@ -189,8 +312,12 @@ final readonly class AuctionRules implements JsonSerializable
      */
     private function assertValid(): void
     {
-        if ($this->bidCostCredits < 1) {
-            throw InvalidAuctionRules::because('Bid cost must be at least 1 credit.');
+        if ($this->minimumBidCredits !== null && $this->minimumBidCredits < 1) {
+            throw InvalidAuctionRules::because('A minimum bid, if set, must be at least 1 credit.');
+        }
+
+        if ($this->minimumBidIncrementCredits !== null && $this->minimumBidIncrementCredits < 1) {
+            throw InvalidAuctionRules::because('A minimum bid increment, if set, must be at least 1 credit.');
         }
 
         if ($this->minimumBidIntervalMs < 0) {
@@ -221,6 +348,12 @@ final readonly class AuctionRules implements JsonSerializable
             throw InvalidAuctionRules::because('Checkout deadline must be greater than zero.');
         }
 
+        if ($this->buyNowCreditDiscountMinorPerCredit < 1) {
+            throw InvalidAuctionRules::because(
+                'The Buy Now credit discount rate must be greater than zero when a rate is stored.'
+            );
+        }
+
         if ($this->taxBps < 0) {
             throw InvalidAuctionRules::because('Tax cannot be negative.');
         }
@@ -229,20 +362,12 @@ final readonly class AuctionRules implements JsonSerializable
             throw InvalidAuctionRules::because('Tax cannot exceed 100% (10000 basis points).');
         }
 
-        if (! $this->checkoutPrice->isPositive()) {
-            throw InvalidAuctionRules::because('Checkout price must be greater than zero.');
-        }
-
         if ($this->deliveryFee->isNegative()) {
             throw InvalidAuctionRules::because('Delivery fee cannot be negative.');
         }
 
-        if ($this->deliveryFee->currency !== $this->checkoutPrice->currency) {
-            throw InvalidAuctionRules::because('Delivery fee and checkout price must use the same currency.');
-        }
-
         // A closing window longer than the auction itself would put every
-        // auction in its extension phase from the moment it opened.
+        // auction into its extension phase from the moment it opened.
         if ($this->closingWindowSeconds > $this->baseDurationSeconds) {
             throw InvalidAuctionRules::because(
                 'Closing window cannot be longer than the base duration.'
@@ -258,12 +383,20 @@ final readonly class AuctionRules implements JsonSerializable
             );
         }
 
-        // Last Bidder Standing needs a closing window to have any extension
-        // behaviour at all; extensions configured without one can never fire.
+        // Extensions are triggered by bids inside the closing window. With no
+        // window there is no trigger, so they could never fire.
         if ($this->maxExtensions > 0 && $this->extensionSeconds > 0
             && $this->closingWindowSeconds === 0) {
             throw InvalidAuctionRules::because(
                 'Extensions require a closing window greater than zero, otherwise they can never trigger.'
+            );
+        }
+
+        // A discount rate with the discount switched off is harmless, but a
+        // rate of zero with it switched on would silently give nothing.
+        if ($this->buyNowCreditDiscountEnabled && ! $this->buyNowEnabled) {
+            throw InvalidAuctionRules::because(
+                'A Buy Now credit discount cannot be enabled while Buy Now itself is disabled.'
             );
         }
     }

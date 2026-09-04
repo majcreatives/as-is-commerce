@@ -32,8 +32,12 @@ class AuctionRulesetFactory extends Factory
             'version' => 1,
             'status' => RulesetStatus::Draft,
 
-            'bid_cost_credits' => 1,
-            'unique_leader' => true,
+            // Nullable bid rules stay null: their business values have not
+            // been decided, and a factory inventing one would quietly become
+            // the number everybody tests against.
+            'minimum_bid_credits' => null,
+            'minimum_bid_increment_credits' => null,
+            'allow_bid_increase' => null,
             'minimum_bid_interval_ms' => 1000,
 
             'base_duration_seconds' => 300,
@@ -45,7 +49,11 @@ class AuctionRulesetFactory extends Factory
             'checkout_deadline_minutes' => 60,
             'forfeit_policy' => ForfeitPolicy::Relist,
 
-            'default_checkout_price_minor' => null,
+            'buy_now_enabled' => true,
+            'buy_now_credit_discount_enabled' => true,
+            // 100 pesewas per credit: one credit gives GH1 off Buy Now.
+            'buy_now_credit_discount_minor_per_credit' => 100,
+
             'delivery_fee_minor' => 0,
             'currency' => 'GHS',
             'tax_bps' => 0,
@@ -79,10 +87,19 @@ class AuctionRulesetFactory extends Factory
         ]);
     }
 
-    public function withDefaultCheckoutPrice(int $minor): static
+    public function withBidRules(?int $minimum = null, ?int $increment = null): static
     {
         return $this->state(fn (array $attributes): array => [
-            'default_checkout_price_minor' => $minor,
+            'minimum_bid_credits' => $minimum,
+            'minimum_bid_increment_credits' => $increment,
+        ]);
+    }
+
+    public function withoutBuyNow(): static
+    {
+        return $this->state(fn (array $attributes): array => [
+            'buy_now_enabled' => false,
+            'buy_now_credit_discount_enabled' => false,
         ]);
     }
 

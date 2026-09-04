@@ -5,10 +5,12 @@ declare(strict_types=1);
 use App\Domain\Auction\Actions\CloseAuction;
 use App\Domain\Catalog\Services\InventoryService;
 use App\Domain\Orders\Services\OrderLifecycle;
+use App\Domain\Payments\Contracts\PaymentGateway;
 use App\Enums\CreditTransactionType;
 use App\Enums\InventoryTransactionType;
 use App\Enums\OrderPaymentStatus;
 use App\Enums\OrderStatus;
+use App\Livewire\Admin\Orders\OrderManager;
 use App\Models\CreditTransaction;
 use App\Models\InventoryTransaction;
 use App\Models\Order;
@@ -349,7 +351,7 @@ it('has no refund machinery to invoke', function (): void {
     // absence is the policy.
     expect(class_exists('App\\Domain\\Orders\\Actions\\RefundOrderPayment'))->toBeFalse()
         ->and(method_exists(OrderLifecycle::class, 'refund'))->toBeFalse()
-        ->and(method_exists(App\Domain\Payments\Contracts\PaymentGateway::class, 'refundTransaction'))
+        ->and(method_exists(PaymentGateway::class, 'refundTransaction'))
         ->toBeFalse();
 });
 
@@ -369,7 +371,7 @@ it('puts every blocked case in front of an administrator', function (): void {
     expect(Order::query()->blocked()->count())->toBe(1);
 
     Livewire\Livewire::actingAs(userWithRole('admin'))
-        ->test(App\Livewire\Admin\Orders\OrderManager::class)
+        ->test(OrderManager::class)
         ->assertSee('needs attention')
         ->set('blocked', true)
         ->assertSee($order->order_number);

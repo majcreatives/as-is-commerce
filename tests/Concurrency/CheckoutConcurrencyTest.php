@@ -6,7 +6,6 @@ use App\Domain\Auction\Actions\CloseAuction;
 use App\Domain\Catalog\Services\InventoryService;
 use App\Domain\Orders\Actions\FulfillOrderPayment;
 use App\Domain\Orders\Exceptions\InvalidCheckout;
-use App\Domain\Orders\Exceptions\PaymentNotAcceptable;
 use App\Domain\Orders\Services\OrderLifecycle;
 use App\Enums\AuctionClosureReason;
 use App\Enums\AuctionStatus;

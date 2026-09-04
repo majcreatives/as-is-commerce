@@ -572,8 +572,18 @@ it('records a paid order it could not complete rather than losing it', function 
         ->and($product->fresh()->stock_on_hand)->toBe(0);
 });
 
-it('refuses to fulfil against a cancelled checkout', function (): void {
-    $order = buyNowCheckout(bidder(), stockedProduct());
+/*
+ * This asserted a throw until the late-payment policy was ruled on. Throwing
+ * returned a 5xx and had Paystack retrying the same delivery forever against
+ * an order that could never accept it.
+ *
+ * The payment succeeded and is recorded as such. The order keeps its terminal
+ * status: a payment success records a financial event, it does not resurrect
+ * an order that was already closed.
+ */
+it('records but does not fulfil a payment against a cancelled checkout', function (): void {
+    $product = stockedProduct();
+    $order = buyNowCheckout(bidder(), $product);
     $payment = initializePayment($order);
 
     $this->orders->cancel($order->fresh(), 'Customer changed their mind.');
@@ -585,6 +595,17 @@ it('refuses to fulfil against a cancelled checkout', function (): void {
         'currency' => 'GHS',
     ]);
 
-    expect(fn (): array => ($this->fulfil)()->handle($payment->fresh()))
-        ->toThrow(PaymentNotAcceptable::class, 'can no longer be completed');
+    ($this->fulfil)()->handle($payment->fresh());
+
+    $order = $order->fresh();
+
+    expect($order->status)->toBe(OrderStatus::Cancelled)
+        ->and($order->status)->not->toBe(OrderStatus::Paid)
+        ->and($order->paid_at)->toBeNull()
+        ->and($order->isFulfilmentBlocked())->toBeTrue()
+        // The money is real, so the attempt records that it succeeded.
+        ->and($payment->fresh()->status)->toBe(OrderPaymentStatus::Success)
+        // Nothing was delivered, and cancelling had already released the unit.
+        ->and(InventoryTransaction::where('type', InventoryTransactionType::Sale)->count())->toBe(0)
+        ->and($product->fresh()->availableStock())->toBe(1);
 });

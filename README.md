@@ -8,14 +8,14 @@ right to buy the product at the auction's checkout price.
 All monetary values are in Ghana Cedis (GH₵) and are stored as integer minor
 units (pesewas). Never as floating point.
 
-> **Development status — Payments & credit packages.**
+> **Development status — Product catalog & inventory.**
 > This repository currently contains the application foundation
 > (authentication, roles, application shell), the auction rules engine, the
-> credit and cash ledgers, and buying credits with real GHS through Paystack.
-> The auction engine, bidding, product catalog, Buy Now, orders and delivery
-> are built in later stages and are deliberately absent — there is no
-> `auctions`, `bids` or `products` table, and credit *consumption* is not yet
-> wired to anything.
+> credit and cash ledgers, Paystack credit purchases, and the product catalog
+> with an auditable inventory ledger. The auction engine, bidding, Buy Now
+> checkout, orders and delivery are built in later stages and are deliberately
+> absent — there is no `auctions` or `bids` table, credit *consumption* is not
+> wired to anything, and no checkout can take money for a product.
 
 ---
 
@@ -447,6 +447,125 @@ than something to infer from a provider event.
 
 ---
 
+## The catalog
+
+The platform owns its stock. There is no seller, vendor or merchant anywhere
+in the product model, and a test asserts that no such column exists.
+
+### Product, category, brand
+
+A product belongs to exactly one category and optionally to a brand. Not every
+product has a conventional brand -- a generic cable does not -- so forcing one
+would mean inventing it.
+
+Categories nest: Electronics contains Phones and Laptops. Neither categories
+nor brands can be deleted -- a category holding products or child categories is
+refused by the database, so nothing is ever orphaned. Archiving is how either
+is retired.
+
+### Condition
+
+Products are `new`, `used` or `refurbished`, shown prominently. A marketplace
+selling all three has to be unambiguous about which is which.
+
+### Status
+
+```
+Draft ──► Active ──► Inactive ──► Archived
+            ▲  │
+            │  ▼
+        OutOfStock
+```
+
+Only **Active** and **OutOfStock** appear publicly. Only **Active** is
+purchasable -- being listed and being sellable are different questions, and
+conflating them is how an archived product becomes buyable through some
+alternate path. Out-of-stock products stay visible deliberately: "we have this,
+just not right now" is more useful than a 404 on a bookmarked page.
+
+Archived is terminal. The listing is the record of what was sold under it.
+
+---
+
+## Inventory
+
+### Stock is derived from a ledger
+
+Exactly as wallet balances are derived from the credit ledger:
+
+```
+inventory_transactions   ← authoritative, append-only
+       │
+       └── products.stock_on_hand      cached projections,
+           products.stock_reserved     never the truth
+```
+
+`$product->stock_on_hand += 5` throws. Stock moves only through
+`InventoryService`, which writes the movement and the projection in one
+transaction. Movements are append-only under database triggers, so a stock
+history cannot be quietly rewritten to match a discrepancy someone would
+rather not explain.
+
+Every movement records its type, a signed delta, the resulting on-hand and
+reserved figures, a reason, the actor and the time.
+
+### Available stock
+
+```
+available_stock = stock_on_hand - stock_reserved
+```
+
+This is the figure that matters. A future checkout must check *available*,
+never on-hand alone -- otherwise two customers can buy the same last item.
+
+### Reservations
+
+A reservation does not remove stock from the building; it marks it as spoken
+for. Only a sale takes it away, and a sale consumes the reservation that
+preceded it so the two do not remove the same item twice.
+
+`Reservation`, `Release` and `Sale` exist and are tested but are called by
+nothing yet -- they belong to the Buy Now checkout. There is deliberately no
+reservation expiry.
+
+### Concurrency
+
+`InventoryService` takes the product row with `SELECT ... FOR UPDATE` before
+reading its stock. A second reservation blocks until the first commits and
+then reads what the first left behind. One item, two competing reservations,
+exactly one succeeds -- and there is a test proving the lock actually blocks a
+second connection rather than assuming it does.
+
+---
+
+## Prices, credits and bids
+
+Three separate things, with no arithmetic relationship in any code that exists
+today:
+
+```
+Credit package price   GHS buys a fixed number of credits.
+Bid                    N credits, spent to bid. Never money.
+Buy Now price          GHS a product costs outright. Never credits.
+```
+
+500 credits costing GH 45 does not make one credit worth 9 pesewas, and a
+product at GH 5,500 has nothing to do with either. The `products` table has no
+column referring to credits, wallets, bids or packages.
+
+> **The one future exception, not implemented anywhere yet.** One credit
+> consumed bidding on a product's auction will eventually give GH 1 off that
+> product's Buy Now price. Spend 150 credits, pay GH 5,350 instead of
+> GH 5,500. The credits stay consumed either way. That calculation belongs to
+> the Auction/Buy Now engine and exists nowhere in this codebase.
+
+> **Buy Now will eventually end a live auction.** A successful Buy Now
+> purchase terminates the product's active auction atomically: the buyer wins,
+> the standing highest bidder does not, and later Buy Now attempts fail. That
+> behaviour belongs to the Auction/Buy Now engine and is not implemented here.
+
+---
+
 ## Settings
 
 Application configuration that is *not* auction-specific — site name,
@@ -527,6 +646,7 @@ app/
 ├── Domain/
 │   ├── Auction/          Ruleset lifecycle, invariants, immutable rules
 │   ├── Cash/             Real-money ledger
+│   ├── Catalog/          Products, inventory ledger, stock movements
 │   ├── Payments/         Gateway boundary, Paystack adapter, purchase flow
 │   ├── Credit/           Credit ledger, lots, allocation, reconciliation
 │   ├── Settings/         Typed, cached application settings

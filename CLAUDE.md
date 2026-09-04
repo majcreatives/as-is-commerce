@@ -5,15 +5,14 @@ This file records the rules that are not obvious from the code.
 
 ## Current stage
 
-**Payments & credit packages.** Foundation (auth, roles, shell), the auction
-rules engine, the credit and cash ledgers, and buying credits with real GHS
-through Paystack.
+**Product catalog & inventory.** Foundation (auth, roles, shell), the auction
+rules engine, the credit and cash ledgers, Paystack credit purchases, and the
+platform's product catalog with an auditable inventory ledger.
 
-The auction engine, bidding, product catalog, Buy Now, orders, delivery,
-referrals and gamification do **not** exist yet and must not be built ahead of
-their stage. There is deliberately no `auctions`, `bids` or `products` table,
-and credit *consumption* is still wired to nothing. The next stage is the
-Product Catalog & Inventory Foundation.
+The auction engine, bidding, Buy Now checkout, orders, delivery, referrals and
+gamification do **not** exist yet and must not be built ahead of their stage.
+There is deliberately no `auctions` or `bids` table, credit *consumption* is
+wired to nothing, and no checkout can take money for a product.
 
 ## Three things that must never be conflated
 
@@ -25,17 +24,98 @@ Bid               N credits, spent to bid.            Never money.
 Buy Now price     GHS a product costs outright.       Never credits.
 ```
 
-There is **no** arithmetic relationship between them. 500 credits costing
-GH₵45 does not make one credit worth 9 pesewas, and a product priced at
-GH₵5,500 has nothing to do with either. Never write code that converts credits
-to money or money to credits outside the explicit credit-package purchase.
+There is **no** arithmetic relationship between them in any code that exists
+today. 500 credits costing GH₵45 does not make one credit worth 9 pesewas, and
+a product priced at GH₵5,500 has nothing to do with either. A product has no
+column referring to credits, wallets, bids or packages, and there is a test
+asserting that.
+
+**The one future exception, not implemented anywhere yet:** a customer who
+consumed credits bidding on a product's auction will eventually get GH₵1 off
+that product's Buy Now price per consumed credit. 150 credits spent → GH₵150
+off. That calculation belongs to the Auction/Buy Now engine. Until it is built,
+no code may convert credits to money or money to credits for any other reason.
 
 Credits never become cash. Credits spent bidding are gone — for losing and
-winning bidders alike.
+winning bidders alike, and the Buy Now discount does not give them back, it
+only reduces a separate purchase price.
 
 Terminology: say **Highest Bid (Credits)**, never "auction price"; say
 **Credits**, **Credit Package**, **Credit Balance**, never "credit value" in
 money.
+
+## Catalog and inventory
+
+### Platform-owned
+
+The platform owns its stock. There is no seller, vendor, merchant or supplier
+column anywhere in `products`, and a test asserts that. Do not add one without
+a deliberate marketplace stage.
+
+### Stock is derived from a ledger
+
+`products.stock_on_hand` and `products.stock_reserved` are projections of
+`inventory_transactions`, exactly as wallet balances are projections of the
+credit ledger. The same rules follow:
+
+- **Never write a stock column.** `$product->stock_on_hand += 5` throws.
+  Post a movement through `InventoryService`.
+- **Movements are append-only**, enforced by database triggers. Correct a
+  mistake with an opposing adjustment, never an edit.
+- **Every movement records** type, signed delta, resulting on-hand and
+  reserved, reason, actor and time.
+- **Stock never goes negative**, and reserved never exceeds on hand.
+
+`available_stock = stock_on_hand - stock_reserved`. Any future checkout must
+check *available*, never on-hand alone.
+
+### Locking
+
+`InventoryService` takes the product row with `SELECT ... FOR UPDATE` before
+reading its stock. That is what makes overselling impossible rather than
+unlikely: a second reservation blocks until the first commits and then reads
+what the first left behind.
+
+### Reservations
+
+`Reservation`, `Release` and `Sale` exist and are tested but are called by
+nothing. They are for the Buy Now checkout. A reservation does not remove
+stock from the building — it marks it as spoken for — and a sale consumes the
+reservation that preceded it so the two do not remove the same item twice.
+
+There is deliberately **no reservation expiry** yet. Do not invent one.
+
+### Product status
+
+`Draft → Active → Inactive/OutOfStock → Archived`, guarded by
+`ProductStatus::canTransitionTo()`. Archived is terminal.
+
+Only Active and OutOfStock are publicly visible. Only Active is purchasable —
+being listed and being sellable are different questions, and conflating them
+is how an archived product becomes buyable.
+
+Public queries must start from the `publiclyVisible` scope, and
+`ProductStatus::publiclyVisibleCases()` is the single definition of what that
+means.
+
+Product status is **not** auction status. The auction stage tracks its own,
+and stock arriving must never publish a draft.
+
+### Categories and brands
+
+Neither can be deleted: a category holding products or children is refused by
+the database. Archive instead. A brand is optional on a product and nulls
+rather than restricting, because losing a brand label is recoverable and
+losing the product is not.
+
+### Buy Now, later
+
+A successful Buy Now purchase will eventually terminate the product's active
+auction atomically — the buyer wins, the highest bidder does not, and later
+Buy Now attempts fail. None of that exists yet, and Stage 5 built no checkout,
+no payment path for products, and no auction termination.
+
+## Payments
 
 ## Payments
 

@@ -14,6 +14,21 @@
                     :active="request()->routeIs('admin.wallets.*')">Wallets</x-nav-link>
     @endcan
 
+    @can('products.view')
+        <x-nav-link href="{{ route('admin.products') }}" wire:navigate
+                    :active="request()->routeIs('admin.products')">Products</x-nav-link>
+    @endcan
+
+    @can('categories.view')
+        <x-nav-link href="{{ route('admin.taxonomy') }}" wire:navigate
+                    :active="request()->routeIs('admin.taxonomy')">Categories</x-nav-link>
+    @endcan
+
+    @can('inventory.view')
+        <x-nav-link href="{{ route('admin.inventory') }}" wire:navigate
+                    :active="request()->routeIs('admin.inventory')">Inventory</x-nav-link>
+    @endcan
+
     @can('credit_packages.view')
         <x-nav-link href="{{ route('admin.credit-packages') }}" wire:navigate
                     :active="request()->routeIs('admin.credit-packages')">Credit packages</x-nav-link>

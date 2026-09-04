@@ -3,9 +3,13 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\Auth\LogoutController;
+use App\Http\Controllers\Catalog\ProductDetailController;
 use App\Http\Controllers\HealthController;
 use App\Http\Controllers\Payments\PaystackCallbackController;
 use App\Http\Controllers\Payments\PaystackWebhookController;
+use App\Livewire\Admin\Catalog\InventoryManager;
+use App\Livewire\Admin\Catalog\ProductManager;
+use App\Livewire\Admin\Catalog\TaxonomyManager;
 use App\Livewire\Admin\Payments\PackageManager;
 use App\Livewire\Admin\Payments\PurchaseIndex;
 use App\Livewire\Admin\Payments\WebhookEventIndex;
@@ -16,6 +20,7 @@ use App\Livewire\Admin\Wallets\WalletDetail;
 use App\Livewire\Admin\Wallets\WalletIndex;
 use App\Livewire\Auth\Login;
 use App\Livewire\Auth\Register;
+use App\Livewire\Catalog\ProductCatalog;
 use App\Livewire\Credits\CreditPackages;
 use App\Livewire\Credits\PurchaseHistory;
 use App\Livewire\Wallet\WalletOverview;
@@ -53,6 +58,11 @@ Route::post('/webhooks/paystack', PaystackWebhookController::class)
 Route::view('/', 'pages.home')->name('home');
 Route::view('/auctions', 'pages.auctions')->name('auctions.index');
 Route::view('/how-it-works', 'pages.how-it-works')->name('how-it-works');
+
+// The catalog. Both routes resolve only publicly visible products, so a
+// draft or archived listing 404s rather than existing at a guessable URL.
+Route::get('/products', ProductCatalog::class)->name('products.index');
+Route::get('/products/{slug}', ProductDetailController::class)->name('products.show');
 
 /*
 |--------------------------------------------------------------------------
@@ -146,4 +156,16 @@ Route::middleware(['auth', 'role:admin|super_admin'])
         Route::get('/payment-events', WebhookEventIndex::class)
             ->middleware('can:payment_events.view')
             ->name('payment-events');
+
+        Route::get('/products', ProductManager::class)
+            ->middleware('can:products.view')
+            ->name('products');
+
+        Route::get('/taxonomy', TaxonomyManager::class)
+            ->middleware('can:categories.view')
+            ->name('taxonomy');
+
+        Route::get('/inventory', InventoryManager::class)
+            ->middleware('can:inventory.view')
+            ->name('inventory');
     });

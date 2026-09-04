@@ -22,6 +22,7 @@ class DatabaseSeeder extends Seeder
             SettingsSeeder::class,
             AuctionRulesetSeeder::class,
             CreditPackageSeeder::class,
+            CatalogSeeder::class,
         ]);
     }
 }

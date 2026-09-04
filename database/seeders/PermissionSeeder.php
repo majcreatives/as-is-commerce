@@ -51,6 +51,27 @@ class PermissionSeeder extends Seeder
         'credit_purchases.view',
         'credit_purchases.inspect',
         'payment_events.view',
+
+        'products.view',
+        'products.create',
+        'products.update',
+        'products.activate',
+        'products.archive',
+
+        'categories.view',
+        'categories.create',
+        'categories.update',
+        'categories.activate',
+        'categories.archive',
+
+        'brands.view',
+        'brands.create',
+        'brands.update',
+        'brands.activate',
+        'brands.archive',
+
+        'inventory.view',
+        'inventory.adjust',
     ];
 
     /**

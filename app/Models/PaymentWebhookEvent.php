@@ -29,6 +29,7 @@ use Illuminate\Support\Carbon;
  * @property WebhookProcessingStatus $processing_status
  * @property string|null $processing_error
  * @property int|null $credit_purchase_id
+ * @property int|null $order_payment_id
  * @property Carbon $received_at
  * @property Carbon|null $processed_at
  */
@@ -60,6 +61,37 @@ class PaymentWebhookEvent extends Model
     public function purchase(): BelongsTo
     {
         return $this->belongsTo(CreditPurchase::class, 'credit_purchase_id');
+    }
+
+    /**
+     * The product payment this event resolved to, if it was one.
+     *
+     * An event resolves to a credit purchase or to an order payment, never
+     * both: the reference it carries belongs to exactly one of them. Two
+     * nullable references rather than a polymorphic pair, so both foreign keys
+     * are real and a dangling one is impossible.
+     *
+     * @return BelongsTo<OrderPayment, $this>
+     */
+    public function orderPayment(): BelongsTo
+    {
+        return $this->belongsTo(OrderPayment::class, 'order_payment_id');
+    }
+
+    /**
+     * What this event was about, in words, for a staff listing.
+     */
+    public function subjectLabel(): string
+    {
+        if ($this->order_payment_id !== null) {
+            return 'Order '.($this->orderPayment?->order->order_number ?? '#'.$this->order_payment_id);
+        }
+
+        if ($this->credit_purchase_id !== null) {
+            return 'Credit purchase #'.$this->credit_purchase_id;
+        }
+
+        return 'Unmatched';
     }
 
     /**

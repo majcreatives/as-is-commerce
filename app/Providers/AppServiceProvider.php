@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Domain\Auction\Contracts\SettlementHandoff;
+use App\Domain\Orders\Services\AuctionSettlementHandoff;
 use App\Domain\Payments\Contracts\PaymentGateway;
 use App\Domain\Payments\Paystack\PaystackGateway;
 use App\Domain\Settings\SettingsRepository;
@@ -30,6 +32,12 @@ class AppServiceProvider extends ServiceProvider
         // Phone handling is swappable: a multi-country implementation can
         // replace this binding without touching any call site.
         $this->app->singleton(PhoneNumberNormalizer::class, GhanaPhoneNumberNormalizer::class);
+
+        // How a closing auction hands its winner over to be paid. An
+        // interface because the checkout layer already depends on the auction
+        // layer, and a direct call back would tie the two together in both
+        // directions.
+        $this->app->bind(SettlementHandoff::class, AuctionSettlementHandoff::class);
 
         // No SMS provider is integrated. The default binding throws rather
         // than pretending a code was delivered.

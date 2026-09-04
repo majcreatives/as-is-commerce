@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\Auction\Actions;
 
+use App\Domain\Auction\Contracts\SettlementHandoff;
 use App\Domain\Auction\Services\AuctionClock;
 use App\Domain\Auction\Services\AuctionLifecycle;
 use App\Domain\Auction\Services\HighestBidResolver;
@@ -33,10 +34,15 @@ use Illuminate\Support\Facades\Log;
  * recorded -- rather than being marked settled, which would claim a sale that
  * did not happen.
  *
- * WHAT THIS DOES NOT DO. It does not take payment. The winner owes the
- * auction's frozen settlement amount plus applicable charges, and collecting
- * it belongs to the settlement checkout stage. This action records who owes
- * it and by when; the unit stays reserved, spoken for but not yet sold.
+ * WHAT THIS DOES NOT DO. It does not take payment, consume credits, return
+ * credits or move stock. The winner owes the auction's frozen settlement
+ * amount plus applicable charges; the unit stays reserved, spoken for but not
+ * yet sold, until a verified payment turns it into a sale.
+ *
+ * WHAT IT DOES HAND OVER. A winner leaves here with a real checkout waiting
+ * for them, opened through {@see SettlementHandoff}. The deadline starts
+ * running at closure, so an obligation that existed only once the winner
+ * happened to visit the page would be one they were already late for.
  *
  * Idempotent by construction: it locks the auction and returns unchanged if
  * the auction is no longer open, so two sweeps running together close it once.
@@ -47,6 +53,7 @@ final class CloseAuction
         private readonly AuctionLifecycle $lifecycle,
         private readonly HighestBidResolver $bids,
         private readonly AuctionClock $clock,
+        private readonly SettlementHandoff $settlement,
     ) {}
 
     /**
@@ -97,6 +104,11 @@ final class CloseAuction
                 null,
             );
 
+            // Inside the same transaction, with the row still locked: an
+            // auction that closed with a winner and no obligation to pay would
+            // be a debt nobody could settle.
+            $orderId = $this->settlement->openFor($auction);
+
             Log::info('Auction closed with a winner', [
                 'operation' => 'auction.close',
                 'auction_id' => $auction->id,
@@ -107,6 +119,7 @@ final class CloseAuction
                 // The credits are gone; this is what the winner owes in money.
                 'settlement_amount_minor' => $auction->settlement_amount_minor,
                 'settlement_due_at' => $auction->settlement_due_at?->toIso8601String(),
+                'settlement_order_id' => $orderId,
             ]);
 
             return $auction;

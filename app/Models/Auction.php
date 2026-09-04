@@ -10,6 +10,7 @@ use App\Domain\Auction\ValueObjects\AuctionSnapshot;
 use App\Domain\Shared\Money\Money;
 use App\Enums\AuctionClosureReason;
 use App\Enums\AuctionStatus;
+use App\Enums\OrderSource;
 use App\Models\Concerns\GuardsFrozenAuctionConfiguration;
 use App\Models\Concerns\GuardsMaterializedHighestBid;
 use Database\Factories\AuctionFactory;
@@ -18,6 +19,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Carbon;
 use Spatie\Activitylog\Models\Concerns\LogsActivity;
 use Spatie\Activitylog\Support\LogOptions;
@@ -295,6 +297,35 @@ class Auction extends Model
     public function buyNowBuyer(): BelongsTo
     {
         return $this->belongsTo(User::class, 'buy_now_user_id');
+    }
+
+    /**
+     * Orders arising from this auction.
+     *
+     * A settlement order for the winner, and any Buy Now orders opened against
+     * it -- several of those may exist at once, because opening a Buy Now
+     * checkout reserves nothing and only a verified payment decides which one
+     * acquires the product.
+     *
+     * @return HasMany<Order, $this>
+     */
+    public function orders(): HasMany
+    {
+        return $this->hasMany(Order::class);
+    }
+
+    /**
+     * The winner's settlement checkout, if one was opened.
+     *
+     * Opened at closing rather than when the winner gets round to asking, so
+     * the obligation exists from the moment it is incurred and the deadline is
+     * not already running against them.
+     *
+     * @return HasOne<Order, $this>
+     */
+    public function settlementOrder(): HasOne
+    {
+        return $this->hasOne(Order::class)->where('source', OrderSource::AuctionWin);
     }
 
     /**

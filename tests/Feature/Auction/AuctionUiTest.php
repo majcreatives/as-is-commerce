@@ -246,7 +246,11 @@ it('explains a Buy Now ending to the bidders who lost', function (): void {
     Livewire::actingAs($bidder)
         ->test(AuctionRoom::class, ['auction' => $auction->fresh()])
         ->assertSee('bought this product outright')
-        ->assertSee('The highest bidder did not win');
+        // Stage 8 reworded this card to lead with "Sold via Buy Now" and to
+        // say outright that there is no auction winner. The behaviour is
+        // unchanged; only the sentence is.
+        ->assertSee('There is no auction winner')
+        ->assertSee('the highest bidder did not win');
 });
 
 // ------------------------------------------------------------ Admin index

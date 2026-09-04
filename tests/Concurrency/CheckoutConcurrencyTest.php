@@ -11,6 +11,7 @@ use App\Domain\Orders\Services\OrderLifecycle;
 use App\Enums\AuctionClosureReason;
 use App\Enums\AuctionStatus;
 use App\Enums\InventoryTransactionType;
+use App\Enums\OrderPaymentStatus;
 use App\Enums\OrderStatus;
 use App\Models\InventoryTransaction;
 use App\Models\Order;
@@ -283,8 +284,19 @@ it('does not fulfil against a checkout that expired while paying', function (): 
         'currency' => 'GHS',
     ]);
 
-    expect(fn (): array => app(FulfillOrderPayment::class)->handle($payment->fresh()))
-        ->toThrow(PaymentNotAcceptable::class, 'can no longer be completed');
+    // This used to throw, which returned a 5xx and had Paystack retrying the
+    // same delivery forever. Under the ruled policy the payment is recorded --
+    // it really did succeed -- and the order keeps its terminal status: a
+    // payment success records a financial event, it does not resurrect a
+    // closed order.
+    app(FulfillOrderPayment::class)->handle($payment->fresh());
+
+    $order = Order::findOrFail($order->id);
+
+    expect($order->status)->toBe(OrderStatus::PaymentExpired)
+        ->and($order->status)->not->toBe(OrderStatus::Paid)
+        ->and($order->isFulfilmentBlocked())->toBeTrue()
+        ->and($payment->fresh()->status)->toBe(OrderPaymentStatus::Success);
 
     // No sale, and the unit really is back on the shelf.
     expect(InventoryTransaction::where('type', InventoryTransactionType::Sale)->count())->toBe(0)

@@ -59,6 +59,13 @@ use Illuminate\Support\Facades\Log;
  * LOCK ORDER: order, then auction, then product, then wallet. The same
  * sequence as everywhere else, extended by one step at the front.
  *
+ * A PAYMENT IS ALWAYS RECORDED, even when nothing can be delivered against it
+ * -- the checkout expired, or somebody else took the last unit while the
+ * customer was paying. The money is real, so the attempt is marked successful
+ * and the order carries a `fulfilment_blocked_reason` into the administrative
+ * queue. Never silently cancelled, and never refunded here: what is owed is a
+ * decision for a person, and refunds are a later stage.
+ *
  * WHAT IT NEVER DOES. It consumes no credits, returns no credits, and touches
  * no wallet. The bid credits were consumed when the bids were placed and are
  * gone; a settlement is paid in cedis and a Buy Now in cedis, and neither has
@@ -159,13 +166,33 @@ final class FulfillOrderPayment
             }
 
             if (! $order->status->acceptsPayment()) {
-                // The order was cancelled or expired while the customer was
-                // paying. The money is real, so this must not be swallowed --
-                // but nothing can be delivered against a closed checkout.
-                throw PaymentNotAcceptable::because(
-                    "A payment succeeded for order {$order->order_number}, which is "
-                    ."[{$order->status->value}] and can no longer be completed."
+                // The checkout closed while the customer was paying -- it
+                // expired, or they cancelled it. The payment still succeeded,
+                // so it is recorded rather than thrown away, and the order is
+                // flagged for a person.
+                //
+                // Deliberately not an exception. Throwing here returned a 5xx
+                // to the provider, which retried the same delivery forever
+                // against an order that could never accept it. Recording the
+                // fact and acknowledging the webhook is both truthful and
+                // terminal.
+                //
+                // The status is left as it is. It says what actually happened
+                // to this checkout, and moving a cancelled order to Paid would
+                // assert the platform accepted an order it had already closed.
+                $this->recordSuccess($payment, $verified);
+
+                $this->orders->blockFulfilment(
+                    $order,
+                    'A payment was verified after this checkout was already '
+                    ."[{$order->status->value}], so nothing could be delivered against it.",
                 );
+
+                return [
+                    'order_id' => $order->id,
+                    'payment_id' => $payment->id,
+                    'already_fulfilled' => false,
+                ];
             }
 
             $this->recordSuccess($payment, $verified);

@@ -14,7 +14,6 @@ use App\Models\OrderPayment;
 use App\Models\PaymentWebhookEvent;
 use App\Models\Product;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Testing\TestResponse;
 
 /*
  * Webhooks for product payments, through the Stage 4 endpoint.
@@ -30,22 +29,6 @@ beforeEach(function (): void {
 
     config(['paystack.secret_key' => 'sk_test_orders']);
 });
-
-/**
- * Post a webhook body with a correct signature.
- */
-function postOrderWebhook(array $payload): TestResponse
-{
-    $raw = json_encode($payload, JSON_THROW_ON_ERROR);
-
-    return test()->call(
-        'POST',
-        route('webhooks.paystack'),
-        [], [], [],
-        ['HTTP_X_PAYSTACK_SIGNATURE' => paystackSignature($raw), 'CONTENT_TYPE' => 'application/json'],
-        $raw,
-    );
-}
 
 /**
  * An order with an open payment, ready for a webhook to arrive.

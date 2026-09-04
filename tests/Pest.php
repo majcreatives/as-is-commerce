@@ -30,6 +30,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
+use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
 /*
@@ -343,4 +344,24 @@ function payOrder(Order $order, ?OrderPayment $payment = null): array
     ]);
 
     return app(FulfillOrderPayment::class)->handle($payment->fresh());
+}
+
+/**
+ * Post a webhook body to the provider endpoint with a correct signature.
+ *
+ * Shared rather than declared in one test file: a function defined in a test
+ * file exists only once that file has been loaded, so two suites needing it
+ * would either collide on redeclaration or depend on load order.
+ */
+function postOrderWebhook(array $payload): TestResponse
+{
+    $raw = json_encode($payload, JSON_THROW_ON_ERROR);
+
+    return test()->call(
+        'POST',
+        route('webhooks.paystack'),
+        [], [], [],
+        ['HTTP_X_PAYSTACK_SIGNATURE' => paystackSignature($raw), 'CONTENT_TYPE' => 'application/json'],
+        $raw,
+    );
 }

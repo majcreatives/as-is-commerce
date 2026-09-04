@@ -18,7 +18,7 @@ it('creates a draft ruleset from the form', function (): void {
     Livewire::actingAs($this->admin)
         ->test(RulesetForm::class)
         ->set('name', 'Weekend Special')
-        ->set('bid_cost_credits', 2)
+        ->set('minimum_bid_credits', '20')
         ->set('base_duration_seconds', 600)
         ->set('closing_window_seconds', 15)
         ->set('extension_seconds', 15)
@@ -34,45 +34,67 @@ it('creates a draft ruleset from the form', function (): void {
 
     expect($ruleset)->not->toBeNull()
         ->and($ruleset?->status)->toBe(RulesetStatus::Draft)
-        ->and($ruleset?->bid_cost_credits)->toBe(2)
+        ->and($ruleset?->minimum_bid_credits)->toBe(20)
         // Entered as "25.00", stored as whole pesewas.
         ->and($ruleset?->delivery_fee_minor)->toBe(2_500)
         ->and($ruleset?->tax_bps)->toBe(1000);
 });
 
-it('converts an entered price into minor units without a float', function (): void {
+it('converts entered amounts into minor units without a float', function (): void {
     Livewire::actingAs($this->admin)
         ->test(RulesetForm::class)
         ->set('name', 'Priced')
-        ->set('default_checkout_price', '5500.00')
+        ->set('buy_now_credit_discount_per_credit', '1.00')
         ->set('delivery_fee', '0.29')
         ->call('save')
         ->assertHasNoErrors();
 
     $ruleset = AuctionRuleset::firstWhere('name', 'Priced');
 
-    expect($ruleset?->default_checkout_price_minor)->toBe(550_000)
+    // One credit gives GH 1 off Buy Now, stored as 100 pesewas.
+    expect($ruleset?->buy_now_credit_discount_minor_per_credit)->toBe(100)
         ->and($ruleset?->delivery_fee_minor)->toBe(29);
 });
 
-it('leaves the checkout price unset when the field is blank', function (): void {
+/*
+ * An empty bid-rule field means "no rule", not zero. These values have not
+ * been decided, and the form must not turn a blank into a number.
+ */
+it('leaves undecided bid rules unset when the fields are blank', function (): void {
     Livewire::actingAs($this->admin)
         ->test(RulesetForm::class)
-        ->set('name', 'No Price')
-        ->set('default_checkout_price', '')
+        ->set('name', 'No Bid Rules')
+        ->set('minimum_bid_credits', '')
+        ->set('minimum_bid_increment_credits', '')
+        ->set('allow_bid_increase', '')
         ->call('save')
         ->assertHasNoErrors();
 
-    expect(AuctionRuleset::firstWhere('name', 'No Price')?->default_checkout_price_minor)->toBeNull();
+    $ruleset = AuctionRuleset::firstWhere('name', 'No Bid Rules');
+
+    expect($ruleset?->minimum_bid_credits)->toBeNull()
+        ->and($ruleset?->minimum_bid_increment_credits)->toBeNull()
+        ->and($ruleset?->allow_bid_increase)->toBeNull();
 });
 
-it('rejects a bid cost below one', function (): void {
+it('stores a decided bid-increase rule as a real boolean', function (string $choice, bool $expected): void {
+    Livewire::actingAs($this->admin)
+        ->test(RulesetForm::class)
+        ->set('name', 'Decided '.$choice)
+        ->set('allow_bid_increase', $choice)
+        ->call('save')
+        ->assertHasNoErrors();
+
+    expect(AuctionRuleset::firstWhere('name', 'Decided '.$choice)?->allow_bid_increase)->toBe($expected);
+})->with(['yes' => ['yes', true], 'no' => ['no', false]]);
+
+it('rejects a minimum bid that is not a whole number of credits', function (): void {
     Livewire::actingAs($this->admin)
         ->test(RulesetForm::class)
         ->set('name', 'Invalid')
-        ->set('bid_cost_credits', 0)
+        ->set('minimum_bid_credits', 'not-a-number')
         ->call('save')
-        ->assertHasErrors('bid_cost_credits');
+        ->assertHasErrors('minimum_bid_credits');
 
     expect(AuctionRuleset::count())->toBe(0);
 });
@@ -106,9 +128,9 @@ it('rejects a price containing a currency symbol', function (): void {
     Livewire::actingAs($this->admin)
         ->test(RulesetForm::class)
         ->set('name', 'Invalid')
-        ->set('default_checkout_price', 'GHS 5500')
+        ->set('buy_now_credit_discount_per_credit', 'GHS 1')
         ->call('save')
-        ->assertHasErrors('default_checkout_price');
+        ->assertHasErrors('buy_now_credit_discount_per_credit');
 });
 
 it('reports a contradictory configuration as an invariant error', function (): void {
@@ -124,16 +146,16 @@ it('reports a contradictory configuration as an invariant error', function (): v
 });
 
 it('edits a draft', function (): void {
-    $draft = AuctionRuleset::factory()->create(['bid_cost_credits' => 1]);
+    $draft = AuctionRuleset::factory()->create(['minimum_bid_credits' => 10]);
 
     Livewire::actingAs($this->admin)
         ->test(RulesetForm::class, ['ruleset' => $draft])
-        ->assertSet('bid_cost_credits', 1)
-        ->set('bid_cost_credits', 6)
+        ->assertSet('minimum_bid_credits', '10')
+        ->set('minimum_bid_credits', '60')
         ->call('save')
         ->assertHasNoErrors();
 
-    expect($draft->fresh()?->bid_cost_credits)->toBe(6);
+    expect($draft->fresh()?->minimum_bid_credits)->toBe(60);
 });
 
 it('refuses to open the editor for an active ruleset', function (): void {

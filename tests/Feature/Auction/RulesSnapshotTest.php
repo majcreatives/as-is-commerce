@@ -5,13 +5,12 @@ declare(strict_types=1);
 use App\Domain\Auction\Exceptions\InvalidAuctionRules;
 use App\Domain\Auction\RulesetResolver;
 use App\Domain\Auction\ValueObjects\AuctionRules;
-use App\Domain\Shared\Money\Money;
 use App\Enums\RulesetStatus;
 use App\Models\AuctionRuleset;
 
 /*
  * The whole point of the rules engine: an auction is created from a snapshot,
- * not from a live reference to configuration that an administrator can change
+ * not from a live reference to configuration an administrator can change
  * afterwards. If these tests ever fail, a past auction's recorded behaviour
  * has become unexplainable.
  *
@@ -21,18 +20,20 @@ use App\Models\AuctionRuleset;
 
 it('produces a complete rules object from a ruleset', function (): void {
     $ruleset = AuctionRuleset::factory()->active()->create([
-        'bid_cost_credits' => 2,
+        'minimum_bid_credits' => 20,
+        'minimum_bid_increment_credits' => 5,
         'base_duration_seconds' => 600,
         'tax_bps' => 1_500,
     ]);
 
-    $rules = $ruleset->toRules(Money::fromDecimalString('5500.00'));
+    $rules = $ruleset->toRules();
 
     expect($rules)->toBeInstanceOf(AuctionRules::class)
-        ->and($rules->bidCostCredits)->toBe(2)
+        ->and($rules->minimumBidCredits)->toBe(20)
+        ->and($rules->minimumBidIncrementCredits)->toBe(5)
         ->and($rules->baseDurationSeconds)->toBe(600)
         ->and($rules->taxBps)->toBe(1_500)
-        ->and($rules->checkoutPrice->minor)->toBe(550_000)
+        ->and($rules->winnerRule())->toBe('highest_valid_credit_bid')
         // Provenance travels with the snapshot, so a closed auction can still
         // be traced back to the configuration it ran under.
         ->and($rules->rulesetId)->toBe($ruleset->id)
@@ -42,121 +43,130 @@ it('produces a complete rules object from a ruleset', function (): void {
 
 it('does not change an existing snapshot when the ruleset is later edited', function (): void {
     $ruleset = AuctionRuleset::factory()->create([
-        'bid_cost_credits' => 1,
+        'minimum_bid_credits' => 10,
+        'minimum_bid_increment_credits' => 5,
         'base_duration_seconds' => 300,
-        'closing_window_seconds' => 10,
-        'extension_seconds' => 10,
-        'max_extensions' => 20,
+        'buy_now_credit_discount_minor_per_credit' => 100,
     ]);
 
     // An auction is created: it takes its snapshot here.
-    $snapshot = $ruleset->toRules(Money::fromDecimalString('5500.00'));
+    $snapshot = $ruleset->toRules();
     $stored = $snapshot->toArray();
 
     // An administrator later changes the ruleset substantially.
     $ruleset->update([
-        'bid_cost_credits' => 99,
+        'minimum_bid_credits' => 999,
+        'minimum_bid_increment_credits' => 250,
         'base_duration_seconds' => 7_200,
-        'closing_window_seconds' => 120,
-        'extension_seconds' => 60,
-        'max_extensions' => 500,
-        'max_extension_total_seconds' => 36_000,
+        'buy_now_credit_discount_minor_per_credit' => 500,
         'tax_bps' => 2_000,
     ]);
     $ruleset->refresh();
 
     // The live ruleset has moved on.
-    expect($ruleset->bid_cost_credits)->toBe(99);
+    expect($ruleset->minimum_bid_credits)->toBe(999);
 
     // The snapshot has not.
-    expect($snapshot->bidCostCredits)->toBe(1)
+    expect($snapshot->minimumBidCredits)->toBe(10)
+        ->and($snapshot->minimumBidIncrementCredits)->toBe(5)
         ->and($snapshot->baseDurationSeconds)->toBe(300)
-        ->and($snapshot->closingWindowSeconds)->toBe(10)
-        ->and($snapshot->extensionSeconds)->toBe(10)
-        ->and($snapshot->maxExtensions)->toBe(20)
+        ->and($snapshot->buyNowCreditDiscountMinorPerCredit)->toBe(100)
         ->and($snapshot->taxBps)->toBe(0);
 
     // And neither has its serialized form, which is what gets persisted.
     expect($snapshot->toArray())->toBe($stored);
 
     // Rebuilding from the stored array still yields the original rules.
-    expect(AuctionRules::fromArray($stored)->bidCostCredits)->toBe(1);
+    expect(AuctionRules::fromArray($stored)->minimumBidCredits)->toBe(10);
+});
+
+/*
+ * The discount rate is versioned with the rest. If the business ever changes
+ * what a credit is worth against Buy Now, auctions already running keep the
+ * rate they were created with.
+ */
+it('freezes the Buy Now discount rate into the snapshot', function (): void {
+    $ruleset = AuctionRuleset::factory()->create(['buy_now_credit_discount_minor_per_credit' => 100]);
+
+    $snapshot = $ruleset->toRules();
+    expect($snapshot->buyNowDiscountFor(150)->toDecimalString())->toBe('150.00');
+
+    $ruleset->update(['buy_now_credit_discount_minor_per_credit' => 50]);
+
+    // The snapshot still gives GH 1 per credit, not 50 pesewas.
+    expect($snapshot->buyNowDiscountFor(150)->toDecimalString())->toBe('150.00');
 });
 
 it('does not change an existing snapshot when the ruleset is archived', function (): void {
-    $ruleset = AuctionRuleset::factory()->active()->create(['bid_cost_credits' => 4]);
+    $ruleset = AuctionRuleset::factory()->active()->create(['minimum_bid_credits' => 4]);
 
-    $snapshot = $ruleset->toRules(Money::fromDecimalString('100.00'));
+    $snapshot = $ruleset->toRules();
 
-    $ruleset->update(['bid_cost_credits' => 7]);
+    $ruleset->update(['minimum_bid_credits' => 7]);
     $ruleset->status = RulesetStatus::Archived;
     $ruleset->save();
 
-    expect($snapshot->bidCostCredits)->toBe(4);
+    expect($snapshot->minimumBidCredits)->toBe(4);
 });
 
 it('does not change an existing snapshot when the ruleset is deleted outright', function (): void {
-    $ruleset = AuctionRuleset::factory()->create(['bid_cost_credits' => 5]);
+    $ruleset = AuctionRuleset::factory()->create(['minimum_bid_credits' => 5]);
 
-    $snapshot = $ruleset->toRules(Money::fromDecimalString('100.00'));
+    $snapshot = $ruleset->toRules();
     $stored = $snapshot->toArray();
 
     $ruleset->delete();
 
-    expect($snapshot->bidCostCredits)->toBe(5)
-        ->and(AuctionRules::fromArray($stored)->bidCostCredits)->toBe(5);
+    expect($snapshot->minimumBidCredits)->toBe(5)
+        ->and(AuctionRules::fromArray($stored)->minimumBidCredits)->toBe(5);
 });
 
-// ------------------------------------------------------------ Checkout price
-
-it('takes the checkout price from the caller, not the ruleset', function (): void {
-    $ruleset = AuctionRuleset::factory()->withDefaultCheckoutPrice(100_000)->create();
-
-    $rules = $ruleset->toRules(Money::fromDecimalString('5500.00'));
-
-    expect($rules->checkoutPrice->minor)->toBe(550_000);
-});
-
-it('falls back to the ruleset default when no price is supplied', function (): void {
-    $ruleset = AuctionRuleset::factory()->withDefaultCheckoutPrice(100_000)->create();
-
-    expect($ruleset->toRules()->checkoutPrice->minor)->toBe(100_000);
-});
+// ------------------------------------------------------------ No settlement
 
 /*
- * A ruleset with no default price is the normal case: the price belongs to
- * the product. Failing loudly is correct -- inventing a price would be worse.
+ * Snapshots used to carry a checkout price -- the amount a winner paid. What a
+ * normal auction winner pays has deliberately not been decided, so the rules
+ * carry no such amount and building them requires no price at all.
  */
-it('refuses to build rules when neither the caller nor the ruleset supplies a price', function (): void {
-    $ruleset = AuctionRuleset::factory()->create(['default_checkout_price_minor' => null]);
+it('needs no price to produce rules', function (): void {
+    $ruleset = AuctionRuleset::factory()->create();
 
-    expect(fn (): AuctionRules => $ruleset->toRules())
-        ->toThrow(InvalidAuctionRules::class);
+    // No argument, and no error. A ruleset is complete on its own.
+    expect($ruleset->toRules())->toBeInstanceOf(AuctionRules::class);
+});
+
+it('carries no settlement amount in the snapshot', function (): void {
+    $stored = AuctionRuleset::factory()->create()->toRules()->toArray();
+
+    foreach (array_keys($stored) as $key) {
+        expect($key)->not->toContain('checkout_price')
+            ->and($key)->not->toContain('settlement');
+    }
 });
 
 // ---------------------------------------------------------------- Resolver
 
 it('resolves rules from the default ruleset', function (): void {
-    AuctionRuleset::factory()->default()->create(['name' => 'Standard', 'bid_cost_credits' => 3]);
+    AuctionRuleset::factory()->default()->create(['name' => 'Standard', 'minimum_bid_credits' => 3]);
 
-    $rules = app(RulesetResolver::class)->rulesFor(Money::fromDecimalString('250.00'));
+    $rules = app(RulesetResolver::class)->rulesFor();
 
-    expect($rules->bidCostCredits)->toBe(3)
-        ->and($rules->checkoutPrice->minor)->toBe(25_000);
+    expect($rules->minimumBidCredits)->toBe(3)
+        ->and($rules->winnerRule())->toBe('highest_valid_credit_bid');
 });
 
 it('resolves rules from a named active ruleset', function (): void {
-    AuctionRuleset::factory()->default()->create(['name' => 'Standard', 'bid_cost_credits' => 1]);
-    AuctionRuleset::factory()->active()->create(['name' => 'Flash', 'bid_cost_credits' => 5]);
+    AuctionRuleset::factory()->default()->create(['name' => 'Standard', 'minimum_bid_credits' => 1]);
+    AuctionRuleset::factory()->active()->create(['name' => 'Flash', 'minimum_bid_credits' => 50]);
 
-    $rules = app(RulesetResolver::class)->rulesFor(Money::fromDecimalString('250.00'), 'Flash');
+    $rules = app(RulesetResolver::class)->rulesFor('Flash');
 
-    expect($rules->bidCostCredits)->toBe(5)
+    expect($rules->minimumBidCredits)->toBe(50)
         ->and($rules->rulesetName)->toBe('Flash');
 });
 
 it('fails clearly when no default ruleset is active', function (): void {
-    expect(fn (): AuctionRules => app(RulesetResolver::class)->rulesFor(Money::fromDecimalString('10.00')))
+    expect(fn (): AuctionRules => app(RulesetResolver::class)->rulesFor())
         ->toThrow(InvalidAuctionRules::class, 'No default auction ruleset is active.');
 });
 

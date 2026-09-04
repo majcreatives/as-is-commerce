@@ -22,8 +22,9 @@ function rulesetAttributes(array $overrides = []): array
     return array_merge([
         'name' => 'Standard Auction',
         'description' => 'Test configuration.',
-        'bid_cost_credits' => 1,
-        'unique_leader' => true,
+        'minimum_bid_credits' => null,
+        'minimum_bid_increment_credits' => null,
+        'allow_bid_increase' => null,
         'minimum_bid_interval_ms' => 1000,
         'base_duration_seconds' => 300,
         'closing_window_seconds' => 10,
@@ -32,7 +33,9 @@ function rulesetAttributes(array $overrides = []): array
         'max_extension_total_seconds' => 300,
         'checkout_deadline_minutes' => 60,
         'forfeit_policy' => 'relist',
-        'default_checkout_price_minor' => null,
+        'buy_now_enabled' => true,
+        'buy_now_credit_discount_enabled' => true,
+        'buy_now_credit_discount_minor_per_credit' => 100,
         'delivery_fee_minor' => 0,
         'currency' => 'GHS',
         'tax_bps' => 0,
@@ -112,9 +115,15 @@ it('accepts a configuration with extensions disabled', function (): void {
     expect($ruleset->max_extensions)->toBe(0);
 });
 
-it('is rejected by the database when the bid cost is zero', function (): void {
+it('is rejected by the database when the minimum bid is zero', function (): void {
     // Belt and braces: even bypassing the action, the row cannot be written.
-    expect(fn () => AuctionRuleset::factory()->create(['bid_cost_credits' => 0]))
+    // Null is allowed -- that means no minimum -- but zero is not a rule.
+    expect(fn () => AuctionRuleset::factory()->create(['minimum_bid_credits' => 0]))
+        ->toThrow(QueryException::class);
+});
+
+it('is rejected by the database when the minimum increment is zero', function (): void {
+    expect(fn () => AuctionRuleset::factory()->create(['minimum_bid_increment_credits' => 0]))
         ->toThrow(QueryException::class);
 });
 
@@ -123,37 +132,53 @@ it('is rejected by the database when the base duration is zero', function (): vo
         ->toThrow(QueryException::class);
 });
 
-it('is rejected by the database when a default checkout price is zero', function (): void {
-    expect(fn () => AuctionRuleset::factory()->create(['default_checkout_price_minor' => 0]))
+it('is rejected by the database when the discount rate is zero', function (): void {
+    expect(fn () => AuctionRuleset::factory()->create(['buy_now_credit_discount_minor_per_credit' => 0]))
         ->toThrow(QueryException::class);
+});
+
+/*
+ * Null is a legitimate value for every undecided bid rule, and must not be
+ * confused with an invalid one.
+ */
+it('accepts undecided bid rules as null', function (): void {
+    $ruleset = AuctionRuleset::factory()->create([
+        'minimum_bid_credits' => null,
+        'minimum_bid_increment_credits' => null,
+        'allow_bid_increase' => null,
+    ]);
+
+    expect($ruleset->minimum_bid_credits)->toBeNull()
+        ->and($ruleset->minimum_bid_increment_credits)->toBeNull()
+        ->and($ruleset->allow_bid_increase)->toBeNull();
 });
 
 // ------------------------------------------------------------------ Update
 
 it('updates a draft', function (): void {
-    $draft = AuctionRuleset::factory()->create(['bid_cost_credits' => 1]);
+    $draft = AuctionRuleset::factory()->create(['minimum_bid_credits' => 1]);
 
-    app(UpdateRuleset::class)->handle($draft, ['bid_cost_credits' => 5]);
+    app(UpdateRuleset::class)->handle($draft, ['minimum_bid_credits' => 5]);
 
-    expect($draft->fresh()?->bid_cost_credits)->toBe(5);
+    expect($draft->fresh()?->minimum_bid_credits)->toBe(5);
 });
 
 it('refuses to mutate an active ruleset', function (): void {
-    $active = AuctionRuleset::factory()->active()->create(['bid_cost_credits' => 1]);
+    $active = AuctionRuleset::factory()->active()->create(['minimum_bid_credits' => 1]);
 
-    expect(fn (): AuctionRuleset => app(UpdateRuleset::class)->handle($active, ['bid_cost_credits' => 99]))
+    expect(fn (): AuctionRuleset => app(UpdateRuleset::class)->handle($active, ['minimum_bid_credits' => 99]))
         ->toThrow(RulesetNotEditable::class);
 
-    expect($active->fresh()?->bid_cost_credits)->toBe(1);
+    expect($active->fresh()?->minimum_bid_credits)->toBe(1);
 });
 
 it('refuses to mutate an archived ruleset', function (): void {
-    $archived = AuctionRuleset::factory()->archived()->create(['bid_cost_credits' => 2]);
+    $archived = AuctionRuleset::factory()->archived()->create(['minimum_bid_credits' => 2]);
 
-    expect(fn (): AuctionRuleset => app(UpdateRuleset::class)->handle($archived, ['bid_cost_credits' => 99]))
+    expect(fn (): AuctionRuleset => app(UpdateRuleset::class)->handle($archived, ['minimum_bid_credits' => 99]))
         ->toThrow(RulesetNotEditable::class);
 
-    expect($archived->fresh()?->bid_cost_credits)->toBe(2);
+    expect($archived->fresh()?->minimum_bid_credits)->toBe(2);
 });
 
 it('rejects an update that would make the configuration contradictory', function (): void {
@@ -259,7 +284,7 @@ it('drafts a new version from an active ruleset', function (): void {
     $active = AuctionRuleset::factory()->active()->create([
         'name' => 'Standard',
         'version' => 1,
-        'bid_cost_credits' => 3,
+        'minimum_bid_credits' => 3,
     ]);
 
     $draft = app(CreateRulesetVersion::class)->handle($active);
@@ -269,7 +294,7 @@ it('drafts a new version from an active ruleset', function (): void {
         ->and($draft->status)->toBe(RulesetStatus::Draft)
         ->and($draft->is_default)->toBeFalse()
         // Values are copied so the administrator edits from where they were.
-        ->and($draft->bid_cost_credits)->toBe(3)
+        ->and($draft->minimum_bid_credits)->toBe(3)
         // The original is untouched.
         ->and($active->fresh()?->status)->toBe(RulesetStatus::Active);
 });
@@ -341,9 +366,9 @@ it('records the supersession when a new version takes over', function (): void {
 
 it('records what changed when a draft is edited', function (): void {
     $admin = userWithRole('admin');
-    $draft = AuctionRuleset::factory()->create(['bid_cost_credits' => 1]);
+    $draft = AuctionRuleset::factory()->create(['minimum_bid_credits' => 1]);
 
-    app(UpdateRuleset::class)->handle($draft, ['bid_cost_credits' => 4], $admin);
+    app(UpdateRuleset::class)->handle($draft, ['minimum_bid_credits' => 4], $admin);
 
     $entry = Activity::query()
         ->where('subject_type', AuctionRuleset::class)
@@ -356,6 +381,6 @@ it('records what changed when a draft is edited', function (): void {
     // data attached manually at the call site.
     expect($entry)->not->toBeNull()
         ->and($entry?->causer_id)->toBe($admin->id)
-        ->and(data_get($entry?->attribute_changes, 'attributes.bid_cost_credits'))->toBe(4)
-        ->and(data_get($entry?->attribute_changes, 'old.bid_cost_credits'))->toBe(1);
+        ->and(data_get($entry?->attribute_changes, 'attributes.minimum_bid_credits'))->toBe(4)
+        ->and(data_get($entry?->attribute_changes, 'old.minimum_bid_credits'))->toBe(1);
 });

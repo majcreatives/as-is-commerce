@@ -13,58 +13,256 @@ use App\Enums\ForfeitPolicy;
 function rules(array $overrides = []): AuctionRules
 {
     return new AuctionRules(...array_merge([
-        'bidCostCredits' => 1,
-        'uniqueLeader' => true,
+        'minimumBidCredits' => null,
+        'minimumBidIncrementCredits' => null,
+        'allowBidIncrease' => null,
         'minimumBidIntervalMs' => 1000,
         'baseDurationSeconds' => 300,
-        'closingWindowSeconds' => 10,
-        'extensionSeconds' => 10,
-        'maxExtensions' => 20,
-        'maxExtensionTotalSeconds' => 300,
+        'closingWindowSeconds' => 0,
+        'extensionSeconds' => 0,
+        'maxExtensions' => 0,
+        'maxExtensionTotalSeconds' => 0,
+        'buyNowEnabled' => true,
+        'buyNowCreditDiscountEnabled' => true,
+        'buyNowCreditDiscountMinorPerCredit' => 100,
         'checkoutDeadlineMinutes' => 60,
         'forfeitPolicy' => ForfeitPolicy::Relist,
-        'checkoutPrice' => Money::fromDecimalString('5500.00'),
         'deliveryFee' => Money::zero(),
         'taxBps' => 0,
     ], $overrides));
 }
 
-it('exposes every rule the auction engine will need', function (): void {
-    $rules = rules();
+// ------------------------------------------------------------- Winner rule
 
-    expect($rules->bidCostCredits)->toBe(1)
-        ->and($rules->uniqueLeader)->toBeTrue()
-        ->and($rules->minimumBidIntervalMs)->toBe(1000)
-        ->and($rules->baseDurationSeconds)->toBe(300)
-        ->and($rules->closingWindowSeconds)->toBe(10)
-        ->and($rules->extensionSeconds)->toBe(10)
-        ->and($rules->maxExtensions)->toBe(20)
-        ->and($rules->maxExtensionTotalSeconds)->toBe(300)
-        ->and($rules->checkoutDeadlineMinutes)->toBe(60)
-        ->and($rules->forfeitPolicy)->toBe(ForfeitPolicy::Relist)
-        ->and($rules->checkoutPrice->minor)->toBe(550_000)
-        ->and($rules->deliveryFee->minor)->toBe(0)
-        ->and($rules->taxBps)->toBe(0)
-        ->and($rules->currency())->toBe('GHS');
+/*
+ * The correction this stage exists for. The winner is whoever holds the
+ * highest valid credit bid at normal closure -- not the last bidder, which is
+ * what the rules were originally built for.
+ */
+it('declares that the highest valid credit bid wins', function (): void {
+    expect(AuctionRules::WINNER_RULE)->toBe('highest_valid_credit_bid')
+        ->and(rules()->winnerRule())->toBe('highest_valid_credit_bid');
+});
+
+it('records the winner rule in every snapshot', function (): void {
+    expect(rules()->toArray()['winner_rule'])->toBe('highest_valid_credit_bid');
 });
 
 /*
- * The credits spent bidding and the price the winner pays are separate
- * concepts. Nothing in the rules object may couple them.
+ * A future engine reading these rules must find nothing suggesting the last
+ * bidder, a continuously-held lead, or a fixed cost per bid.
  */
-it('keeps bid cost and checkout price independent', function (): void {
-    $rules = rules(['bidCostCredits' => 15, 'checkoutPrice' => Money::fromDecimalString('5500.00')]);
+it('carries no trace of the obsolete last-bidder model', function (): void {
+    $keys = array_keys(rules()->toArray());
 
-    expect($rules->bidCostCredits)->toBe(15)
-        ->and($rules->checkoutPrice->minor)->toBe(550_000);
+    expect($keys)->not->toContain('unique_leader')
+        ->and($keys)->not->toContain('bid_cost_credits')
+        ->and($keys)->not->toContain('last_bidder');
+
+    foreach ($keys as $key) {
+        expect($key)->not->toContain('leader')
+            ->and($key)->not->toContain('last_bid');
+    }
 });
 
-// ------------------------------------------------------------ Single field
+/*
+ * What a normal auction winner pays has deliberately not been decided.
+ * Encoding an amount here would be inventing that decision.
+ */
+it('carries no settlement price', function (): void {
+    $keys = array_keys(rules()->toArray());
 
-it('rejects a bid cost below one credit', function (int $cost): void {
-    expect(fn (): AuctionRules => rules(['bidCostCredits' => $cost]))
+    expect($keys)->not->toContain('checkout_price_minor')
+        ->and($keys)->not->toContain('settlement_price_minor')
+        ->and(property_exists(AuctionRules::class, 'checkoutPrice'))->toBeFalse();
+});
+
+// -------------------------------------------------------------- Bid rules
+
+/*
+ * Bids carry their own amounts. Nothing here assumes one credit per bid, or
+ * any fixed cost per bid action.
+ */
+it('leaves bid rules unset when the business has not decided them', function (): void {
+    $rules = rules();
+
+    expect($rules->minimumBidCredits)->toBeNull()
+        ->and($rules->minimumBidIncrementCredits)->toBeNull()
+        ->and($rules->allowBidIncrease)->toBeNull()
+        ->and($rules->hasMinimumBid())->toBeFalse()
+        ->and($rules->hasMinimumIncrement())->toBeFalse();
+});
+
+it('imposes no floor when no bid rule is configured', function (): void {
+    // Null, not one. An unset rule is not a rule of one, and an engine that
+    // invented a floor would be making a decision nobody made.
+    expect(rules()->smallestValidBid())->toBeNull()
+        ->and(rules()->smallestValidBid(500))->toBeNull();
+});
+
+it('represents a minimum bid when one is configured', function (): void {
+    $rules = rules(['minimumBidCredits' => 25]);
+
+    expect($rules->hasMinimumBid())->toBeTrue()
+        ->and($rules->smallestValidBid())->toBe(25);
+});
+
+it('represents a minimum increment above the standing highest bid', function (): void {
+    $rules = rules(['minimumBidIncrementCredits' => 10]);
+
+    expect($rules->hasMinimumIncrement())->toBeTrue()
+        ->and($rules->smallestValidBid(100))->toBe(110)
+        // With no standing bid there is nothing to increment above.
+        ->and($rules->smallestValidBid())->toBeNull();
+});
+
+it('takes the higher of the minimum and the increment', function (): void {
+    $rules = rules(['minimumBidCredits' => 50, 'minimumBidIncrementCredits' => 10]);
+
+    // Early on, the absolute minimum governs.
+    expect($rules->smallestValidBid(5))->toBe(50)
+        // Later, the increment does.
+        ->and($rules->smallestValidBid(200))->toBe(210);
+});
+
+it('supports variable bid amounts of any size', function (int $amount): void {
+    $rules = rules(['minimumBidCredits' => 1]);
+
+    // Nothing caps a bid at a fixed per-bid cost; the engine will cap it
+    // against the bidder's spendable credits instead.
+    expect($amount)->toBeGreaterThanOrEqual($rules->smallestValidBid());
+})->with([1, 20, 50, 100, 150, 5000]);
+
+it('rejects a minimum bid below one credit', function (): void {
+    expect(fn (): AuctionRules => rules(['minimumBidCredits' => 0]))
         ->toThrow(InvalidAuctionRules::class);
-})->with([0, -1, -10]);
+});
+
+it('rejects a minimum increment below one credit', function (): void {
+    expect(fn (): AuctionRules => rules(['minimumBidIncrementCredits' => 0]))
+        ->toThrow(InvalidAuctionRules::class);
+});
+
+// ---------------------------------------------------------------- Buy Now
+
+it('represents whether Buy Now is available', function (): void {
+    expect(rules()->buyNowEnabled)->toBeTrue()
+        ->and(rules([
+            'buyNowEnabled' => false,
+            'buyNowCreditDiscountEnabled' => false,
+        ])->buyNowEnabled)->toBeFalse();
+});
+
+/*
+ * One consumed bid credit takes GH 1 off the Buy Now price. Stored as an
+ * explicit rate in minor units rather than assumed in code, so it is versioned
+ * with everything else.
+ */
+it('represents one credit as one cedi of Buy Now discount', function (): void {
+    $rules = rules();
+
+    expect($rules->buyNowCreditDiscountMinorPerCredit)->toBe(100)
+        ->and($rules->buyNowDiscountFor(1)->toDecimalString())->toBe('1.00')
+        ->and($rules->buyNowDiscountFor(150)->toDecimalString())->toBe('150.00');
+});
+
+it('calculates the worked example from the specification', function (): void {
+    // Product at GH 5,500 with 150 credits consumed: GH 150 off, GH 5,350 due.
+    $price = Money::fromDecimalString('5500.00');
+    $discount = rules()->buyNowDiscountFor(150);
+
+    expect($discount->toDecimalString())->toBe('150.00')
+        ->and($price->minus($discount)->toDecimalString())->toBe('5350.00');
+});
+
+it('gives no discount when the discount is switched off', function (): void {
+    $rules = rules(['buyNowCreditDiscountEnabled' => false]);
+
+    expect($rules->buyNowDiscountFor(150)->isZero())->toBeTrue();
+});
+
+it('gives no discount for a non-positive number of credits', function (int $credits): void {
+    expect(rules()->buyNowDiscountFor($credits)->isZero())->toBeTrue();
+})->with([0, -1]);
+
+/*
+ * A discount on a Buy Now that cannot happen is a contradiction, not a
+ * harmless setting.
+ */
+it('refuses a credit discount while Buy Now is disabled', function (): void {
+    expect(fn (): AuctionRules => rules([
+        'buyNowEnabled' => false,
+        'buyNowCreditDiscountEnabled' => true,
+    ]))->toThrow(InvalidAuctionRules::class);
+});
+
+it('rejects a discount rate of zero', function (): void {
+    expect(fn (): AuctionRules => rules(['buyNowCreditDiscountMinorPerCredit' => 0]))
+        ->toThrow(InvalidAuctionRules::class);
+});
+
+// ---------------------------------------------------------------- Timing
+
+/*
+ * Late-bid extension survives the correction, because anti-sniping is still
+ * useful. What changed is that it no longer decides anything about the winner.
+ */
+it('treats extensions as optional', function (): void {
+    expect(rules()->extensionsEnabled())->toBeFalse()
+        ->and(rules()->maximumPossibleDurationSeconds())->toBe(300);
+});
+
+it('supports late-bid extension when configured', function (): void {
+    $rules = rules([
+        'closingWindowSeconds' => 10,
+        'extensionSeconds' => 10,
+        'maxExtensions' => 20,
+        'maxExtensionTotalSeconds' => 300,
+    ]);
+
+    expect($rules->extensionsEnabled())->toBeTrue()
+        ->and($rules->maximumPossibleDurationSeconds())->toBe(500);
+});
+
+it('keeps extension entirely separate from who wins', function (): void {
+    $extending = rules([
+        'closingWindowSeconds' => 10,
+        'extensionSeconds' => 10,
+        'maxExtensions' => 5,
+        'maxExtensionTotalSeconds' => 50,
+    ]);
+
+    // Extending the clock changes how long bidding lasts, never the rule by
+    // which the winner is chosen.
+    expect($extending->winnerRule())->toBe(rules()->winnerRule());
+});
+
+it('rejects a closing window longer than the auction', function (): void {
+    expect(fn (): AuctionRules => rules([
+        'baseDurationSeconds' => 60,
+        'closingWindowSeconds' => 120,
+    ]))->toThrow(InvalidAuctionRules::class);
+});
+
+it('rejects extensions that could never trigger', function (): void {
+    expect(fn (): AuctionRules => rules([
+        'closingWindowSeconds' => 0,
+        'extensionSeconds' => 10,
+        'maxExtensions' => 5,
+        'maxExtensionTotalSeconds' => 50,
+    ]))->toThrow(InvalidAuctionRules::class);
+});
+
+it('rejects an extension budget shorter than a single extension', function (): void {
+    expect(fn (): AuctionRules => rules([
+        'closingWindowSeconds' => 10,
+        'extensionSeconds' => 30,
+        'maxExtensions' => 5,
+        'maxExtensionTotalSeconds' => 10,
+    ]))->toThrow(InvalidAuctionRules::class);
+});
+
+// ------------------------------------------------------------- Validation
 
 it('rejects a non-positive base duration', function (int $duration): void {
     expect(fn (): AuctionRules => rules(['baseDurationSeconds' => $duration]))
@@ -88,79 +286,18 @@ it('rejects a non-positive checkout deadline', function (): void {
         ->toThrow(InvalidAuctionRules::class);
 });
 
-it('rejects a checkout price of zero or less', function (int $minor): void {
-    expect(fn (): AuctionRules => rules(['checkoutPrice' => Money::fromMinor($minor)]))
-        ->toThrow(InvalidAuctionRules::class);
-})->with([0, -1]);
-
 it('rejects tax above one hundred percent', function (): void {
     expect(fn (): AuctionRules => rules(['taxBps' => 10_001]))
         ->toThrow(InvalidAuctionRules::class);
-});
-
-it('rejects a delivery fee in a different currency from the price', function (): void {
-    expect(fn (): AuctionRules => rules([
-        'checkoutPrice' => Money::fromMinor(550_000, 'GHS'),
-        'deliveryFee' => Money::fromMinor(100, 'USD'),
-    ]))->toThrow(InvalidAuctionRules::class);
-});
-
-// ------------------------------------------------------------- Cross field
-
-it('rejects a closing window longer than the auction itself', function (): void {
-    expect(fn (): AuctionRules => rules([
-        'baseDurationSeconds' => 60,
-        'closingWindowSeconds' => 120,
-    ]))->toThrow(InvalidAuctionRules::class, 'Closing window cannot be longer than the base duration.');
-});
-
-it('rejects an extension budget shorter than a single extension', function (): void {
-    expect(fn (): AuctionRules => rules([
-        'extensionSeconds' => 30,
-        'maxExtensions' => 5,
-        'maxExtensionTotalSeconds' => 10,
-    ]))->toThrow(InvalidAuctionRules::class);
-});
-
-it('rejects extensions configured without a closing window to trigger them', function (): void {
-    expect(fn (): AuctionRules => rules([
-        'closingWindowSeconds' => 0,
-        'extensionSeconds' => 10,
-        'maxExtensions' => 5,
-    ]))->toThrow(InvalidAuctionRules::class);
-});
-
-it('accepts extensions being switched off entirely', function (): void {
-    $rules = rules([
-        'closingWindowSeconds' => 0,
-        'extensionSeconds' => 0,
-        'maxExtensions' => 0,
-        'maxExtensionTotalSeconds' => 0,
-    ]);
-
-    expect($rules->extensionsEnabled())->toBeFalse()
-        ->and($rules->maximumPossibleDurationSeconds())->toBe(300);
-});
-
-// -------------------------------------------------------------- Behaviour
-
-it('reports the longest an auction can possibly run', function (): void {
-    // 20 extensions of 10s is 200s, inside the 300s ceiling, so the count wins.
-    expect(rules()->maximumPossibleDurationSeconds())->toBe(500);
-
-    // 50 extensions of 10s is 500s, so the 300s absolute ceiling wins instead.
-    expect(rules(['maxExtensions' => 50])->maximumPossibleDurationSeconds())->toBe(600);
-});
-
-it('treats a zero maximum extension count as extensions disabled', function (): void {
-    expect(rules(['maxExtensions' => 0])->extensionsEnabled())->toBeFalse();
 });
 
 // --------------------------------------------------------------- Snapshot
 
 it('survives a round trip through its serialized form', function (): void {
     $original = rules([
-        'bidCostCredits' => 3,
+        'minimumBidCredits' => 25,
+        'minimumBidIncrementCredits' => 5,
+        'allowBidIncrease' => true,
         'taxBps' => 1_250,
         'deliveryFee' => Money::fromDecimalString('25.50'),
         'forfeitPolicy' => ForfeitPolicy::OfferRunnerUp,
@@ -169,13 +306,24 @@ it('survives a round trip through its serialized form', function (): void {
     $restored = AuctionRules::fromArray($original->toArray());
 
     expect($restored->toArray())->toBe($original->toArray())
-        ->and($restored->checkoutPrice->minor)->toBe($original->checkoutPrice->minor)
-        ->and($restored->deliveryFee->minor)->toBe(2_550)
-        ->and($restored->forfeitPolicy)->toBe(ForfeitPolicy::OfferRunnerUp);
+        ->and($restored->minimumBidCredits)->toBe(25)
+        ->and($restored->minimumBidIncrementCredits)->toBe(5)
+        ->and($restored->allowBidIncrease)->toBeTrue()
+        ->and($restored->deliveryFee->minor)->toBe(2_550);
+});
+
+it('preserves an undecided bid rule as undecided through a round trip', function (): void {
+    // Null must survive as null. Coercing it to false or zero would silently
+    // turn "not decided" into a decision.
+    $restored = AuctionRules::fromArray(rules()->toArray());
+
+    expect($restored->minimumBidCredits)->toBeNull()
+        ->and($restored->minimumBidIncrementCredits)->toBeNull()
+        ->and($restored->allowBidIncrease)->toBeNull();
 });
 
 it('survives a round trip through JSON, which is how it will be stored', function (): void {
-    $original = rules(['bidCostCredits' => 2, 'taxBps' => 500]);
+    $original = rules(['minimumBidCredits' => 10]);
 
     $json = json_encode($original);
     expect($json)->toBeString();
@@ -186,16 +334,26 @@ it('survives a round trip through JSON, which is how it will be stored', functio
     expect(AuctionRules::fromArray($decoded)->toArray())->toBe($original->toArray());
 });
 
-it('refuses a snapshot written by an incompatible version', function (): void {
+it('refuses a snapshot written by an incompatible version', function (int $version): void {
     $data = rules()->toArray();
-    $data['snapshot_version'] = 999;
+    $data['snapshot_version'] = $version;
 
     expect(fn (): AuctionRules => AuctionRules::fromArray($data))
         ->toThrow(InvalidAuctionRules::class);
+})->with([
+    // Version 1 was the obsolete last-bidder shape. Refusing it is correct:
+    // its fields do not mean what this version would read them as.
+    'the obsolete model' => 1,
+    'a future model' => 999,
+]);
+
+it('is at snapshot version two', function (): void {
+    expect(AuctionRules::SNAPSHOT_VERSION)->toBe(2)
+        ->and(rules()->toArray()['snapshot_version'])->toBe(2);
 });
 
 it('cannot be mutated after construction', function (): void {
     $rules = rules();
 
-    expect(fn () => $rules->bidCostCredits = 99)->toThrow(Error::class);
+    expect(fn () => $rules->minimumBidCredits = 99)->toThrow(Error::class);
 });

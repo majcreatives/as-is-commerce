@@ -26,10 +26,14 @@ class RulesetForm extends Component
 
     public string $description = '';
 
-    // Bidding
-    public int $bid_cost_credits = 1;
+    // Bidding. Bids carry their own variable amounts; these constrain which
+    // amounts are acceptable. Held as strings so an empty field means "no
+    // rule" rather than collapsing to zero.
+    public string $minimum_bid_credits = '';
 
-    public bool $unique_leader = true;
+    public string $minimum_bid_increment_credits = '';
+
+    public string $allow_bid_increase = '';
 
     public int $minimum_bid_interval_ms = 1000;
 
@@ -49,10 +53,16 @@ class RulesetForm extends Component
 
     public string $forfeit_policy = 'relist';
 
-    // Pricing. Entered as a decimal string and converted to minor units on
-    // save -- the form never holds a float.
-    public string $default_checkout_price = '';
+    // Buy Now
+    public bool $buy_now_enabled = true;
 
+    public bool $buy_now_credit_discount_enabled = true;
+
+    // Entered in cedis per credit and converted to minor units on save, so
+    // the form never holds a float.
+    public string $buy_now_credit_discount_per_credit = '1.00';
+
+    // Pricing. Entered as a decimal string and converted on save.
     public string $delivery_fee = '0.00';
 
     public string $currency = 'GHS';
@@ -80,8 +90,11 @@ class RulesetForm extends Component
         $this->name = $ruleset->name;
         $this->description = $ruleset->description ?? '';
 
-        $this->bid_cost_credits = $ruleset->bid_cost_credits;
-        $this->unique_leader = $ruleset->unique_leader;
+        $this->minimum_bid_credits = (string) ($ruleset->minimum_bid_credits ?? '');
+        $this->minimum_bid_increment_credits = (string) ($ruleset->minimum_bid_increment_credits ?? '');
+        $this->allow_bid_increase = $ruleset->allow_bid_increase === null
+            ? ''
+            : ($ruleset->allow_bid_increase ? 'yes' : 'no');
         $this->minimum_bid_interval_ms = $ruleset->minimum_bid_interval_ms;
 
         $this->base_duration_seconds = $ruleset->base_duration_seconds;
@@ -93,7 +106,12 @@ class RulesetForm extends Component
         $this->checkout_deadline_minutes = $ruleset->checkout_deadline_minutes;
         $this->forfeit_policy = $ruleset->forfeit_policy->value;
 
-        $this->default_checkout_price = $ruleset->defaultCheckoutPrice()?->toDecimalString() ?? '';
+        $this->buy_now_enabled = $ruleset->buy_now_enabled;
+        $this->buy_now_credit_discount_enabled = $ruleset->buy_now_credit_discount_enabled;
+        $this->buy_now_credit_discount_per_credit = Money::fromMinor(
+            $ruleset->buy_now_credit_discount_minor_per_credit,
+            $ruleset->currency,
+        )->toDecimalString();
         $this->delivery_fee = $ruleset->deliveryFee()->toDecimalString();
         $this->currency = $ruleset->currency;
         $this->tax_bps = $ruleset->tax_bps;
@@ -108,8 +126,11 @@ class RulesetForm extends Component
             'name' => ['required', 'string', 'max:100'],
             'description' => ['nullable', 'string', 'max:2000'],
 
-            'bid_cost_credits' => ['required', 'integer', 'min:1'],
-            'unique_leader' => ['boolean'],
+            // Nullable: these business values are undecided, and an empty
+            // field must mean "no rule" rather than a number nobody chose.
+            'minimum_bid_credits' => ['nullable', 'string', 'regex:/^\d{1,12}$/'],
+            'minimum_bid_increment_credits' => ['nullable', 'string', 'regex:/^\d{1,12}$/'],
+            'allow_bid_increase' => ['nullable', Rule::in(['', 'yes', 'no'])],
             'minimum_bid_interval_ms' => ['required', 'integer', 'min:0', 'max:600000'],
 
             'base_duration_seconds' => ['required', 'integer', 'min:1', 'max:2592000'],
@@ -121,8 +142,11 @@ class RulesetForm extends Component
             'checkout_deadline_minutes' => ['required', 'integer', 'min:1', 'max:43200'],
             'forfeit_policy' => ['required', Rule::enum(ForfeitPolicy::class)],
 
+            'buy_now_enabled' => ['boolean'],
+            'buy_now_credit_discount_enabled' => ['boolean'],
+
             // Decimal strings, never floats.
-            'default_checkout_price' => ['nullable', 'string', 'regex:/^\d{1,15}(\.\d{1,2})?$/'],
+            'buy_now_credit_discount_per_credit' => ['required', 'string', 'regex:/^\d{1,6}(\.\d{1,2})?$/'],
             'delivery_fee' => ['required', 'string', 'regex:/^\d{1,15}(\.\d{1,2})?$/'],
             'currency' => ['required', 'string', 'size:3', 'regex:/^[A-Za-z]{3}$/'],
             'tax_bps' => ['required', 'integer', 'min:0', 'max:10000'],
@@ -135,9 +159,10 @@ class RulesetForm extends Component
     protected function messages(): array
     {
         return [
-            'default_checkout_price.regex' => 'Enter an amount such as 5500 or 5500.00, with no currency symbol.',
+            'buy_now_credit_discount_per_credit.regex' => 'Enter an amount such as 1 or 1.00, with no currency symbol.',
+            'minimum_bid_credits.regex' => 'Enter a whole number of credits, or leave blank for no minimum.',
+            'minimum_bid_increment_credits.regex' => 'Enter a whole number of credits, or leave blank for no minimum.',
             'delivery_fee.regex' => 'Enter an amount such as 0 or 25.00, with no currency symbol.',
-            'bid_cost_credits.min' => 'A bid must cost at least 1 credit.',
         ];
     }
 
@@ -178,16 +203,22 @@ class RulesetForm extends Component
     {
         $currency = strtoupper($this->currency);
 
-        $checkoutPrice = trim($this->default_checkout_price) === ''
-            ? null
-            : Money::fromDecimalString($this->default_checkout_price, $currency)->minor;
+        $minimumBid = trim($this->minimum_bid_credits);
+        $minimumIncrement = trim($this->minimum_bid_increment_credits);
 
         return [
             'name' => $this->name,
             'description' => $this->description !== '' ? $this->description : null,
 
-            'bid_cost_credits' => $this->bid_cost_credits,
-            'unique_leader' => $this->unique_leader,
+            // Blank stays null: an unset bid rule is not the same as a rule
+            // of zero, and the business has not chosen either value yet.
+            'minimum_bid_credits' => $minimumBid === '' ? null : (int) $minimumBid,
+            'minimum_bid_increment_credits' => $minimumIncrement === '' ? null : (int) $minimumIncrement,
+            'allow_bid_increase' => match ($this->allow_bid_increase) {
+                'yes' => true,
+                'no' => false,
+                default => null,
+            },
             'minimum_bid_interval_ms' => $this->minimum_bid_interval_ms,
 
             'base_duration_seconds' => $this->base_duration_seconds,
@@ -199,7 +230,12 @@ class RulesetForm extends Component
             'checkout_deadline_minutes' => $this->checkout_deadline_minutes,
             'forfeit_policy' => $this->forfeit_policy,
 
-            'default_checkout_price_minor' => $checkoutPrice,
+            'buy_now_enabled' => $this->buy_now_enabled,
+            'buy_now_credit_discount_enabled' => $this->buy_now_credit_discount_enabled,
+            'buy_now_credit_discount_minor_per_credit' => Money::fromDecimalString(
+                $this->buy_now_credit_discount_per_credit,
+                $currency,
+            )->minor,
             'delivery_fee_minor' => Money::fromDecimalString($this->delivery_fee, $currency)->minor,
             'currency' => $currency,
             'tax_bps' => $this->tax_bps,

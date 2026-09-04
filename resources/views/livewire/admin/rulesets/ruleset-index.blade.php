@@ -41,7 +41,7 @@
                         <th scope="col" class="px-4 py-3 font-semibold">Name</th>
                         <th scope="col" class="px-4 py-3 font-semibold">Version</th>
                         <th scope="col" class="px-4 py-3 font-semibold">Status</th>
-                        <th scope="col" class="px-4 py-3 font-semibold">Bid cost</th>
+                        <th scope="col" class="px-4 py-3 font-semibold">Minimum bid</th>
                         <th scope="col" class="px-4 py-3 font-semibold">Duration</th>
                         <th scope="col" class="px-4 py-3 font-semibold">Extensions</th>
                         <th scope="col" class="px-4 py-3 font-semibold">Created</th>
@@ -66,7 +66,12 @@
                             </td>
 
                             <td class="px-4 py-3 tabular-nums text-slate-600">
-                                {{ $ruleset->bid_cost_credits }} {{ Str::plural('credit', $ruleset->bid_cost_credits) }}
+                                @if ($ruleset->minimum_bid_credits)
+                                    {{ number_format($ruleset->minimum_bid_credits) }}
+                                    {{ Str::plural('credit', $ruleset->minimum_bid_credits) }}
+                                @else
+                                    <span class="text-slate-400">No minimum</span>
+                                @endif
                             </td>
 
                             <td class="px-4 py-3 tabular-nums text-slate-600">{{ $ruleset->base_duration_seconds }}s</td>

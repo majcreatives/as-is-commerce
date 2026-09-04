@@ -11,9 +11,10 @@
             </h1>
 
             <p class="mt-4 text-base text-brand-100 sm:text-lg">
-                Buy bidding credits, join live auctions, and pay a reduced checkout price
-                when you win. Every auction is timed and settled by our servers, so the
-                result is the same for everyone watching.
+                Buy bidding credits and compete for real products. The highest valid credit
+                bid wins when an auction closes &mdash; or buy the item outright at its
+                GH&#8373; price at any time. Every auction is timed and settled by our
+                servers, so the result is the same for everyone watching.
             </p>
 
             <div class="mt-8 flex flex-wrap gap-3">
@@ -31,9 +32,10 @@
     {{-- Value propositions --}}
     <section class="mt-10 grid gap-4 sm:grid-cols-3">
         <x-card>
-            <h2 class="text-sm font-semibold text-slate-900">Server-timed auctions</h2>
+            <h2 class="text-sm font-semibold text-slate-900">Highest bid wins</h2>
             <p class="mt-1.5 text-sm text-slate-600">
-                Countdowns, extensions and winners are decided on our servers — never in your browser.
+                Countdowns and winners are decided on our servers, never in your browser. The highest
+                valid credit bid takes the item.
             </p>
         </x-card>
 

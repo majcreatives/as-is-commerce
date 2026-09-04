@@ -35,12 +35,39 @@
         </x-card>
 
         {{-- -------------------------------------------------------- Bidding --}}
-        <x-card title="Bidding" subtitle="What it costs to bid, and how often a user may do so.">
+        <x-card title="Bidding"
+                subtitle="Bidders choose how many credits to commit. These rules decide which amounts are valid.">
+            <x-alert variant="info" class="mb-5">
+                <strong class="font-semibold">The highest valid credit bid wins</strong> when the auction
+                closes normally &mdash; not the last bidder, and not whoever bid most often. A bidder who is
+                overtaken and later bids higher still wins on that highest bid.
+            </x-alert>
+
             <div class="grid gap-5 sm:grid-cols-2">
-                <x-field label="Bid cost (credits)" name="bid_cost_credits" :error="$errors->first('bid_cost_credits')"
-                         hint="Credits consumed by one valid bid. This is unrelated to the checkout price.">
-                    <x-input id="bid_cost_credits" type="number" min="1" wire:model="bid_cost_credits"
-                             :error="$errors->has('bid_cost_credits')" required />
+                <x-field label="Minimum bid (credits)" name="minimum_bid_credits"
+                         :error="$errors->first('minimum_bid_credits')" optional
+                         hint="The smallest bid that can ever be submitted. Leave blank for no minimum.">
+                    <x-input id="minimum_bid_credits" inputmode="numeric" wire:model="minimum_bid_credits"
+                             :error="$errors->has('minimum_bid_credits')" />
+                </x-field>
+
+                <x-field label="Minimum increment (credits)" name="minimum_bid_increment_credits"
+                         :error="$errors->first('minimum_bid_increment_credits')" optional
+                         hint="How far a new bid must exceed the current highest. Leave blank for no minimum.">
+                    <x-input id="minimum_bid_increment_credits" inputmode="numeric"
+                             wire:model="minimum_bid_increment_credits"
+                             :error="$errors->has('minimum_bid_increment_credits')" />
+                </x-field>
+
+                <x-field label="May a bidder raise their own bid?" name="allow_bid_increase"
+                         :error="$errors->first('allow_bid_increase')" optional
+                         hint="Leave unset while this rule is undecided. Unset is not the same as no.">
+                    <select id="allow_bid_increase" wire:model="allow_bid_increase"
+                            class="block w-full rounded-lg border-0 bg-white px-3 py-2.5 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-inset focus:ring-brand-600 sm:text-sm">
+                        <option value="">Not decided</option>
+                        <option value="yes">Yes</option>
+                        <option value="no">No</option>
+                    </select>
                 </x-field>
 
                 <x-field label="Minimum bid interval (ms)" name="minimum_bid_interval_ms"
@@ -49,25 +76,52 @@
                     <x-input id="minimum_bid_interval_ms" type="number" min="0" wire:model="minimum_bid_interval_ms"
                              :error="$errors->has('minimum_bid_interval_ms')" required />
                 </x-field>
+            </div>
+        </x-card>
 
-                <div class="sm:col-span-2">
-                    <label class="flex items-start gap-3">
-                        <input type="checkbox" wire:model="unique_leader"
-                               class="mt-0.5 size-4 rounded border-slate-300 text-brand-700 focus:ring-brand-600">
-                        <span>
-                            <span class="block text-sm font-medium text-slate-700">Prevent consecutive leads</span>
-                            <span class="block text-xs text-slate-500">
-                                A user who already holds the lead cannot bid again until someone outbids them.
-                                Without this, a user can spend credits bidding against themselves for no change in position.
-                            </span>
+        {{-- -------------------------------------------------------- Buy Now --}}
+        <x-card title="Buy Now"
+                subtitle="Buying the product outright ends the auction immediately, whatever the highest bid.">
+            <div class="space-y-5">
+                <label class="flex items-start gap-3">
+                    <input type="checkbox" wire:model="buy_now_enabled"
+                           class="mt-0.5 size-4 rounded border-slate-300 text-brand-700 focus:ring-brand-600">
+                    <span>
+                        <span class="block text-sm font-medium text-slate-700">Buy Now available</span>
+                        <span class="block text-xs text-slate-500">
+                            When a customer completes a Buy Now purchase the auction ends at once and the
+                            standing highest bidder does not win. With this off, the auction runs to its
+                            normal close.
                         </span>
-                    </label>
-                </div>
+                    </span>
+                </label>
+
+                <label class="flex items-start gap-3">
+                    <input type="checkbox" wire:model="buy_now_credit_discount_enabled"
+                           class="mt-0.5 size-4 rounded border-slate-300 text-brand-700 focus:ring-brand-600">
+                    <span>
+                        <span class="block text-sm font-medium text-slate-700">Credit discount on Buy Now</span>
+                        <span class="block text-xs text-slate-500">
+                            Credits a customer already consumed bidding on this auction reduce the Buy Now
+                            price. The credits stay consumed &mdash; this lowers a separate purchase price
+                            rather than refunding them.
+                        </span>
+                    </span>
+                </label>
+
+                <x-field label="Discount per consumed credit" name="buy_now_credit_discount_per_credit"
+                         :error="$errors->first('buy_now_credit_discount_per_credit')"
+                         hint="In cedis. 1.00 means one consumed bid credit takes GH&#8373;1 off the Buy Now price.">
+                    <x-input id="buy_now_credit_discount_per_credit" inputmode="decimal" placeholder="1.00"
+                             wire:model="buy_now_credit_discount_per_credit"
+                             :error="$errors->has('buy_now_credit_discount_per_credit')" required />
+                </x-field>
             </div>
         </x-card>
 
         {{-- --------------------------------------------------------- Timing --}}
-        <x-card title="Timing" subtitle="How long an auction runs, and how late bids extend it.">
+        <x-card title="Timing"
+                subtitle="How long an auction runs, and whether late bids extend it. Extension is anti-sniping only — it never changes who wins.">
             <div class="grid gap-5 sm:grid-cols-2">
                 <x-field label="Base duration (seconds)" name="base_duration_seconds"
                          :error="$errors->first('base_duration_seconds')"
@@ -137,14 +191,6 @@
         {{-- -------------------------------------------------------- Pricing --}}
         <x-card title="Pricing" subtitle="Amounts are entered in major units and stored as whole minor units.">
             <div class="grid gap-5 sm:grid-cols-2">
-                <x-field label="Default checkout price" name="default_checkout_price"
-                         :error="$errors->first('default_checkout_price')" optional
-                         hint="Leave blank unless every auction using this ruleset genuinely sells at the same price. The checkout price belongs to the product, so auctions normally supply their own.">
-                    <x-input id="default_checkout_price" inputmode="decimal" placeholder="5500.00"
-                             wire:model="default_checkout_price"
-                             :error="$errors->has('default_checkout_price')" />
-                </x-field>
-
                 <x-field label="Currency" name="currency" :error="$errors->first('currency')"
                          hint="ISO 4217 code, for example GHS.">
                     <x-input id="currency" wire:model="currency" maxlength="3"

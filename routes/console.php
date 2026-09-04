@@ -34,3 +34,25 @@ Schedule::command('auctions:tick')
     ->everyMinute()
     ->withoutOverlapping()
     ->runInBackground();
+
+/*
+|--------------------------------------------------------------------------
+| Checkout expiry
+|--------------------------------------------------------------------------
+|
+| A Buy Now checkout holds a unit of stock while the customer pays. This is
+| what notices they never did, and puts the unit back on sale.
+|
+| Every minute, because a hold is measured in minutes and stock sitting
+| needlessly reserved is stock nobody can buy. Idempotent, so overlapping runs
+| expire a checkout once; overlap is prevented anyway.
+|
+| A missed run delays a release. It never expires a checkout that was paid --
+| each order is re-read under a lock and left alone if it has moved on.
+|
+*/
+
+Schedule::command('orders:expire-checkouts')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->runInBackground();

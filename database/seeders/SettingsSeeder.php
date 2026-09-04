@@ -61,6 +61,47 @@ class SettingsSeeder extends Seeder
                     .'The application always stores timestamps in UTC; this affects presentation only.',
                 'is_public' => true,
             ],
+            /*
+             | Checkout. Both values start at zero or a plain operational
+             | default: nothing here invents a business figure. An auction's
+             | own frozen rules govern delivery, tax and the payment window for
+             | anything bought through an auction; these apply only to a
+             | product bought outright with no auction involved.
+             */
+            [
+                'key' => 'checkout_hold_minutes',
+                'value' => '30',
+                'type' => SettingType::Integer,
+                'group' => 'checkout',
+                'label' => 'Checkout hold (minutes)',
+                'description' => 'How long a Buy Now checkout holds a unit of stock while awaiting '
+                    .'payment, when no auction is involved. An unpaid checkout expires after this '
+                    .'and the stock goes back. An auction checkout uses the deadline frozen into '
+                    .'that auction instead.',
+                'is_public' => false,
+            ],
+            [
+                'key' => 'delivery_fee_minor',
+                'value' => '0',
+                'type' => SettingType::Money,
+                'group' => 'checkout',
+                'label' => 'Delivery charge',
+                'description' => 'Added to a Buy Now checkout when no auction is involved. Kept as a '
+                    .'separate line so it is never folded into a product price. Auction checkouts '
+                    .'use the delivery charge frozen into the auction.',
+                'is_public' => false,
+            ],
+            [
+                'key' => 'checkout_tax_bps',
+                'value' => '0',
+                'type' => SettingType::Integer,
+                'group' => 'checkout',
+                'label' => 'Tax rate (basis points)',
+                'description' => 'Applied to a Buy Now checkout when no auction is involved. '
+                    .'1000 = 10%. Zero by default: no tax rate is assumed, and the component exists '
+                    .'so a real rate can be configured without restructuring a checkout.',
+                'is_public' => false,
+            ],
             [
                 'key' => 'support_phone',
                 'value' => null,

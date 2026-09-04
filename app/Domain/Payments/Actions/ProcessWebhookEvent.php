@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 namespace App\Domain\Payments\Actions;
 
+use App\Domain\Orders\Actions\FulfillOrderPayment;
+use App\Domain\Orders\Services\OrderLifecycle;
 use App\Domain\Payments\Exceptions\PaymentVerificationFailed;
 use App\Enums\CreditPurchaseStatus;
 use App\Enums\WebhookProcessingStatus;
 use App\Models\CreditPurchase;
+use App\Models\OrderPayment;
 use App\Models\PaymentWebhookEvent;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -16,10 +19,16 @@ use Throwable;
  * Acts on a webhook event that has already been signature-verified and stored.
  *
  * The event tells us which transaction to look at. It does not tell us what
- * happened to it -- that comes from asking the provider directly, inside
- * {@see FulfillCreditPurchase}. An event body saying `charge.success` is a
- * claim, not evidence, and granting credits on the strength of it would mean
- * trusting whoever produced the request.
+ * happened to it -- that comes from asking the provider directly, inside the
+ * fulfilment path. An event body saying `charge.success` is a claim, not
+ * evidence, and handing over credits or a product on the strength of one would
+ * mean trusting whoever produced the request.
+ *
+ * TWO KINDS OF PAYMENT ARRIVE HERE. A reference belongs either to a credit
+ * purchase or to an order payment, never both, and this resolves which before
+ * doing anything. Order payments are checked first only because they are the
+ * newer and larger flow; the two reference formats do not overlap, so the
+ * order of the lookups changes nothing.
  *
  * Every outcome is recorded on the event row, so a failure keeps its payload
  * and can be replayed rather than disappearing.
@@ -35,8 +44,10 @@ final class ProcessWebhookEvent
     public const FULFILLING_EVENTS = ['charge.success'];
 
     public function __construct(
-        private readonly FulfillCreditPurchase $fulfil,
+        private readonly FulfillCreditPurchase $fulfilCredits,
+        private readonly FulfillOrderPayment $fulfilOrder,
         private readonly TransitionCreditPurchase $transition,
+        private readonly OrderLifecycle $orders,
     ) {}
 
     public function handle(PaymentWebhookEvent $event): WebhookProcessingStatus
@@ -73,13 +84,26 @@ final class ProcessWebhookEvent
         return $status;
     }
 
+    /**
+     * Work out what this event is about, then act on it.
+     */
     private function dispatch(PaymentWebhookEvent $event): WebhookProcessingStatus
     {
-        if (! in_array($event->event_type, self::FULFILLING_EVENTS, true)) {
-            return $this->handleNonFulfilling($event);
+        $reference = $this->reference($event);
+
+        if ($reference === null) {
+            return WebhookProcessingStatus::Ignored;
         }
 
-        $purchase = $this->resolvePurchase($event);
+        $payment = OrderPayment::where('provider_reference', $reference)->first();
+
+        if ($payment !== null) {
+            $event->order_payment_id = $payment->id;
+
+            return $this->handleOrderPayment($event, $payment);
+        }
+
+        $purchase = CreditPurchase::where('provider_reference', $reference)->first();
 
         if ($purchase === null) {
             // A payment we have no record of. Not an error on our side -- the
@@ -88,9 +112,28 @@ final class ProcessWebhookEvent
             return WebhookProcessingStatus::Ignored;
         }
 
+        $this->assertMetadataAgrees($event, 'credit_purchase_id', $purchase->id);
+
         $event->credit_purchase_id = $purchase->id;
 
-        $result = $this->fulfil->handle($purchase);
+        return $this->handleCreditPurchase($event, $purchase);
+    }
+
+    // ------------------------------------------------------- Order payments
+
+    private function handleOrderPayment(
+        PaymentWebhookEvent $event,
+        OrderPayment $payment,
+    ): WebhookProcessingStatus {
+        $this->assertMetadataAgrees($event, 'order_payment_id', $payment->id);
+
+        if (! in_array($event->event_type, self::FULFILLING_EVENTS, true)) {
+            return $this->handleFailedOrderCharge($event, $payment);
+        }
+
+        // Verification happens inside, against the provider and against this
+        // attempt's own frozen amount. Nothing in the payload is trusted.
+        $result = $this->fulfilOrder->handle($payment);
 
         return $result['already_fulfilled']
             ? WebhookProcessingStatus::Duplicate
@@ -98,27 +141,21 @@ final class ProcessWebhookEvent
     }
 
     /**
-     * Events that are not a successful charge.
+     * Anything that is not a successful charge on an order payment.
      *
-     * A failed charge closes out a purchase that is still awaiting payment. A
-     * refund or chargeback is recorded but deliberately does not claw credits
-     * back: those credits may already have been spent, and reversing a spend
-     * is a business decision rather than something to infer from an event.
+     * A failed charge closes out an order that is still awaiting payment,
+     * which also releases any unit it was holding. A refund or chargeback is
+     * recorded but deliberately does nothing further: reversing a completed
+     * sale is a business decision, not something to infer from an event, and
+     * refunds are not built in this stage.
      */
-    private function handleNonFulfilling(PaymentWebhookEvent $event): WebhookProcessingStatus
-    {
-        $purchase = $this->resolvePurchase($event);
-
-        if ($purchase === null) {
-            return WebhookProcessingStatus::Ignored;
-        }
-
-        $event->credit_purchase_id = $purchase->id;
-
-        if ($event->event_type === 'charge.failed' && $purchase->isAwaitingPayment()) {
-            $this->transition->handle(
-                $purchase,
-                CreditPurchaseStatus::Failed,
+    private function handleFailedOrderCharge(
+        PaymentWebhookEvent $event,
+        OrderPayment $payment,
+    ): WebhookProcessingStatus {
+        if ($event->event_type === 'charge.failed' && $payment->order->isAwaitingPayment()) {
+            $this->orders->markPaymentFailed(
+                $payment->order,
                 'The payment provider reported the charge failed.',
             );
 
@@ -128,21 +165,56 @@ final class ProcessWebhookEvent
         Log::info('Webhook event recorded without action', [
             'event_id' => $event->id,
             'event_type' => $event->event_type,
-            'purchase_id' => $purchase->id,
-            'purchase_status' => $purchase->status->value,
+            'order_payment_id' => $payment->id,
+            'order_status' => $payment->order->status->value,
         ]);
 
         return WebhookProcessingStatus::Ignored;
     }
 
+    // ------------------------------------------------------ Credit purchases
+
+    private function handleCreditPurchase(
+        PaymentWebhookEvent $event,
+        CreditPurchase $purchase,
+    ): WebhookProcessingStatus {
+        if (! in_array($event->event_type, self::FULFILLING_EVENTS, true)) {
+            if ($event->event_type === 'charge.failed' && $purchase->isAwaitingPayment()) {
+                $this->transition->handle(
+                    $purchase,
+                    CreditPurchaseStatus::Failed,
+                    'The payment provider reported the charge failed.',
+                );
+
+                return WebhookProcessingStatus::Processed;
+            }
+
+            Log::info('Webhook event recorded without action', [
+                'event_id' => $event->id,
+                'event_type' => $event->event_type,
+                'purchase_id' => $purchase->id,
+                'purchase_status' => $purchase->status->value,
+            ]);
+
+            return WebhookProcessingStatus::Ignored;
+        }
+
+        $result = $this->fulfilCredits->handle($purchase);
+
+        return $result['already_fulfilled']
+            ? WebhookProcessingStatus::Duplicate
+            : WebhookProcessingStatus::Processed;
+    }
+
+    // ------------------------------------------------------------ Internals
+
     /**
-     * Find the purchase an event refers to.
+     * The provider's reference for this event.
      *
-     * By reference, which the provider echoes back from what we sent. The
-     * metadata id is checked only as a cross-reference: trusting it alone
-     * would let a crafted payload point an event at someone else's purchase.
+     * The provider echoes back what we sent it, so this is how an event is
+     * tied to something of ours.
      */
-    private function resolvePurchase(PaymentWebhookEvent $event): ?CreditPurchase
+    private function reference(PaymentWebhookEvent $event): ?string
     {
         $data = $event->payload['data'] ?? [];
 
@@ -152,24 +224,26 @@ final class ProcessWebhookEvent
 
         $reference = $data['reference'] ?? null;
 
-        if (! is_string($reference) || $reference === '') {
-            return null;
-        }
+        return is_string($reference) && $reference !== '' ? $reference : null;
+    }
 
-        $purchase = CreditPurchase::where('provider_reference', $reference)->first();
+    /**
+     * Cross-check the metadata against what the reference resolved to.
+     *
+     * The reference decides; the metadata is only ever a corroboration.
+     * Trusting the metadata alone would let a crafted payload point an event
+     * at somebody else's payment.
+     */
+    private function assertMetadataAgrees(PaymentWebhookEvent $event, string $key, int $expected): void
+    {
+        $data = $event->payload['data'] ?? [];
 
-        if ($purchase === null) {
-            return null;
-        }
+        $claimed = is_array($data) ? ($data['metadata'][$key] ?? null) : null;
 
-        $claimedId = $data['metadata']['credit_purchase_id'] ?? null;
-
-        if ($claimedId !== null && (int) $claimedId !== $purchase->id) {
+        if ($claimed !== null && (int) $claimed !== $expected) {
             throw PaymentVerificationFailed::because(
-                'The event metadata names a different purchase from the one its reference resolves to.'
+                "The event metadata names a different {$key} from the one its reference resolves to."
             );
         }
-
-        return $purchase;
     }
 }

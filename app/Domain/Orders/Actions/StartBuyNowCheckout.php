@@ -1,0 +1,256 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Domain\Orders\Actions;
+
+use App\Domain\Auction\Services\AuctionLifecycle;
+use App\Domain\Orders\Exceptions\InvalidCheckout;
+use App\Domain\Orders\Services\CheckoutPricer;
+use App\Domain\Orders\Services\OrderLifecycle;
+use App\Domain\Orders\ValueObjects\CheckoutPricing;
+use App\Enums\OrderSource;
+use App\Enums\OrderStatus;
+use App\Models\Auction;
+use App\Models\Order;
+use App\Models\OrderItem;
+use App\Models\OrderTransition;
+use App\Models\Product;
+use App\Models\User;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
+
+/**
+ * Open a checkout to buy a product outright.
+ *
+ * WHAT THE CUSTOMER GETS TO DECIDE: which product, or which auction. That is
+ * the whole of it. Every figure -- the price, the discount their consumed bid
+ * credits earn, delivery, tax, the total -- is computed here from server-side
+ * reads and frozen onto the order before the provider is ever contacted.
+ *
+ * OPENING A CHECKOUT DOES NOT END AN AUCTION. It creates an obligation to pay
+ * and nothing more. The auction runs on, other people keep bidding, and the
+ * standing highest bidder is still in the running. Only a verified payment
+ * ends it. Terminating here would let an abandoned checkout kill a live
+ * auction that other people were still competing in.
+ *
+ * THE RESERVATION, AND WHY ONLY SOMETIMES. A plain catalog purchase holds one
+ * unit aside while the customer pays, so it cannot be sold from under them --
+ * with an explicit deadline, after which the sweep gives it back. An
+ * auction-linked checkout holds nothing, because the auction reserved that
+ * unit when it was published and it is the same unit being bought. Reserving
+ * again would take two units off the shelf for one sale.
+ *
+ * The order is created before the provider is contacted, so a payment that
+ * succeeds at Paystack but fails on the way back to us still has a row to be
+ * reconciled against. The reverse order would lose the payment entirely.
+ */
+final class StartBuyNowCheckout
+{
+    public function __construct(
+        private readonly CheckoutPricer $pricer,
+        private readonly OrderLifecycle $orders,
+        private readonly AuctionLifecycle $auctions,
+    ) {}
+
+    /**
+     * @param  Auction|null  $auction  The auction being bought out of, when
+     *                                 this purchase would end one.
+     */
+    public function handle(User $buyer, Product $product, ?Auction $auction = null): Order
+    {
+        return DB::transaction(function () use ($buyer, $product, $auction): Order {
+            // Locked first when there is one, so the eligibility check and the
+            // discount are decided against state nobody else can change until
+            // this commits. Same order as everywhere else: auction, then
+            // product.
+            $lockedAuction = $auction === null ? null : $this->auctions->lock($auction);
+
+            $this->assertBuyable($product, $lockedAuction);
+            $this->assertNoOpenCheckout($buyer, $product, $lockedAuction);
+
+            $pricing = $this->pricer->forBuyNow($product, $buyer, $lockedAuction);
+
+            $order = $this->createOrder(
+                buyer: $buyer,
+                product: $product,
+                pricing: $pricing,
+                auction: $lockedAuction,
+                dueAt: $this->deadlineFor($lockedAuction),
+            );
+
+            // Only a purchase standing on its own holds stock. An auction
+            // already holds the unit this would buy.
+            if ($lockedAuction === null) {
+                $this->orders->reserveUnit($order, $buyer);
+            }
+
+            Log::info('Buy Now checkout opened', [
+                'operation' => 'checkout.buy_now',
+                'order_id' => $order->id,
+                'order_number' => $order->order_number,
+                'user_id' => $buyer->id,
+                'product_id' => $product->id,
+                'auction_id' => $lockedAuction?->id,
+                // Stated together so the log shows the two are different
+                // quantities: cedis off, and the credits that earned them.
+                'discount_minor' => $pricing->discount->minor,
+                'discount_credits' => $pricing->discountCredits,
+                'total_minor' => $pricing->total->minor,
+                'payment_due_at' => $order->payment_due_at?->toIso8601String(),
+            ]);
+
+            return $order->fresh();
+        });
+    }
+
+    /**
+     * Everything that must be true before a customer is asked for money.
+     */
+    private function assertBuyable(Product $product, ?Auction $auction): void
+    {
+        if ($auction !== null) {
+            if ($auction->product_id !== $product->id) {
+                throw InvalidCheckout::because('That auction is not for this product.');
+            }
+
+            if (! $auction->rules()->buyNowEnabled) {
+                throw InvalidCheckout::because('Buy Now is not available on this auction.');
+            }
+
+            if ($auction->endedByBuyNow()) {
+                throw InvalidCheckout::because('This product has already been bought outright.');
+            }
+
+            if (! $auction->status->acceptsBuyNow()) {
+                throw InvalidCheckout::because('This auction is not open.');
+            }
+
+            // The auction is holding the unit, so available stock is zero by
+            // design. What matters is that the unit still exists.
+            if ($product->stock_on_hand < 1) {
+                throw InvalidCheckout::notPurchasable($product->name);
+            }
+
+            return;
+        }
+
+        // A plain catalog purchase has to satisfy the catalog's own rules:
+        // active, and with something actually available to reserve.
+        if (! $product->isPurchasable()) {
+            throw InvalidCheckout::notPurchasable($product->name);
+        }
+    }
+
+    /**
+     * One open checkout per customer per thing.
+     *
+     * Without this a customer could open ten checkouts on the last unit and
+     * hold the whole stock hostage while paying for one of them.
+     */
+    private function assertNoOpenCheckout(User $buyer, Product $product, ?Auction $auction): void
+    {
+        $existing = Order::query()
+            ->where('user_id', $buyer->id)
+            ->where('source', OrderSource::BuyNow)
+            ->awaitingPayment()
+            ->when(
+                $auction === null,
+                fn ($q) => $q->whereNull('auction_id')
+                    ->whereHas('items', fn ($i) => $i->where('product_id', $product->id)),
+                fn ($q) => $q->where('auction_id', $auction->id),
+            )
+            ->first();
+
+        if ($existing !== null && ! $existing->hasExpired()) {
+            throw InvalidCheckout::alreadyOpen($existing->order_number);
+        }
+    }
+
+    /**
+     * When this checkout stops being payable.
+     *
+     * From the auction's own frozen deadline when there is one, so the terms a
+     * bidder saw are the terms that apply. Otherwise from a setting an
+     * administrator owns. Server time in both cases.
+     */
+    private function deadlineFor(?Auction $auction): Carbon
+    {
+        $minutes = $auction !== null
+            ? $auction->rules()->checkoutDeadlineMinutes
+            : (settings()->getInt('checkout_hold_minutes', 30) ?? 30);
+
+        return Carbon::now()->addMinutes(max(1, $minutes));
+    }
+
+    /**
+     * Write the order, its single line, and its opening history entry.
+     */
+    private function createOrder(
+        User $buyer,
+        Product $product,
+        CheckoutPricing $pricing,
+        ?Auction $auction,
+        Carbon $dueAt,
+    ): Order {
+        $order = new Order;
+
+        $order->order_number = $this->generateOrderNumber();
+        $order->user_id = $buyer->id;
+        $order->source = OrderSource::BuyNow;
+        $order->status = OrderStatus::PendingPayment;
+        $order->auction_id = $auction?->id;
+
+        $order->currency = $pricing->currency();
+        $order->subtotal_minor = $pricing->subtotal->minor;
+        $order->discount_minor = $pricing->discount->minor;
+        $order->delivery_minor = $pricing->delivery->minor;
+        $order->tax_minor = $pricing->tax->minor;
+        $order->total_minor = $pricing->total->minor;
+        $order->discount_credits = $pricing->discountCredits;
+        $order->pricing_snapshot = $pricing->toArray();
+
+        $order->payment_due_at = $dueAt;
+        $order->placed_at = Carbon::now();
+        $order->save();
+
+        $item = new OrderItem;
+        $item->order_id = $order->id;
+        $item->product_id = $product->id;
+        // Snapshots: this order must still describe itself when the product
+        // has been renamed, re-SKU'd or repriced.
+        $item->product_name_snapshot = $product->name;
+        $item->sku_snapshot = $product->sku;
+        $item->quantity = 1;
+        $item->unit_price_minor = $pricing->subtotal->minor;
+        $item->discount_minor = $pricing->discount->minor;
+        $item->line_total_minor = $pricing->goodsTotal()->minor;
+        $item->save();
+
+        OrderTransition::create([
+            'order_id' => $order->id,
+            'from_status' => null,
+            'to_status' => OrderStatus::PendingPayment,
+            'reason' => $auction === null
+                ? 'Buy Now checkout opened.'
+                : "Buy Now checkout opened on auction #{$auction->id}.",
+            'caused_by' => $buyer->id,
+        ]);
+
+        return $order;
+    }
+
+    /**
+     * A number that is unique, readable and unguessable.
+     *
+     * Random rather than sequential: an order number is quoted in emails and
+     * URLs, and a predictable one would let anyone enumerate other customers'
+     * orders.
+     */
+    private function generateOrderNumber(): string
+    {
+        return 'AIC-O-'.now()->format('Ymd').'-'.strtoupper(Str::random(10));
+    }
+}

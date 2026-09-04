@@ -7,6 +7,7 @@ namespace App\Domain\Auction\Actions;
 use App\Domain\Auction\Exceptions\BuyNowUnavailable;
 use App\Domain\Auction\Services\AuctionLifecycle;
 use App\Domain\Auction\Services\BuyNowPricer;
+use App\Domain\Auction\ValueObjects\BuyNowQuote;
 use App\Domain\Shared\Idempotency\IdempotencyGuard;
 use App\Domain\Shared\Money\Money;
 use App\Enums\AuctionClosureReason;
@@ -47,6 +48,14 @@ use Illuminate\Support\Facades\Log;
  *
  * LOCK ORDER: auction, then product. The same order as everywhere else in this
  * stage, which is what lets a Buy Now and a bid race safely.
+ *
+ * PRICED ONCE, WHEN THERE IS AN ORDER. A caller that already froze a price --
+ * a checkout does exactly that -- passes the quote it agreed with the customer,
+ * and that is what the payment is checked against. Re-pricing here would
+ * compare a payment made against yesterday's figure to today's, and refuse a
+ * payment that was entirely correct when it was made. Without an agreed quote
+ * the auction is priced fresh, which is the right behaviour for a caller that
+ * has not committed to a figure yet.
  */
 final class CompleteBuyNow
 {
@@ -61,9 +70,14 @@ final class CompleteBuyNow
     /**
      * @param  Money  $amountPaid  What the buyer actually paid, as confirmed
      *                             by the payment provider. Checked against the
-     *                             quote this auction would give them.
+     *                             price this purchase was agreed at.
      * @param  string  $idempotencyKey  One purchase, however many times its
      *                                  confirmation is delivered.
+     * @param  BuyNowQuote|null  $agreedQuote  The price frozen when the
+     *                                         checkout was created. Supplied
+     *                                         whenever an order exists, so the
+     *                                         payment is judged against what
+     *                                         the customer actually agreed to.
      * @return Auction The ended auction.
      */
     public function handle(
@@ -71,12 +85,13 @@ final class CompleteBuyNow
         User $buyer,
         Money $amountPaid,
         string $idempotencyKey,
+        ?BuyNowQuote $agreedQuote = null,
     ): Auction {
         $result = $this->idempotency->execute(
             operation: self::OPERATION,
             key: $idempotencyKey,
             userId: $buyer->id,
-            work: fn (): array => $this->terminate($auction, $buyer, $amountPaid),
+            work: fn (): array => $this->terminate($auction, $buyer, $amountPaid, $agreedQuote),
         );
 
         return Auction::findOrFail($result['auction_id']);
@@ -85,20 +100,29 @@ final class CompleteBuyNow
     /**
      * @return array{auction_id: int, buyer_id: int, payable_minor: int, discount_minor: int, eligible_credits: int}
      */
-    private function terminate(Auction $auction, User $buyer, Money $amountPaid): array
-    {
-        return DB::transaction(function () use ($auction, $buyer, $amountPaid): array {
+    private function terminate(
+        Auction $auction,
+        User $buyer,
+        Money $amountPaid,
+        ?BuyNowQuote $agreedQuote,
+    ): array {
+        return DB::transaction(function () use ($auction, $buyer, $amountPaid, $agreedQuote): array {
             // The serialization point. Everything below is decided against a
             // row nobody else can change until this commits.
             $locked = $this->lifecycle->lock($auction);
 
             $this->assertStillAvailable($locked);
 
-            // Priced against the locked auction and this buyer's own bids, not
-            // against whatever the checkout screen displayed. A bid placed
-            // since that screen was rendered legitimately increases the
-            // discount, and the buyer should get it.
-            $quote = $this->pricer->quote($locked, $buyer);
+            // The price this purchase was agreed at. When a checkout froze one
+            // it is authoritative: the customer paid that figure and it is
+            // what their payment must be judged against. Bidding more after
+            // opening a checkout does not retroactively change what was
+            // already agreed and paid.
+            //
+            // With no agreed price -- a caller with no order behind it -- the
+            // auction is priced here, against the locked row and this buyer's
+            // own bids rather than against anything a screen displayed.
+            $quote = $agreedQuote ?? $this->pricer->quote($locked, $buyer);
 
             if (! $amountPaid->equals($quote->payable)) {
                 throw BuyNowUnavailable::because(

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Console\Commands;
 
 use App\Domain\Auction\Actions\CloseAuction;
+use App\Domain\Auction\Actions\ForfeitAuction;
 use App\Domain\Auction\Services\AuctionClock;
 use App\Domain\Auction\Services\AuctionLifecycle;
 use App\Enums\AuctionStatus;
@@ -47,6 +48,7 @@ class RunAuctionClock extends Command
         AuctionLifecycle $lifecycle,
         AuctionClock $clock,
         CloseAuction $close,
+        ForfeitAuction $forfeit,
     ): int {
         $limit = max(1, (int) $this->option('limit'));
         $now = Carbon::now();
@@ -54,7 +56,7 @@ class RunAuctionClock extends Command
         $started = $this->startDueAuctions($lifecycle, $limit, $now);
         $closing = $this->markClosingAuctions($lifecycle, $clock, $limit, $now);
         $closed = $this->closeExpiredAuctions($close, $limit, $now);
-        $forfeited = $this->forfeitLapsedSettlements($lifecycle, $limit, $now);
+        $forfeited = $this->forfeitLapsedSettlements($forfeit, $limit, $now);
 
         $this->info(
             "Started {$started}, entered closing {$closing}, closed {$closed}, forfeited {$forfeited}."
@@ -145,9 +147,10 @@ class RunAuctionClock extends Command
      * The deadline comes from each auction's own frozen snapshot, so a ruleset
      * changed since cannot shorten or extend a deadline someone was already
      * given. This applies the existing forfeit policy and invents nothing
-     * beyond it -- in particular, no credits are returned.
+     * beyond it -- in particular, no credits are returned, and the winner's
+     * outstanding checkout is closed along with the auction.
      */
-    private function forfeitLapsedSettlements(AuctionLifecycle $lifecycle, int $limit, Carbon $now): int
+    private function forfeitLapsedSettlements(ForfeitAuction $forfeit, int $limit, Carbon $now): int
     {
         $count = 0;
 
@@ -159,8 +162,11 @@ class RunAuctionClock extends Command
             ->get();
 
         foreach ($lapsed as $auction) {
-            $this->attempt($auction, 'forfeit', function () use ($lifecycle, $auction, &$count): void {
-                $lifecycle->forfeit($auction);
+            $this->attempt($auction, 'forfeit', function () use ($forfeit, $auction, &$count): void {
+                // Through the action, not the lifecycle: forfeiting also has
+                // to close the winner's outstanding checkout, or they could
+                // pay for a unit that just went back on sale.
+                $forfeit->handle($auction);
                 $count++;
             });
         }

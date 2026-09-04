@@ -6,6 +6,7 @@ namespace App\Domain\Auction\Services;
 
 use App\Domain\Auction\Exceptions\InvalidAuctionTransition;
 use App\Domain\Catalog\Services\InventoryService;
+use App\Domain\Orders\Actions\FulfillOrderPayment;
 use App\Enums\AuctionClosureReason;
 use App\Enums\AuctionStatus;
 use App\Models\Auction;
@@ -228,15 +229,15 @@ class AuctionLifecycle
     /**
      * Complete a normal winner's settlement: the unit is sold to them.
      *
-     * NOTHING CALLS THIS YET. Taking the winner's settlement payment belongs
-     * to the settlement checkout stage, and this stage does not process
-     * payments. The transition and its inventory effect exist so that stage
-     * attaches to a guarded path rather than inventing one, and so the state
-     * machine is complete and testable now.
+     * Called by {@see FulfillOrderPayment} and by
+     * nothing else, after a payment has been verified with the provider
+     * server-to-server. Calling it without one would record a sale that did
+     * not happen.
      *
-     * It must only ever be called once a payment has been confirmed
-     * server-side. Calling it without one would record a sale that did not
-     * happen.
+     * The winner's bid credits are not involved. They were consumed when the
+     * bids were placed; what was paid is the auction's own settlement amount,
+     * in cedis, and this hands over the unit the auction has been holding
+     * since it was published.
      */
     public function settle(Auction $auction, ?User $actor = null): Auction
     {

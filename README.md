@@ -8,14 +8,21 @@ outright first, which ends the auction immediately.
 All monetary values are in Ghana Cedis (GH₵) and are stored as integer minor
 units (pesewas). Never as floating point.
 
-> **Development status — Auction rules corrected; engine not built.**
-> This repository currently contains the application foundation
-> (authentication, roles, application shell), the auction rules engine, the
-> credit and cash ledgers, Paystack credit purchases, and the product catalog
-> with an auditable inventory ledger. The auction engine, bidding, Buy Now
-> checkout, orders and delivery are built in later stages and are deliberately
-> absent — there is no `auctions` or `bids` table, credit *consumption* is not
-> wired to anything, and no checkout can take money for a product.
+> **Development status — Auction engine built; payments for products not.**
+> This repository contains the application foundation (authentication, roles,
+> application shell), the auction rules engine, the credit and cash ledgers,
+> Paystack credit purchases, the product catalog with an auditable inventory
+> ledger, and the auction engine: auctions, bids, the highest-bid winner rule,
+> the clock and its extensions, and the Buy Now termination path.
+>
+> What is deliberately absent: **taking money for a product**. Neither the
+> Buy Now checkout nor the winner's settlement checkout exists, so nothing in
+> the interface can complete a purchase. `CompleteBuyNow` and
+> `AuctionLifecycle::settle()` are written, tested and called by nothing —
+> they are the point a confirmed payment will attach to, and wiring a button
+> to either without a payment would be recording a sale that never happened.
+> Real-time delivery (Redis, Reverb, WebSockets), orders and delivery are also
+> later stages.
 
 ---
 
@@ -147,7 +154,7 @@ php artisan test --testsuite=Concurrency
 
 ```bash
 ./vendor/bin/pint --test     # code style check (drop --test to fix)
-./vendor/bin/phpstan analyse # static analysis, level 6
+./vendor/bin/phpstan analyse --memory-limit=512M # static analysis, level 6
 ```
 
 ---
@@ -223,15 +230,36 @@ give them back. Only credits a user actually consumed bidding *on that
 auction* count — not a wallet balance, not credits bought and never bid, not
 credits spent elsewhere.
 
-### Settlement is deliberately undecided
+### Settlement is a per-auction amount
 
-**What a normal auction winner pays has not been decided, and no amount is
-encoded anywhere.** The rules carry no settlement price, `toRules()` takes no
-price argument, and there is a test asserting no such field exists.
+**What a normal winner pays is the auction's own `settlement_amount_minor`**,
+in integer pesewas, chosen when the auction is created and frozen into its
+snapshot.
 
-The auction engine must not assume one, and must not reuse the product's Buy
-Now price as a settlement amount. Auction winner and Buy Now buyer are
-different roles.
+It is deliberately *not* a ruleset field. Two auctions on the same product may
+settle at GH₵50 and GH₵150, so the figure belongs to the auction rather than to
+shared configuration — putting it in the ruleset would recreate the
+`default_checkout_price_minor` column the correction stage removed, and would
+force a new ruleset version for every auction with different economics.
+
+It is also not derived from anything:
+
+```
+Product Buy Now price        GH₵5,500.00   what buying it outright costs
+Auction settlement amount    GH₵  100.00   what a normal winner pays
+Winning bid                         180    credits, consumed and gone
+```
+
+The winner owes the settlement amount plus applicable delivery and tax — not
+GH₵180, and not the GH₵5,500 the product sells for. `toRules()` still takes no
+price argument, and a test asserts no settlement key appears in the *rules*
+half of a snapshot.
+
+**Settlement amounts are meant to be low.** The platform intends bidders to
+acquire products at very low effective cost and treats participation and scale
+as the business model. Nothing in the code compares the settlement amount to
+the Buy Now price, warns that it is low, or raises it — there is no
+margin-protection mechanism, by design.
 
 ### Timing
 
@@ -605,6 +633,149 @@ second connection rather than assuming it does.
 
 ---
 
+## The auction engine
+
+An **auction** is one product offered under one frozen set of terms for a
+period. A **bid** is a number of credits one user committed to it.
+
+```
+auctions              the instance: product, frozen snapshot, clock, outcome
+bids                  append-only; each carries its own amount_credits
+auction_transitions   append-only lifecycle history
+```
+
+### The winner rule, and how it is decided
+
+The user holding the **highest valid credit bid** wins when an auction closes
+normally. `CloseAuction` resolves it from the bid records at the moment of
+closing — never from the cached projection, and never from anything a browser
+sent.
+
+Equal highest bids are broken by the **earliest bid at that amount**, ordered
+by a per-auction `sequence` allocated under the auction row lock rather than by
+a timestamp, so two bids in the same millisecond are still ordered. This does
+not change the rule: highest still wins, the tie-break only makes equal values
+name one person.
+
+Every snapshot records `winner_rule` explicitly, so the engine reads it from
+the auction rather than inferring it from the code of the day.
+
+### The lifecycle
+
+```
+Draft → Scheduled → Live → Closing → PendingSettlement → Settled
+```
+
+`Closing` is optional: an auction with no closing window goes from Live
+straight to PendingSettlement, because the window exists only to make late-bid
+extension possible. Terminal and exception states are `Settled`, `Unsold`
+(closed with no bids at all), `Cancelled`, `Forfeited` and `Relisted`.
+
+Every move is checked against `AuctionStatus::allowedTransitions()`, applied by
+`AuctionLifecycle` inside one transaction, and recorded in
+`auction_transitions` with a reason. Nothing else may write `auctions.status`.
+
+**Inventory follows the lifecycle**, which is how one item cannot be sold
+twice without a second inventory system:
+
+| Event | Stock movement |
+| --- | --- |
+| Publishing (schedule or start) | reserves one unit |
+| Buy Now completes, or a winner settles | turns that reservation into a sale |
+| Cancelled, unsold or forfeited | releases it |
+
+Several auctions may run on one product while stock covers them: each publish
+reserves a unit of its own and is refused when none is available.
+
+### The clock
+
+`starts_at` and `ends_at` are the only authority on when an auction runs. No
+browser countdown, JavaScript timer, session or process lifetime affects it.
+The interface displays a number the server computed.
+
+`php artisan auctions:tick` starts, marks closing, closes and forfeits
+auctions whose time has come. It is scheduled every minute and is idempotent:
+each step re-reads its auction under a row lock and returns unchanged if
+another run got there first. A missed run delays a closure; it never changes
+the outcome, because the winner is resolved from bid records that do not move
+while the sweep is late.
+
+Late-bid extension is anti-sniping and is **independent of who wins** —
+extending gives everyone else a chance to bid higher. Both ruleset limits
+apply, and the auction can never run longer than
+`AuctionRules::maximumPossibleDurationSeconds()`.
+
+### Placing a bid
+
+`PlaceBid` holds this order, and nothing may reorder it:
+
+1. **The idempotency guard claims the key.** A retried request replays the
+   first result instead of consuming the credits again.
+2. **The auction row is locked.** Status, clock, standing highest bid and the
+   next sequence number are all read from state nobody else can change.
+3. **Validation runs against that locked state** — never against anything the
+   browser sent.
+4. **The credits are consumed**, which locks the wallet and then its lots in
+   id order, continuing the ledger's own order.
+5. **The bid is written**, referencing that consumption.
+6. **The projection is rebuilt** from the bid records, and a late bid may
+   extend the clock.
+
+A bid is never recorded without the credit consumption that paid for it, and
+credits are never consumed without the bid they paid for: both happen in one
+transaction, and `bids.credit_transaction_id` is NOT NULL. A refusal at any
+point rolls everything back, so a rejected bid leaves no row and moves no
+credits.
+
+### The lock order
+
+Always this sequence, or concurrent operations will deadlock:
+
+```
+1. the auction row      SELECT ... FOR UPDATE
+2. the product row      (inside InventoryService)
+3. the wallet row       (inside CreditLedgerService)
+4. that wallet's lots   ORDER BY id
+```
+
+This is what makes the races safe. Two Buy Nows, a bid against a Buy Now, and
+two bids all serialize on step 1: the first through commits, and the second
+blocks on that lock, then reads the row the first left behind and is refused.
+There is a concurrency suite proving each of those against real MySQL locks.
+
+### The highest-bid projection
+
+`auctions.highest_bid_id`, `highest_bid_credits` and `bid_count` cache what the
+bid query returns, so a listing page need not aggregate the bid table per row.
+They are a cache and never a source of truth:
+
+- only `HighestBidResolver` may write them; the model guard rejects anything
+  else, exactly as the wallet and stock guards do,
+- `rebuild()` recomputes them from the bid records alone,
+- `verify()` **reports** a discrepancy and never repairs one — the admin screen
+  shows it and says to report it. Overwriting stored state is a separate act
+  from noticing it is wrong.
+
+### The audit chain
+
+```
+Auction → Bid → CreditTransaction → CreditLotConsumption → CreditLot
+```
+
+This is what answers *exactly which credits did this user spend bidding on this
+auction*, from historical records rather than from a mutable balance. The same
+chain is what the Buy Now discount is computed from.
+
+### What is frozen
+
+An auction's `rules_snapshot`, `snapshot_version`, `settlement_amount_minor`,
+`product_id` and `currency` cannot change once it leaves Draft. The model guard
+refuses it and a database trigger refuses it again, so a console command or a
+hand-run statement cannot rewrite the terms people are bidding under. There is
+deliberately no admin form for editing a live auction.
+
+---
+
 ## Prices, credits and bids
 
 Three separate things, with no arithmetic relationship in any code that exists
@@ -620,16 +791,29 @@ Buy Now price          GHS a product costs outright. Never credits.
 product at GH 5,500 has nothing to do with either. The `products` table has no
 column referring to credits, wallets, bids or packages.
 
-> **The one future exception, not implemented anywhere yet.** One credit
-> consumed bidding on a product's auction will eventually give GH 1 off that
-> product's Buy Now price. Spend 150 credits, pay GH 5,350 instead of
-> GH 5,500. The credits stay consumed either way. That calculation belongs to
-> the Auction/Buy Now engine and exists nowhere in this codebase.
+> **The one exception, and it is now implemented.** One credit consumed
+> bidding on an auction gives GH₵1 off *that auction's* Buy Now price. Spend
+> 150 credits, pay GH₵5,350 instead of GH₵5,500. `BuyNowPricer` computes it
+> from the bid records, at the rate frozen in the auction's snapshot.
+>
+> Which credits qualify is narrow on purpose: credits this user consumed on
+> accepted bids **on this auction**. A wallet balance does not count, nor
+> credits bought and never bid, nor promotional credits never bid, nor credits
+> spent on a different auction. The figure comes from bids rather than from a
+> balance because a balance moves with everything else the user does.
+>
+> The credits stay consumed. This is a discount on a separate purchase, not a
+> refund, a withdrawal, or a conversion.
 
-> **Buy Now will eventually end a live auction.** A successful Buy Now
-> purchase terminates the product's active auction atomically: the buyer wins,
-> the standing highest bidder does not, and later Buy Now attempts fail. That
-> behaviour belongs to the Auction/Buy Now engine and is not implemented here.
+> **A completed Buy Now ends a live auction.** `CompleteBuyNow` locks the
+> auction row, sells the unit the auction was holding in reserve, and records
+> the ending as `buy_now` — the buyer goes in `buy_now_user_id`, the winner
+> columns stay null, and a CHECK constraint refuses any row claiming both. The
+> standing highest bidder does not win, and their credits stay consumed.
+>
+> A click, a checkout screen or a payment attempt does **not** end an auction.
+> Only a server-confirmed payment reaches that action, and the payment itself
+> belongs to a later stage — so nothing calls it yet.
 
 ---
 

@@ -2,10 +2,19 @@
 
 declare(strict_types=1);
 
+use App\Domain\Auction\Actions\CreateAuction;
+use App\Domain\Auction\Actions\PlaceBid;
+use App\Domain\Auction\Services\AuctionLifecycle;
+use App\Domain\Catalog\Services\InventoryService;
 use App\Domain\Credit\Services\CreditLedgerService;
+use App\Domain\Shared\Money\Money;
 use App\Enums\CreditTransactionType;
+use App\Models\Auction;
+use App\Models\AuctionRuleset;
+use App\Models\Bid;
 use App\Models\CreditTransaction;
 use App\Models\CreditWallet;
+use App\Models\Product;
 use App\Models\User;
 use Database\Seeders\PermissionSeeder;
 use Database\Seeders\RoleSeeder;
@@ -14,6 +23,7 @@ use Illuminate\Foundation\Testing\DatabaseTruncation;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 /*
@@ -183,5 +193,72 @@ function grantCredits(
         type: $type,
         amount: $amount,
         expiresAt: $expiresAt,
+    );
+}
+
+/**
+ * An auction that is genuinely open, created and published the way the
+ * application does it.
+ *
+ * Not a factory state: publishing reserves a unit of stock through the
+ * inventory service, and an auction that skipped that would be a state the
+ * engine never produces. Anything about Buy Now, settlement or the races
+ * between them needs the reservation to be real.
+ */
+function liveAuction(
+    ?Product $product = null,
+    ?AuctionRuleset $ruleset = null,
+    int $settlementMinor = 10_000,
+    int $stock = 1,
+): Auction {
+    seedPermissions();
+
+    $product ??= Product::factory()->active()->create();
+    // No throttle by default: the helper's job is a plain open auction, and a
+    // minimum interval between bids is a specific rule that the tests about it
+    // switch on themselves.
+    $ruleset ??= AuctionRuleset::factory()->active()->withoutThrottle()->create();
+
+    if ($product->inventoryTransactions()->doesntExist()) {
+        app(InventoryService::class)->initialStock($product, $stock);
+    }
+
+    $auction = app(CreateAuction::class)->handle(
+        product: $product->fresh(),
+        ruleset: $ruleset,
+        settlementAmount: Money::fromMinor($settlementMinor),
+    );
+
+    return app(AuctionLifecycle::class)->start($auction);
+}
+
+/**
+ * A customer with credits, ready to bid.
+ */
+function bidder(int $credits = 1_000): User
+{
+    $user = userWithRole('customer');
+
+    if ($credits > 0) {
+        grantCredits($user, $credits);
+    }
+
+    return $user;
+}
+
+/**
+ * Place a bid the way the application does, credits and all.
+ *
+ * Every test goes through this rather than inserting bid rows, because a bid
+ * without its credit consumption is a state the engine cannot produce and a
+ * test built on one would prove nothing.
+ */
+function placeBid(Auction $auction, User $user, int $amountCredits, ?string $key = null): Bid
+{
+    return app(PlaceBid::class)->handle(
+        auction: $auction->fresh(),
+        user: $user,
+        amountCredits: $amountCredits,
+        idempotencyKey: $key ?? ('bid-'.Str::uuid()->toString()),
     );
 }

@@ -1,0 +1,187 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Domain\Auction\Actions;
+
+use App\Domain\Auction\Services\AuctionClock;
+use App\Domain\Auction\Services\AuctionLifecycle;
+use App\Domain\Auction\Services\BidValidator;
+use App\Domain\Auction\Services\HighestBidResolver;
+use App\Domain\Credit\Services\CreditLedgerService;
+use App\Domain\Shared\Idempotency\IdempotencyGuard;
+use App\Enums\BidStatus;
+use App\Enums\CreditTransactionType;
+use App\Models\Auction;
+use App\Models\Bid;
+use App\Models\User;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+
+/**
+ * Place one bid: consume the credits, record the bid, update the standing.
+ *
+ * THE INVARIANT THIS EXISTS TO HOLD. A bid is never recorded without the
+ * credit consumption that paid for it, and credits are never consumed without
+ * the bid they paid for. Both happen in one transaction, and the bid row
+ * carries a NOT NULL foreign key to the credit transaction, so neither half
+ * can survive alone. If anything fails -- validation, the ledger, the insert
+ * -- everything rolls back and nothing happened.
+ *
+ * VARIABLE AMOUNTS. The bidder chooses how many credits to commit. Exactly
+ * that many are consumed: a bid of 150 consumes 150, not one. There is no cost
+ * per bid action anywhere in this path.
+ *
+ * PERMANENTLY CONSUMED. Nothing here or anywhere else gives them back. A
+ * bidder who is overtaken keeps no claim on the credits they spent, and
+ * neither does the winner. The one thing consumed credits earn is a reduction
+ * of this auction's Buy Now price.
+ *
+ * ORDER OF OPERATIONS, and why:
+ *
+ *   1. The idempotency guard claims the key. A retried request -- a dropped
+ *      connection, a double tap, a queued job running twice -- replays the
+ *      first result instead of consuming the credits a second time.
+ *
+ *   2. The auction row is locked. Every decision below is made against state
+ *      nobody else can change until this commits: the status, the clock, the
+ *      standing highest bid, and the next sequence number.
+ *
+ *   3. Validation runs against that locked state, never against anything the
+ *      browser sent.
+ *
+ *   4. The credits are consumed, which locks the wallet and then its lots in
+ *      id order -- continuing the lock order the ledger established.
+ *
+ *   5. The bid is written, referencing that consumption.
+ *
+ *   6. The projection is rebuilt from the bid records, and a late bid may
+ *      extend the clock.
+ *
+ * LOCK ORDER: auction, then wallet, then credit lots. The same order
+ * everywhere in this stage, so concurrent bids queue rather than deadlock.
+ */
+final class PlaceBid
+{
+    public const OPERATION = 'auction.bid';
+
+    public function __construct(
+        private readonly IdempotencyGuard $idempotency,
+        private readonly BidValidator $validator,
+        private readonly CreditLedgerService $credits,
+        private readonly HighestBidResolver $bids,
+        private readonly AuctionClock $clock,
+        private readonly AuctionLifecycle $lifecycle,
+    ) {}
+
+    /**
+     * @param  int  $amountCredits  Credits the bidder chose to commit.
+     * @param  string  $idempotencyKey  One logical bid, however many times the
+     *                                  request is delivered.
+     */
+    public function handle(
+        Auction $auction,
+        User $user,
+        int $amountCredits,
+        string $idempotencyKey,
+    ): Bid {
+        $result = $this->idempotency->execute(
+            operation: self::OPERATION,
+            key: $idempotencyKey,
+            userId: $user->id,
+            work: fn (): array => $this->record($auction, $user, $amountCredits, $idempotencyKey),
+        );
+
+        // Re-read rather than returning a cached instance: on a replay there
+        // is no in-memory bid to return, and on a fresh run the projection has
+        // moved on since the row was written.
+        return Bid::findOrFail($result['bid_id']);
+    }
+
+    /**
+     * @return array{bid_id: int, auction_id: int, amount_credits: int, sequence: int, credit_transaction_id: int, extended_seconds: int}
+     */
+    private function record(Auction $auction, User $user, int $amountCredits, string $idempotencyKey): array
+    {
+        return DB::transaction(function () use ($auction, $user, $amountCredits, $idempotencyKey): array {
+            $now = Carbon::now();
+
+            // Step 1 of the lock order. Everything below reads state that is
+            // now frozen against other bidders and against a Buy Now.
+            $locked = $this->lifecycle->lock($auction);
+
+            // Against the locked row, not against what the page displayed.
+            $this->validator->assertValid($locked, $user, $amountCredits, $now);
+
+            // Decided before the bid lands, from the clock as it stands.
+            $extension = $this->clock->extensionFor($locked, $now);
+
+            $sequence = $this->bids->nextSequence($locked);
+
+            // Steps 2 and 3 of the lock order, inside the ledger: the wallet,
+            // then its lots by id. The reference is the auction, so an auditor
+            // reading the credit ledger alone can see what the credits went to.
+            $transaction = $this->credits->consumeCredits(
+                wallet: $this->credits->walletFor($user),
+                amount: $amountCredits,
+                type: CreditTransactionType::BidDebit,
+                reference: $locked,
+                description: "Bid of {$amountCredits} credits on auction #{$locked->id}.",
+                metadata: [
+                    'auction_id' => $locked->id,
+                    'product_id' => $locked->product_id,
+                    'sequence' => $sequence,
+                ],
+                actor: $user,
+                idempotencyKey: $idempotencyKey.':credits',
+            );
+
+            // Written only now, with the credits provably gone. The NOT NULL
+            // foreign key means a bid cannot exist without this row.
+            $bid = new Bid;
+            $bid->auction_id = $locked->id;
+            $bid->user_id = $user->id;
+            $bid->amount_credits = $amountCredits;
+            $bid->sequence = $sequence;
+            $bid->status = BidStatus::Accepted;
+            $bid->credit_transaction_id = $transaction->id;
+            $bid->idempotency_key = $idempotencyKey;
+            $bid->created_at = $now;
+            $bid->save();
+
+            // Recomputed from the bid records rather than compared against the
+            // previous cached value, so the projection is right even if it was
+            // wrong before this bid.
+            $this->bids->rebuild($locked);
+
+            // A late bid buys everyone else more time. It does not buy the
+            // bidder the auction: the winner is still the highest valid credit
+            // bid whenever the clock finally stops.
+            if ($extension > 0) {
+                $this->lifecycle->applyExtension($locked, $extension);
+            }
+
+            Log::info('Bid accepted', [
+                'operation' => 'auction.bid.accepted',
+                'auction_id' => $locked->id,
+                'bid_id' => $bid->id,
+                'user_id' => $user->id,
+                'amount_credits' => $amountCredits,
+                'sequence' => $sequence,
+                'credit_transaction_id' => $transaction->id,
+                'highest_bid_credits' => $locked->highest_bid_credits,
+                'extended_seconds' => $extension,
+            ]);
+
+            return [
+                'bid_id' => $bid->id,
+                'auction_id' => $locked->id,
+                'amount_credits' => $amountCredits,
+                'sequence' => $sequence,
+                'credit_transaction_id' => $transaction->id,
+                'extended_seconds' => $extension,
+            ];
+        });
+    }
+}

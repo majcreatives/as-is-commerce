@@ -103,6 +103,18 @@ class AuctionRulesetFactory extends Factory
         ]);
     }
 
+    /**
+     * No minimum interval between one bidder's successive bids.
+     *
+     * The default carries a one-second throttle, which is realistic but makes
+     * any test that places two bids from the same person in quick succession
+     * fail for a reason it was not testing.
+     */
+    public function withoutThrottle(): static
+    {
+        return $this->state(fn (array $attributes): array => ['minimum_bid_interval_ms' => 0]);
+    }
+
     public function withoutExtensions(): static
     {
         return $this->state(fn (array $attributes): array => [

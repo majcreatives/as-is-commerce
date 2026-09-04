@@ -8,7 +8,7 @@ outright first, which ends the auction immediately.
 All monetary values are in Ghana Cedis (GH₵) and are stored as integer minor
 units (pesewas). Never as floating point.
 
-> **Development status — a product can now be bought, paid for and owned.**
+> **Development status — auctions run themselves, end to end.**
 > This repository contains the application foundation (authentication, roles,
 > application shell), the auction rules engine, the credit and cash ledgers,
 > Paystack credit purchases, the product catalog with an auditable inventory
@@ -16,10 +16,13 @@ units (pesewas). Never as floating point.
 > payments for products, verified idempotent fulfilment, and the inventory and
 > auction completion that follows.
 >
-> Both acquisition paths are complete end to end. A customer can buy a product
-> outright — ending its auction if it had one — or win an auction and settle
-> it, and in both cases the product changes hands only after a payment this
-> platform has verified with Paystack itself.
+> Both acquisition paths are complete end to end and run without anybody
+> watching. Scheduled auctions open themselves, close on their own clock, hand
+> the winner a settlement checkout at the moment they win, and forfeit it if
+> the deadline lapses. A customer can buy a product outright — ending its
+> auction if it had one — or win an auction and settle it, and in both cases
+> the product changes hands only after a payment this platform has verified
+> with Paystack itself.
 >
 > What is deliberately absent: refunds, disputes, delivery and courier
 > integration, tracking, notifications, a tax engine, and real-time delivery
@@ -776,6 +779,101 @@ An auction's `rules_snapshot`, `snapshot_version`, `settlement_amount_minor`,
 refuses it and a database trigger refuses it again, so a console command or a
 hand-run statement cannot rewrite the terms people are bidding under. There is
 deliberately no admin form for editing a live auction.
+
+---
+
+## Running auctions
+
+Everything below happens without a browser open. Two scheduled commands do the
+work, and both are safe to run repeatedly.
+
+```bash
+php artisan auctions:tick              # start, mark closing, close, forfeit
+php artisan orders:expire-checkouts    # release stock held by abandoned checkouts
+```
+
+Both run every minute under `withoutOverlapping()`. Missing a run delays an
+outcome; it never changes one, because every decision is re-derived from
+persisted UTC timestamps and the bid records when the sweep finally runs.
+
+### The operational path
+
+| Step | What happens |
+| --- | --- |
+| Scheduled → Live | the sweep opens auctions whose start time arrived; the unit was already reserved at scheduling |
+| Live → Closing | informational, once inside the closing window; bidding is unchanged |
+| Closing → PendingSettlement | the highest valid credit bid wins, and **the winner's settlement checkout is opened there and then** |
+| PendingSettlement → Settled | a verified payment sells the unit the auction was holding |
+| PendingSettlement → Forfeited | the deadline lapsed; the checkout is cancelled and the unit goes back on sale |
+| Live/Closing → Unsold | nobody bid; the unit is released |
+
+### The winner does not have to ask
+
+Closing opens the settlement checkout, through `SettlementHandoff` — an
+interface in the auction domain implemented by the orders domain, because the
+checkout layer already depends on auctions and a direct call back would tie
+them together in both directions.
+
+The deadline starts running at closure. An obligation that only existed once
+the winner happened to visit the page would be one they were already late for.
+
+If the handoff fails, **the closure still stands**. The highest bid won and the
+credits are consumed; an administrator seeing a `PendingSettlement` auction
+with no order can act on it, which is far better than an auction that failed to
+close because its paperwork did.
+
+### Every way an auction stops closes the winner's checkout with it
+
+Forfeiting and cancelling both go through actions — `ForfeitAuction`,
+`CancelAuction` — that close the outstanding settlement order in the same
+transaction as the auction transition. Doing only the transition would release
+the unit while leaving a payable order pointing at it, and the winner could pay
+for something the platform had just put back on sale.
+
+A settlement that was already **paid** is never touched: that is a completed
+transaction, and `Settled` is terminal.
+
+### What a losing bidder is told
+
+Plainly: that they did not win, what the winning bid was, and that their
+credits remain consumed. There is deliberately no refund control anywhere on
+that page, because there is no refund — bid credits are spent when the bid is
+accepted.
+
+An auction ended by Buy Now shows **Sold via Buy Now** and states that there is
+no auction winner. The leading bidder is told what happened to their credits
+rather than left to work it out.
+
+### Payment conflicts
+
+A payment that succeeds against something that can no longer be delivered is
+**recorded, never discarded**. The attempt is marked successful, the order
+carries a `fulfilment_blocked_reason`, and it appears in the admin attention
+queue. No silent cancellation and no automatic refund: what is owed is a
+decision for a person, and refunds are a later stage.
+
+This covers three cases:
+
+- another legitimate transaction took the unit first,
+- the checkout expired while the customer was paying,
+- the auction was forfeited before the settlement payment landed.
+
+The second and third used to raise an exception, which returned a 5xx and had
+Paystack retrying the same delivery forever against an order that could never
+accept it. Recording the fact and acknowledging the webhook is both truthful
+and terminal.
+
+### Concurrency guarantees
+
+One physical unit is acquired once, by one person, whichever paths competed for
+it. Decided by database locks in a fixed order — order, auction, product,
+wallet — and never by checkout creation time, page load time, button click
+time, browser timestamp, or who was leading.
+
+The concurrency suites prove each race against real MySQL locks on a second
+connection: settlement against settlement, settlement against Buy Now, Buy Now
+against Buy Now, payment against closure, two workers fulfilling one paid
+order, duplicate sweeps, and one credit balance funding simultaneous bids.
 
 ---
 

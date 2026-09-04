@@ -5,16 +5,19 @@ This file records the rules that are not obvious from the code.
 
 ## Current stage
 
-**A product can be bought, paid for and owned.** Foundation (auth, roles,
+**Auctions run themselves, end to end.** Foundation (auth, roles,
 shell), the credit and cash ledgers, Paystack credit purchases, the product
 catalog with an auditable inventory ledger, the auction rules engine, the
 auction engine, and checkout: `orders`, `order_items`, `order_payments`,
 Paystack payments for products, verified idempotent fulfilment, and the
 inventory and auction completion that follows.
 
-Both acquisition paths run end to end. A customer buys outright — ending the
-auction if there was one — or wins and settles, and in both cases the product
-changes hands only after a payment verified with Paystack.
+Both acquisition paths run end to end, without anybody watching. Scheduled
+auctions open themselves, close on their own clock, hand the winner a
+settlement checkout at the moment they win, and forfeit it if the deadline
+lapses. A customer buys outright — ending the auction if there was one — or
+wins and settles, and in both cases the product changes hands only after a
+payment verified with Paystack.
 
 What must not be built ahead of its stage: refunds, disputes, delivery and
 courier integration, tracking, notifications, a tax engine, referrals,
@@ -555,6 +558,60 @@ auction, because there is no code path that would let one succeed.
 
 They are separate lifecycles. An auction closing does not archive a product,
 and a product going Active does not open an auction.
+
+## Running auctions
+
+Two scheduled commands do all the operational work, and both are idempotent:
+`auctions:tick` and `orders:expire-checkouts`. Nothing about an auction's
+correctness may depend on a browser, a page being open, or a realtime channel.
+
+### Closing hands the winner a checkout
+
+`CloseAuction` opens the settlement order in the same transaction, through
+`SettlementHandoff`.
+
+That interface exists for a reason: the orders domain already depends on the
+auction domain, so a direct call back would couple them both ways. **Do not
+replace it with a direct call to `StartSettlementCheckout`.**
+
+A handoff failure must never reopen a closed auction. The highest bid won and
+the credits are consumed; closing stands, and the missing order is an
+administrative problem rather than a reason to un-close.
+
+### Stopping an auction closes its settlement order too
+
+Use `ForfeitAuction` and `CancelAuction`, never `AuctionLifecycle::forfeit()`
+or `->cancel()` directly. The lifecycle methods are the bare state transition;
+the actions also close the winner's outstanding checkout.
+
+Skipping them releases the unit while leaving a payable order pointing at it,
+and the winner could pay for stock that has already gone back on sale.
+
+A **paid** settlement is never touched. `Settled` is terminal.
+
+### A verified payment is always recorded
+
+Even when nothing can be delivered against it. Mark the attempt successful, set
+`fulfilment_blocked_reason`, let it reach the admin queue. Never throw.
+
+Throwing returns a 5xx to Paystack, which retries the same delivery forever
+against an order that can never accept it. That was a real defect, and the fix
+is to record the fact and acknowledge the webhook.
+
+Three cases reach it: another transaction took the unit, the checkout expired
+mid-payment, or the auction forfeited before the payment landed.
+
+### Never decide an acquisition by anything but a lock
+
+Not checkout creation time, page load time, click time, browser timestamp, or
+who was leading. The database decides, in the fixed lock order: order, auction,
+product, wallet.
+
+### The losing-bidder page has no refund control
+
+Because there is no refund. Bid credits are spent when the bid is accepted, for
+losers, for the winner, and when a Buy Now ends the auction. Do not add a
+button, a balance adjustment, or wording that implies otherwise.
 
 ## Checkout, orders and payment
 

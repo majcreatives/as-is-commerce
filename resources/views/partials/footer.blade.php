@@ -8,6 +8,7 @@
         </div>
 
         <nav class="flex flex-wrap gap-x-5 gap-y-2 text-sm" aria-label="Footer">
+            <a href="{{ route('products.index') }}" class="text-slate-600 hover:text-slate-900">Shop</a>
             <a href="{{ route('auctions.index') }}" class="text-slate-600 hover:text-slate-900">Auctions</a>
             <a href="{{ route('how-it-works') }}" class="text-slate-600 hover:text-slate-900">How It Works</a>
         </nav>

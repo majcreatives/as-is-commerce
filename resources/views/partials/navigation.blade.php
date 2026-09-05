@@ -7,7 +7,7 @@
 
             <nav class="hidden items-center gap-1 md:flex" aria-label="Primary">
                 <x-nav-link href="{{ route('home') }}" :active="request()->routeIs('home')">Home</x-nav-link>
-                <x-nav-link href="{{ route('products.index') }}" :active="request()->routeIs('products.*')">Products</x-nav-link>
+                <x-nav-link href="{{ route('products.index') }}" :active="request()->routeIs('products.*')">Shop</x-nav-link>
                 <x-nav-link href="{{ route('auctions.index') }}" :active="request()->routeIs('auctions.*')">Auctions</x-nav-link>
                 <x-nav-link href="{{ route('how-it-works') }}" :active="request()->routeIs('how-it-works')">How It Works</x-nav-link>
 
@@ -68,7 +68,7 @@
     <div id="mobile-nav" x-show="open" x-cloak class="border-t border-slate-200 bg-white md:hidden">
         <x-container class="space-y-1 py-3">
             <x-nav-link href="{{ route('home') }}" class="block" :active="request()->routeIs('home')">Home</x-nav-link>
-            <x-nav-link href="{{ route('products.index') }}" class="block" :active="request()->routeIs('products.*')">Products</x-nav-link>
+            <x-nav-link href="{{ route('products.index') }}" class="block" :active="request()->routeIs('products.*')">Shop</x-nav-link>
             <x-nav-link href="{{ route('auctions.index') }}" class="block" :active="request()->routeIs('auctions.*')">Auctions</x-nav-link>
             <x-nav-link href="{{ route('how-it-works') }}" class="block" :active="request()->routeIs('how-it-works')">How It Works</x-nav-link>
 

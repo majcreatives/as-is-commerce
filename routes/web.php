@@ -3,11 +3,11 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\Auth\LogoutController;
-use App\Http\Controllers\Catalog\ProductDetailController;
 use App\Http\Controllers\HealthController;
 use App\Http\Controllers\Orders\CheckoutCallbackController;
 use App\Http\Controllers\Payments\PaystackCallbackController;
 use App\Http\Controllers\Payments\PaystackWebhookController;
+use App\Livewire\Account\Dashboard;
 use App\Livewire\Admin\Auctions\AuctionDetail as AdminAuctionDetail;
 use App\Livewire\Admin\Auctions\AuctionManager;
 use App\Livewire\Admin\Catalog\InventoryManager;
@@ -31,11 +31,13 @@ use App\Livewire\Auctions\AuctionRoom;
 use App\Livewire\Auth\Login;
 use App\Livewire\Auth\Register;
 use App\Livewire\Catalog\ProductCatalog;
+use App\Livewire\Catalog\ProductDetail;
 use App\Livewire\Checkout\CheckoutPage;
 use App\Livewire\Credits\CreditPackages;
 use App\Livewire\Credits\PurchaseHistory;
 use App\Livewire\Delivery\AddressBookPage;
 use App\Livewire\Delivery\OrderTracking;
+use App\Livewire\Marketplace\Home;
 use App\Livewire\Notifications\NotificationCentre;
 use App\Livewire\Orders\OrderDetail;
 use App\Livewire\Orders\OrderIndex;
@@ -71,7 +73,7 @@ Route::post('/webhooks/paystack', PaystackWebhookController::class)
 |--------------------------------------------------------------------------
 */
 
-Route::view('/', 'pages.home')->name('home');
+Route::get('/', Home::class)->name('home');
 // Auctions. Both routes resolve only publicly visible auctions, so a draft
 // 404s rather than existing at a guessable URL.
 Route::get('/auctions', AuctionIndex::class)->name('auctions.index');
@@ -81,7 +83,7 @@ Route::view('/how-it-works', 'pages.how-it-works')->name('how-it-works');
 // The catalog. Both routes resolve only publicly visible products, so a
 // draft or archived listing 404s rather than existing at a guessable URL.
 Route::get('/products', ProductCatalog::class)->name('products.index');
-Route::get('/products/{slug}', ProductDetailController::class)->name('products.show');
+Route::get('/products/{slug}', ProductDetail::class)->name('products.show');
 
 /*
 |--------------------------------------------------------------------------
@@ -101,7 +103,7 @@ Route::middleware('guest')->group(function (): void {
 */
 
 Route::middleware('auth')->group(function (): void {
-    Route::view('/dashboard', 'pages.dashboard')->name('dashboard');
+    Route::get('/dashboard', Dashboard::class)->name('dashboard');
     Route::view('/profile', 'pages.profile')->name('profile.edit');
     Route::post('/logout', LogoutController::class)->name('logout');
 

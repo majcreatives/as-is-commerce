@@ -6,6 +6,7 @@ namespace App\Domain\Payments\Contracts;
 
 use App\Domain\Payments\Exceptions\PaymentGatewayError;
 use App\Domain\Payments\ValueObjects\InitializedTransaction;
+use App\Domain\Payments\ValueObjects\ProviderRefund;
 use App\Domain\Payments\ValueObjects\VerifiedTransaction;
 use App\Domain\Shared\Money\Money;
 use App\Models\User;
@@ -45,6 +46,36 @@ interface PaymentGateway
      * @throws PaymentGatewayError
      */
     public function verifyTransaction(string $reference): VerifiedTransaction;
+
+    /**
+     * Ask the provider to return money against a transaction it settled.
+     *
+     * The amount comes from a server-side calculation -- the payment's own
+     * frozen amount, less what has already been returned against it -- and
+     * never from a browser. Omitting it asks for the whole transaction.
+     *
+     * ACCEPTANCE IS NOT SUCCESS. What comes back says where the provider has
+     * got to, which for Paystack is usually "not finished". A caller records
+     * that state honestly and asks again later; it never reads an accepted
+     * request as money returned.
+     *
+     * @throws PaymentGatewayError
+     */
+    public function refundTransaction(
+        string $reference,
+        ?Money $amount = null,
+        ?string $reason = null,
+    ): ProviderRefund;
+
+    /**
+     * Ask the provider what became of a refund it accepted earlier.
+     *
+     * The authoritative answer for an asynchronous refund, and the reason a
+     * refund can be marked succeeded at all.
+     *
+     * @throws PaymentGatewayError
+     */
+    public function fetchRefund(string $providerReference): ProviderRefund;
 
     /**
      * Whether a webhook payload genuinely came from the provider.

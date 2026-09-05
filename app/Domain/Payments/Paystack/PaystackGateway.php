@@ -7,6 +7,7 @@ namespace App\Domain\Payments\Paystack;
 use App\Domain\Payments\Contracts\PaymentGateway;
 use App\Domain\Payments\Exceptions\PaymentGatewayError;
 use App\Domain\Payments\ValueObjects\InitializedTransaction;
+use App\Domain\Payments\ValueObjects\ProviderRefund;
 use App\Domain\Payments\ValueObjects\VerifiedTransaction;
 use App\Domain\Shared\Money\Money;
 use App\Models\User;
@@ -97,6 +98,85 @@ class PaystackGateway implements PaymentGateway
             channel: isset($data['channel']) && is_string($data['channel']) ? $data['channel'] : null,
             paidAt: $this->parseTimestamp($data['paid_at'] ?? null),
             // send() already guarantees an array, so no re-check is needed.
+            raw: $data,
+        );
+    }
+
+    /**
+     * Ask Paystack to return money against a settled transaction.
+     *
+     * `POST /refund` takes the transaction by our own reference, so no
+     * provider id has to be stored to be able to refund. The amount is
+     * optional; omitting it refunds the whole transaction, and supplying it
+     * refunds part.
+     *
+     * WHAT COMES BACK IS NOT A COMPLETED REFUND. Paystack queues refunds and
+     * settles them afterwards, so this usually answers `pending`. Reading that
+     * as success would mean telling a customer their money is back while
+     * Paystack is still deciding whether to send it.
+     */
+    public function refundTransaction(
+        string $reference,
+        ?Money $amount = null,
+        ?string $reason = null,
+    ): ProviderRefund {
+        $payload = ['transaction' => $reference];
+
+        if ($amount !== null) {
+            // Already integer minor units, which is what Paystack expects.
+            // No conversion, no float.
+            $payload['amount'] = $amount->minor;
+            $payload['currency'] = $amount->currency;
+        }
+
+        if ($reason !== null && $reason !== '') {
+            // Paystack shows this to nobody the customer would recognise; it
+            // is our own filing. Truncated because the field is bounded, and
+            // it carries a reason code and an operator's note -- never a
+            // credential, a payload or another customer's detail.
+            $payload['merchant_note'] = mb_substr($reason, 0, 200);
+        }
+
+        return $this->toRefund($this->post('/refund', $payload));
+    }
+
+    /**
+     * Ask Paystack what became of a refund it accepted.
+     *
+     * `GET /refund/:id`, where the id is the one Paystack gave us when it
+     * accepted the refund. This is the authoritative answer, and the only
+     * thing that may move a refund to succeeded.
+     */
+    public function fetchRefund(string $providerReference): ProviderRefund
+    {
+        return $this->toRefund($this->get('/refund/'.rawurlencode($providerReference)));
+    }
+
+    /**
+     * Read Paystack's refund shape into our own.
+     *
+     * A missing or unreadable status becomes `unknown`, which
+     * {@see ProviderRefund} treats as still pending rather than as either
+     * outcome. Guessing optimistically here would be the one place a refund
+     * could be called successful without evidence.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function toRefund(array $data): ProviderRefund
+    {
+        $amount = $data['amount'] ?? null;
+
+        if (! is_numeric($amount)) {
+            throw PaymentGatewayError::malformedResponse('Paystack');
+        }
+
+        $id = $data['id'] ?? null;
+
+        return new ProviderRefund(
+            providerReference: is_scalar($id) && (string) $id !== '' ? (string) $id : null,
+            status: is_string($data['status'] ?? null) ? $data['status'] : 'unknown',
+            amountMinor: (int) $amount,
+            currency: mb_strtoupper((string) ($data['currency'] ?? $this->currency)),
             raw: $data,
         );
     }

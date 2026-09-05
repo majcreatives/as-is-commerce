@@ -26,12 +26,23 @@ enum NotificationCategory: string
     /** How an auction someone took part in turned out. */
     case AuctionResults = 'auction_results';
 
+    /**
+     * Progress on a package that is on its way.
+     *
+     * Switchable because it is detail rather than news. Being told a package
+     * has been dispatched or has arrived is not in here -- those are
+     * transactional, and a customer expecting a physical thing is always told
+     * when it moves and when it lands.
+     */
+    case DeliveryUpdates = 'delivery_updates';
+
     public function label(): string
     {
         return match ($this) {
             self::Transactional => 'Payments and orders',
             self::Bidding => 'Bidding activity',
             self::AuctionResults => 'Auction results',
+            self::DeliveryUpdates => 'Delivery progress',
         };
     }
 
@@ -44,6 +55,8 @@ enum NotificationCategory: string
                 .'auction you are bidding in is extended.',
             self::AuctionResults => 'How an auction you took part in ended, including when a '
                 .'product is bought outright.',
+            self::DeliveryUpdates => 'Step-by-step progress while we prepare and deliver your order. '
+                .'You are always told when it is dispatched and when it arrives.',
         };
     }
 

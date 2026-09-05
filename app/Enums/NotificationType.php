@@ -46,6 +46,14 @@ enum NotificationType: string
     case SettlementCreated = 'auction.settlement_created';
     case SettlementForfeited = 'auction.settlement_expired';
 
+    // ---- Delivery --------------------------------------------------------
+    case DeliveryPreparing = 'delivery.preparing';
+    case DeliveryReady = 'delivery.ready';
+    case DeliveryDispatched = 'delivery.dispatched';
+    case DeliveryOutForDelivery = 'delivery.out_for_delivery';
+    case DeliveryDelivered = 'delivery.delivered';
+    case DeliveryFailed = 'delivery.failed';
+
     // ---- Refunds ---------------------------------------------------------
     case RefundStarted = 'refund.started';
     case RefundCompleted = 'refund.completed';
@@ -70,6 +78,12 @@ enum NotificationType: string
             self::AuctionSoldViaBuyNow => 'Sold via Buy Now',
             self::SettlementCreated => 'Settlement ready',
             self::SettlementForfeited => 'Settlement expired',
+            self::DeliveryPreparing => 'Preparing your order',
+            self::DeliveryReady => 'Packed and ready',
+            self::DeliveryDispatched => 'On its way',
+            self::DeliveryOutForDelivery => 'Out for delivery',
+            self::DeliveryDelivered => 'Delivered',
+            self::DeliveryFailed => 'Delivery attempt unsuccessful',
             self::RefundStarted => 'Refund started',
             self::RefundCompleted => 'Refund completed',
             self::RefundFailed => 'Refund could not be completed',
@@ -96,6 +110,12 @@ enum NotificationType: string
             self::AuctionWon,
             self::SettlementCreated,
             self::SettlementForfeited,
+            // A customer waiting for a physical thing is always told when it
+            // leaves, when it arrives, and when an attempt did not work. The
+            // step-by-step detail in between is switchable; these are not.
+            self::DeliveryDispatched,
+            self::DeliveryDelivered,
+            self::DeliveryFailed,
             self::RefundStarted,
             self::RefundCompleted,
             self::RefundFailed,
@@ -110,7 +130,10 @@ enum NotificationType: string
             self::Outbid,
             self::AuctionExtended,
             self::AuctionLost,
-            self::AuctionSoldViaBuyNow => false,
+            self::AuctionSoldViaBuyNow,
+            self::DeliveryPreparing,
+            self::DeliveryReady,
+            self::DeliveryOutForDelivery => false,
         };
     }
 
@@ -125,6 +148,8 @@ enum NotificationType: string
         return match ($this) {
             self::BidPlaced, self::Outbid, self::AuctionExtended => NotificationCategory::Bidding,
             self::AuctionLost, self::AuctionSoldViaBuyNow => NotificationCategory::AuctionResults,
+            self::DeliveryPreparing, self::DeliveryReady,
+            self::DeliveryOutForDelivery => NotificationCategory::DeliveryUpdates,
             default => NotificationCategory::Transactional,
         };
     }
@@ -145,7 +170,13 @@ enum NotificationType: string
             self::RefundFailed,
             self::OrderPaymentSuccess,
             self::OrderFulfilmentBlocked,
-            self::OrderFulfilled => true,
+            self::OrderFulfilled,
+            // A package leaving, arriving, or failing to arrive is worth an
+            // email. The steps in between are not: a message for every stage
+            // of one order is how an address gets marked as spam.
+            self::DeliveryDispatched,
+            self::DeliveryDelivered,
+            self::DeliveryFailed => true,
             // Deliberately no email when a refund starts. It is an
             // acknowledgement rather than an outcome, and the outcome is
             // coming; two emails for one refund is one too many.
@@ -163,6 +194,9 @@ enum NotificationType: string
             self::RefundStarted => 'bg-slate-100 text-slate-700 ring-slate-200',
             self::RefundFailed => 'bg-red-50 text-red-800 ring-red-200',
             self::Outbid => 'bg-accent-50 text-accent-900 ring-accent-200',
+            self::DeliveryDelivered => 'bg-emerald-50 text-emerald-800 ring-emerald-200',
+            self::DeliveryDispatched, self::DeliveryOutForDelivery => 'bg-brand-50 text-brand-800 ring-brand-200',
+            self::DeliveryFailed => 'bg-red-50 text-red-800 ring-red-200',
             default => 'bg-slate-100 text-slate-700 ring-slate-200',
         };
     }

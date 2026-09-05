@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Listeners;
 
 use App\Domain\Notifications\Services\NotificationDispatcher;
+use App\Enums\DeliveryStatus;
 use App\Enums\NotificationType;
 use App\Enums\OrderStatus;
 use App\Enums\RefundStatus;
@@ -12,11 +13,13 @@ use App\Events\AuctionClosed;
 use App\Events\AuctionForfeited;
 use App\Events\AuctionSoldViaBuyNow;
 use App\Events\BidAccepted;
+use App\Events\DeliveryStatusChanged;
 use App\Events\OrderFulfilmentBlocked;
 use App\Events\OrderStatusChanged;
 use App\Events\RefundStatusChanged;
 use App\Events\SettlementCheckoutOpened;
 use App\Models\Auction;
+use App\Models\Delivery;
 use App\Models\Order;
 use App\Models\Refund;
 use App\Models\User;
@@ -68,6 +71,7 @@ class NotificationSubscriber
             OrderStatusChanged::class => 'onOrderStatusChanged',
             OrderFulfilmentBlocked::class => 'onFulfilmentBlocked',
             RefundStatusChanged::class => 'onRefundStatusChanged',
+            DeliveryStatusChanged::class => 'onDeliveryStatusChanged',
         ];
     }
 
@@ -490,6 +494,107 @@ class NotificationSubscriber
         }
 
         return ' Any Credits you spent bidding remain consumed; this returns cedis only.';
+    }
+
+    // ------------------------------------------------------------ Delivery
+
+    /**
+     * A package moved, and the customer wants to know.
+     *
+     * NEVER AHEAD OF THE FACT. Each of these is dispatched from a committed
+     * transition, so "your order has been dispatched" is sent because a member
+     * of staff recorded a dispatch, and "delivered" because somebody recorded
+     * a handover. There is no path that sends either on the strength of an
+     * intention, and none that sends them early because a screen was open.
+     *
+     * A FAILED DELIVERY PROMISES NOTHING. It says an attempt did not work and
+     * that we are arranging another, in terms that do not accuse the customer
+     * of anything -- a package refused at the door and one nobody answered are
+     * the same message here. It offers no refund: whether one is owed is a
+     * person's decision made through the refund workflow, and a delivery
+     * notice is not the place to pre-empt it.
+     */
+    public function onDeliveryStatusChanged(DeliveryStatusChanged $event): void
+    {
+        $this->guard(function () use ($event): void {
+            $delivery = $event->delivery;
+            $order = $delivery->order;
+            $item = $this->itemName($order);
+
+            [$type, $title, $message] = match ($event->to) {
+                DeliveryStatus::Preparing => [
+                    NotificationType::DeliveryPreparing,
+                    'Preparing your order',
+                    "We have started preparing {$item} for delivery.",
+                ],
+                DeliveryStatus::ReadyForDispatch => [
+                    NotificationType::DeliveryReady,
+                    'Packed and ready',
+                    "{$item} is packed and waiting to go out.",
+                ],
+                DeliveryStatus::Dispatched => [
+                    NotificationType::DeliveryDispatched,
+                    'On its way',
+                    "{$item} has left us and is on its way to "
+                        .($delivery->city ?? 'you').'.',
+                ],
+                DeliveryStatus::OutForDelivery => [
+                    NotificationType::DeliveryOutForDelivery,
+                    'Out for delivery',
+                    "{$item} is out for delivery today. Please keep your phone nearby.",
+                ],
+                DeliveryStatus::Delivered => [
+                    NotificationType::DeliveryDelivered,
+                    'Delivered',
+                    "{$item} has been delivered. Thank you for shopping with us.",
+                ],
+                DeliveryStatus::DeliveryFailed => [
+                    NotificationType::DeliveryFailed,
+                    'Delivery attempt unsuccessful',
+                    "We tried to deliver {$item} and could not: "
+                        .($delivery->failure_reason?->customerDescription()
+                            ?? 'the delivery could not be completed')
+                        .'. Our team will be in touch to arrange another attempt.',
+                ],
+                // Pending is the moment the package is queued, which the
+                // payment confirmation has already told them about. Cancelled
+                // is an operational decision somebody will explain properly;
+                // an automated line here would raise more questions than it
+                // answered.
+                DeliveryStatus::Pending, DeliveryStatus::Cancelled => [null, '', ''],
+            };
+
+            if ($type === null) {
+                return;
+            }
+
+            $this->notifications->send(
+                recipient: $order->user,
+                type: $type,
+                title: $title,
+                message: $message,
+                // The delivery and the state it reached: a repeated request
+                // reaches the same pair and writes nothing the second time.
+                eventKey: "delivery.status:{$delivery->id}:{$event->to->value}",
+                actionUrl: route('orders.tracking', $order, absolute: false),
+                actionLabel: 'Track this order',
+                context: ['order_id' => $order->id, 'delivery_id' => $delivery->id],
+            );
+        }, 'delivery_status_changed');
+    }
+
+    /**
+     * What to call the thing being delivered.
+     *
+     * The snapshot from the order line, so a product renamed since does not
+     * make an old delivery message describe something the customer never
+     * bought.
+     */
+    private function itemName(Order $order): string
+    {
+        $line = $order->item();
+
+        return $line === null ? 'your order' : $line->product_name_snapshot;
     }
 
     // ----------------------------------------------------------- Internals

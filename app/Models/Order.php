@@ -55,6 +55,7 @@ use Spatie\Activitylog\Support\LogOptions;
  * @property OrderStatus $status
  * @property int|null $auction_id
  * @property int|null $winning_bid_id
+ * @property int|null $delivery_address_id
  * @property string $currency
  * @property int $subtotal_minor
  * @property int $discount_minor
@@ -129,7 +130,14 @@ class Order extends Model
         return Money::fromMinor($this->discount_minor, $this->currency);
     }
 
-    public function delivery(): Money
+    /**
+     * What the customer was charged to have this delivered.
+     *
+     * Named `deliveryFee` rather than `delivery`, which is the package. One
+     * model cannot have "delivery" meaning both a charge and a physical thing
+     * without somebody eventually reading the wrong one.
+     */
+    public function deliveryFee(): Money
     {
         return Money::fromMinor($this->delivery_minor, $this->currency);
     }
@@ -283,6 +291,33 @@ class Order extends Model
     public function successfulPayment(): HasOne
     {
         return $this->hasOne(OrderPayment::class)->where('status', OrderPaymentStatus::Success);
+    }
+
+    /**
+     * The package this order is being sent in.
+     *
+     * One per order, created when a payment is verified and never before --
+     * an abandoned checkout has nothing to deliver.
+     *
+     * @return HasOne<Delivery, $this>
+     */
+    public function delivery(): HasOne
+    {
+        return $this->hasOne(Delivery::class);
+    }
+
+    /**
+     * The address book entry chosen at checkout, if one was.
+     *
+     * A pointer, and only that. Where the package actually went is the copy
+     * frozen on the delivery, so a customer tidying their address book cannot
+     * change the history of an order.
+     *
+     * @return BelongsTo<Address, $this>
+     */
+    public function deliveryAddress(): BelongsTo
+    {
+        return $this->belongsTo(Address::class, 'delivery_address_id');
     }
 
     /**

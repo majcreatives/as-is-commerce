@@ -10,6 +10,7 @@ use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -49,6 +50,21 @@ class User extends Authenticatable
             'status' => UserStatus::class,
             'notification_preferences' => 'array',
         ];
+    }
+
+    /**
+     * This customer's own address book.
+     *
+     * A convenience, not a record of anything. Where a package actually went
+     * lives on the delivery, which holds its own frozen copy -- so editing
+     * these changes where the next order goes and nothing that has already
+     * shipped.
+     *
+     * @return HasMany<Address, $this>
+     */
+    public function addresses(): HasMany
+    {
+        return $this->hasMany(Address::class)->orderByDesc('is_default')->orderBy('id');
     }
 
     /**

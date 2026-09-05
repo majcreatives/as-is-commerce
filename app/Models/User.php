@@ -28,6 +28,7 @@ use Spatie\Permission\Traits\HasRoles;
  * @property string $password
  * @property UserStatus $status
  * @property array<string, mixed>|null $notification_preferences
+ * @property string|null $referral_code
  */
 #[Fillable(['name', 'phone', 'email', 'password'])]
 #[Hidden(['password', 'remember_token'])]
@@ -50,6 +51,29 @@ class User extends Authenticatable
             'status' => UserStatus::class,
             'notification_preferences' => 'array',
         ];
+    }
+
+    /**
+     * Customers this one introduced.
+     *
+     * @return HasMany<Referral, $this>
+     */
+    public function referralsMade(): HasMany
+    {
+        return $this->hasMany(Referral::class, 'referrer_user_id');
+    }
+
+    /**
+     * Who introduced this customer, if anybody did.
+     *
+     * One, for ever: `referred_user_id` is unique and a trigger refuses any
+     * change to the pair, so this cannot be reassigned by editing anything.
+     *
+     * @return HasOne<Referral, $this>
+     */
+    public function referredBy(): HasOne
+    {
+        return $this->hasOne(Referral::class, 'referred_user_id');
     }
 
     /**

@@ -24,11 +24,14 @@ units (pesewas). Never as floating point.
 > the product changes hands only after a payment this platform has verified
 > with Paystack itself.
 >
-> What is deliberately absent: refunds, disputes, delivery and courier
-> integration, tracking, notifications, a tax engine, and real-time delivery
-> (Redis, Reverb, WebSockets). A paid order that could not be completed is
-> recorded and queued for a person rather than resolved automatically, because
-> deciding what is owed is a business decision and refunds do not exist yet.
+> A payment the platform could not deliver against is recorded, queued for a
+> person, and -- once somebody decides -- given back through Paystack, without
+> ever returning a credit or a unit of stock.
+>
+> What is deliberately absent: disputes and chargebacks, physical returns and
+> reverse logistics, delivery and courier integration, tracking, a tax engine,
+> and real-time delivery (Redis, Reverb, WebSockets). Nothing refunds itself:
+> deciding what is owed remains a business decision.
 
 ---
 
@@ -850,7 +853,8 @@ A payment that succeeds against something that can no longer be delivered is
 **recorded, never discarded**. The attempt is marked successful, the order
 carries a `fulfilment_blocked_reason`, and it appears in the admin attention
 queue. No silent cancellation and no automatic refund: what is owed is a
-decision for a person, and refunds are a later stage.
+decision for a person, who then acts on it through the refund workflow.
+Nothing here decides on its own.
 
 This covers three cases:
 
@@ -1013,8 +1017,8 @@ real, so it is recorded: the order becomes `Paid`, and
 the admin "needs attention" queue.
 
 It is not marked fulfilled, and it is not silently swallowed. What is owed to
-that customer is a decision for a person, and refunds are not built into the
-platform.
+that customer is a decision for a person, who can then return the money through
+the refund workflow -- never automatically, and never as a credit.
 
 ### Nothing marks an order paid by hand
 
@@ -1036,6 +1040,153 @@ financial act — not a rewrite of the original transaction.
 They were consumed when the bids were placed, permanently. No checkout or
 payment path posts a credit transaction in either direction, and a regression
 test asserts the count does not move.
+
+---
+
+## Refunds and recovery
+
+Money the platform received and could not deliver against, given back.
+
+```
+Blocked order  →  RequestRefund  →  ProcessRefund  →  Paystack
+                   (Pending)          (Processing)         │
+                                           ↑               │
+                                    refunds:reconcile  ←────┘
+                                           ↓
+                                  Succeeded / Failed
+```
+
+### A refund is a new event, not an edit to the old one
+
+After a full refund the original payment still reads `success` for its full
+amount, because that is what happened. The platform was paid, and then it paid
+back; both are true and each has its own record. Two questions, two answers:
+
+| Question | Answer |
+| --- | --- |
+| What was originally paid? | `order_payments.amount_minor` |
+| How much was refunded? | the succeeded refunds against it |
+
+Rewriting the payment would destroy the first answer in order to store the
+second, and a customer's receipt would stop agreeing with our records. A
+database trigger refuses any change to a refund's amount, currency, order or
+payment — and refuses to reopen a settled one. A retry is a new refund with its
+own row, so a failure is never overwritten by the success that followed it.
+
+### Three things a refund does not do
+
+**It returns no credits.** Bid credits are consumed the moment a bid is
+accepted and stay consumed through every outcome — losing, being outbid, an
+auction cancelled, a settlement forfeited, and a payment refunded. A customer
+who bid 170 credits and was refunded GH₵5,500 still has 170 fewer credits. The
+`refunds` table has no column that could express one, and there is a test that
+bids, refunds, and then checks the ledger and the wallet are untouched.
+
+**It restores no stock.** Whether an item is back on the shelf is a physical
+question, and reverse logistics do not exist here. A refund posts no inventory
+movement of any kind.
+
+**It reopens no closed order.** An order that was cancelled or that expired
+keeps the status it closed with. The refund record says the money went back;
+the order still says why it closed. Overwriting that would erase the more
+useful fact.
+
+Only a `Paid` order becomes `Refunded`, and only once every pesewa has gone
+back. A partial refund moves nothing — an order still owed money has not
+finished being refunded.
+
+### Nothing is called succeeded on our say-so
+
+Paystack settles refunds asynchronously: it accepts the request, answers
+`pending`, and finishes later without telling us. So an accepted request is
+`Processing` and nothing more. Only the provider's own terminal status, fetched
+server-to-server, produces a success.
+
+A status the code does not recognise is treated as still in flight — never as
+money returned. Being wrong in that direction means telling a customer their
+money is back when it is not, and that message cannot be taken back. There is
+no timeout after which the platform assumes a refund completed.
+
+`refunds:reconcile` runs every fifteen minutes and is what asks.
+
+### Two steps, because an attempt must survive its own failure
+
+`RequestRefund` writes the refund and commits before anyone talks to Paystack.
+If the call and the record shared a transaction, a failed call would roll the
+attempt away and nothing would remain to show that a member of staff tried to
+return somebody's money.
+
+`ProcessRefund` then makes the call and **does not throw when the provider says
+no**. A rejection, an unreachable host, or an answer describing a different
+amount is recorded as a failure with a reason a person can read, and stays in
+the queue. Nothing retries by itself: a loop would hammer the provider on a
+request it has already refused, and could return money twice if one of those
+attempts quietly succeeded.
+
+### What is eligible
+
+Only an order whose fulfilment is blocked — the three cases Stages 7 and 8
+recorded and deliberately left open:
+
+| Case | Order status | What Stage 10 adds |
+| --- | --- | --- |
+| Another transaction took the unit | `Paid` | Refund → `Refunded` |
+| Paid after the checkout expired | `PaymentExpired` | Refund, status unchanged |
+| Paid after cancellation | `Cancelled` | Refund, status unchanged |
+
+A healthy paid order is not refundable: nothing went wrong, the customer is
+getting their item, and refunding while the sale stands would give away both
+the money and the stock. A delivered order is a return, which this platform
+does not do.
+
+### The amount is computed, never supplied
+
+The browser names an order and a reason. It never names a figure.
+
+```
+refunded    = succeeded refunds                  what a customer is shown
+refundable  = payment − succeeded − in-flight    what a new refund may be for
+```
+
+In-flight refunds count against the cap, and that is the whole defence against
+over-refunding. Subtracting only succeeded refunds would let two attempts for
+70% of a payment exist at once on the theory that only one settles — and when
+both settled the platform would have returned 140% of what it received. A
+failed attempt releases its share again, because it returned nothing.
+
+`RequestRefund` takes the order row lock first and computes everything under
+it, so two administrators pressing refund at the same moment serialize: the
+first writes and commits, the second reads what the first left behind and is
+refused. There is a test that runs exactly that race against real MySQL locks.
+
+### Reconciliation detects; it does not repair
+
+`refunds:reconcile` reports unconfirmed successes, refunds the provider gave no
+reference for, amount and currency disagreements, over-refunds, and attempts
+stalled far longer than a refund takes. It changes none of them, and exits
+non-zero so a monitor notices.
+
+This is the credit ledger's principle applied to refunds: an automatic repair
+is a guess about which of two disagreeing records is right, made by the very
+code whose bug may have caused the disagreement. A person looks, and fixes it
+with a new financial act.
+
+### Staff and customers
+
+Five permissions — `refunds.view`, `refunds.request`, `refunds.process`,
+`refunds.retry`, `refunds.inspect` — because seeing what is owed, deciding to
+give it back, and sending it are different acts. No customer holds any of them.
+
+The admin screen shows what is owed, what went back, and what failed. There is
+no control to mark a refund succeeded, edit an amount, or delete a failed
+attempt, and no method behind any of them. Refunding opens a confirmation
+listing the order, the customer, what was paid, what will be returned, and what
+the refund will not do.
+
+Customers are told a refund started, and separately that it completed — the
+second only once the provider has confirmed it. No timeline is promised,
+because the platform does not control when a bank posts a credit, and on an
+auction-linked order the message says plainly that Credits stay consumed.
 
 ---
 
@@ -1126,10 +1277,12 @@ to get wrong:
   one became the other.
 - **A blocked payment promises nothing.** "We received your payment, but
   fulfilment is blocked… our support team will be in touch." No refund is
-  offered, because no refund mechanism exists.
+  offered or implied — one may follow, once a person decides, and the
+  customer hears about it then rather than before.
 
 Losing bidders are told plainly that they did not win and that their credits
-remain consumed. There is no refund control anywhere on that page.
+remain consumed. There is no refund control anywhere on that page, and a refund
+of money never returns a credit.
 
 ### Privacy
 

@@ -88,30 +88,113 @@
                         subtitle="You choose how many credits to commit. They are consumed immediately and permanently.">
                     @auth
                         @can('bids.place')
-                            <form wire:submit="bid" class="space-y-4">
-                                <x-field label="Credits to commit" name="amount"
-                                         :error="$errors->first('amount')"
-                                         :hint="$this->smallestValidBid(app(App\Domain\Auction\Services\BidValidator::class))
-                                            ? 'The smallest valid bid right now is '.number_format($this->smallestValidBid(app(App\Domain\Auction\Services\BidValidator::class))).' credits.'
-                                            : 'This auction sets no minimum. Any whole number of credits is a valid bid.'">
-                                    <x-input wire:model="amount" inputmode="numeric"
-                                             placeholder="e.g. 150"
-                                             :error="$errors->has('amount')" />
-                                </x-field>
+                            @php
+                                $smallest = $this->smallestValidBid(app(App\Domain\Auction\Services\BidValidator::class));
+                                $balance = app(App\Domain\Credit\Services\CreditLedgerService::class)
+                                    ->walletFor(auth()->user())->spendableBalance();
+                            @endphp
 
-                                <div class="flex flex-wrap items-center gap-3">
-                                    <x-button type="submit" wire:loading.attr="disabled">
-                                        <span wire:loading.remove wire:target="bid">Commit credits</span>
-                                        <span wire:loading wire:target="bid">Placing…</span>
-                                    </x-button>
+                            {{-- Where the bidder stands, before anything else.
+                                 No other bidder is named: only the amount to
+                                 beat, which is all anybody needs. --}}
+                            @if ($this->viewerIsLeading())
+                                <x-alert variant="success" class="mb-4" role="status">
+                                    You hold the highest bid right now.
+                                </x-alert>
+                            @elseif ($this->viewerIsOutbid())
+                                <x-alert variant="warning" class="mb-4" role="status">
+                                    <strong>You have been outbid.</strong>
+                                    The highest bid is now
+                                    <x-credits :amount="$auction->highest_bid_credits ?? 0" />@if ($smallest),
+                                        and the smallest valid bid is <x-credits :amount="$smallest" />@endif.
+                                    The <x-credits :amount="$this->viewerCommittedCredits()" /> you have
+                                    already committed stay consumed either way.
+                                </x-alert>
+                            @endif
 
-                                    <p class="text-sm text-slate-500">
-                                        Your balance:
-                                        <strong>{{ number_format(auth()->user()->creditWallet?->balance ?? 0) }}</strong>
-                                        credits
+                            @if ($confirming)
+                                {{-- The confirmation. Committing credits cannot
+                                     be undone, so it takes two deliberate
+                                     actions -- and the figures here are the
+                                     server's, re-read again under a lock when
+                                     the bid is actually placed. --}}
+                                <div class="rounded-lg border-2 border-accent-300 bg-accent-50/50 p-4"
+                                     role="alertdialog" aria-labelledby="confirm-bid-heading">
+                                    <h3 id="confirm-bid-heading" class="text-sm font-bold text-slate-900">
+                                        You are about to bid <x-credits :amount="(int) $amount" />.
+                                    </h3>
+
+                                    <dl class="mt-3 space-y-1.5 text-sm">
+                                        <div class="flex justify-between gap-3">
+                                            <dt class="text-slate-600">Current highest bid</dt>
+                                            <dd class="tabular-nums text-slate-900">
+                                                @if ($highestBid)
+                                                    <x-credits :amount="$highestBid->amount_credits" />
+                                                @else
+                                                    No bids yet
+                                                @endif
+                                            </dd>
+                                        </div>
+                                        <div class="flex justify-between gap-3">
+                                            <dt class="text-slate-600">Your bid</dt>
+                                            <dd class="font-semibold tabular-nums text-slate-900">
+                                                <x-credits :amount="(int) $amount" />
+                                            </dd>
+                                        </div>
+                                        <div class="flex justify-between gap-3 border-t border-accent-200 pt-1.5">
+                                            <dt class="text-slate-600">Your balance afterwards</dt>
+                                            <dd class="tabular-nums text-slate-900">
+                                                <x-credits :amount="max(0, $balance - (int) $amount)" />
+                                            </dd>
+                                        </div>
+                                    </dl>
+
+                                    <p class="mt-3 text-sm font-semibold text-slate-900">
+                                        <x-credits :amount="(int) $amount" /> will be consumed immediately
+                                        and will not be returned if you lose.
                                     </p>
+
+                                    @error('amount')
+                                        <p class="mt-3 text-sm font-medium text-red-700" role="alert">{{ $message }}</p>
+                                    @enderror
+
+                                    <div class="mt-4 flex flex-wrap gap-3">
+                                        <x-button wire:click="bid" wire:loading.attr="disabled" wire:target="bid">
+                                            <span wire:loading.remove wire:target="bid">Confirm bid</span>
+                                            <span wire:loading wire:target="bid">Placing…</span>
+                                        </x-button>
+
+                                        <x-button variant="ghost" wire:click="cancelBid"
+                                                  wire:loading.attr="disabled" wire:target="bid">
+                                            Cancel
+                                        </x-button>
+                                    </div>
                                 </div>
-                            </form>
+                            @else
+                                <form wire:submit="review" class="space-y-4">
+                                    <x-field label="Credits to commit" name="amount"
+                                             :error="$errors->first('amount')"
+                                             :hint="$smallest
+                                                ? 'The smallest valid bid right now is '.number_format($smallest).' credits.'
+                                                : 'This auction sets no minimum. Any whole number of credits is a valid bid.'">
+                                        <x-input wire:model="amount" inputmode="numeric"
+                                                 placeholder="e.g. 150"
+                                                 :error="$errors->has('amount')" />
+                                    </x-field>
+
+                                    <div class="flex flex-wrap items-center gap-3">
+                                        <x-button type="submit" wire:loading.attr="disabled">
+                                            <span wire:loading.remove wire:target="review">Review bid</span>
+                                            <span wire:loading wire:target="review">Checking…</span>
+                                        </x-button>
+
+                                        <p class="text-sm text-slate-500">
+                                            Your balance:
+                                            <strong><x-credits :amount="$balance" /></strong>
+                                        </p>
+                                    </div>
+                                </form>
+                            @endif
 
                             <x-alert variant="warning" class="mt-4">
                                 <strong>Credits used for bids are permanently consumed.</strong>

@@ -73,12 +73,49 @@ class AuctionRoom extends Component
      */
     public string $bidKey = '';
 
+    /**
+     * Whether the bidder is looking at the confirmation.
+     *
+     * Committing credits is irreversible, so it takes two deliberate actions.
+     * The figures shown on that confirmation are read from the server when it
+     * opens, and read again from a locked auction row when the bid is actually
+     * placed -- so a stale confirmation cannot commit credits against a state
+     * that has moved on.
+     */
+    public bool $confirming = false;
+
     public function mount(Auction $auction): void
     {
         abort_unless($auction->status->isPubliclyVisible(), 404);
 
         $this->auction = $auction;
         $this->bidKey = (string) Str::uuid();
+    }
+
+    /**
+     * Show the bidder exactly what they are about to do.
+     *
+     * Validates the shape of the amount only. Every business rule is the
+     * domain's, checked against a locked auction row when the bid is placed --
+     * so this cannot approve a bid, and a confirmation that has been open for
+     * a while cannot make one valid that no longer is.
+     */
+    public function review(): void
+    {
+        $this->authorize('bids.place');
+
+        $this->validate([
+            'amount' => ['required', 'regex:/^\d{1,12}$/'],
+        ], [
+            'amount.regex' => 'Enter a whole number of credits.',
+        ]);
+
+        $this->confirming = true;
+    }
+
+    public function cancelBid(): void
+    {
+        $this->confirming = false;
     }
 
     /**
@@ -112,6 +149,12 @@ class AuctionRoom extends Component
             // The domain's own words. They say what the rule is and what would
             // satisfy it, which is more use to someone who just tried to spend
             // credits than a generic failure.
+            //
+            // The confirmation closes and the page re-reads the auction: the
+            // usual reason a bid is refused is that somebody else bid first,
+            // and the figures the bidder was looking at are now wrong.
+            $this->confirming = false;
+            $this->auction->refresh();
             $this->addError('amount', $e->getMessage());
 
             return;
@@ -123,6 +166,7 @@ class AuctionRoom extends Component
 
         $this->auction->refresh();
         $this->amount = '';
+        $this->confirming = false;
         $this->bidKey = (string) Str::uuid();
 
         session()->flash('bid-placed', 'Your bid was accepted and the credits have been consumed.');
@@ -199,6 +243,53 @@ class AuctionRoom extends Component
         }
 
         return redirect()->route('checkout.show', $order);
+    }
+
+    /**
+     * Whether the signed-in customer holds the standing highest bid.
+     *
+     * From the auction's own projection, which is what a page is for. Nothing
+     * is decided from it: who actually wins is resolved from the bid records
+     * when the auction closes.
+     */
+    public function viewerIsLeading(): bool
+    {
+        if (! auth()->check()) {
+            return false;
+        }
+
+        return $this->auction->highestBid?->user_id === auth()->id();
+    }
+
+    /**
+     * Whether this customer has bid and been overtaken.
+     *
+     * The page says so, and says what it would now take -- and nothing about
+     * who overtook them. A bidder never learns another bidder's identity.
+     */
+    public function viewerIsOutbid(): bool
+    {
+        if (! auth()->check() || ! $this->auction->status->acceptsBids()) {
+            return false;
+        }
+
+        return ! $this->viewerIsLeading() && $this->viewerCommittedCredits() > 0;
+    }
+
+    /**
+     * Credits this customer has consumed on this auction.
+     *
+     * The same figure the Buy Now discount is computed from, and the reason
+     * that discount exists. Summed from the bid records: these are historical
+     * facts, each chained to the transaction that paid for it.
+     */
+    public function viewerCommittedCredits(): int
+    {
+        if (! auth()->check()) {
+            return 0;
+        }
+
+        return (int) $this->auction->bids()->where('user_id', auth()->id())->sum('amount_credits');
     }
 
     /**

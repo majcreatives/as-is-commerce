@@ -56,3 +56,30 @@ Schedule::command('orders:expire-checkouts')
     ->everyMinute()
     ->withoutOverlapping()
     ->runInBackground();
+
+/*
+|--------------------------------------------------------------------------
+| Refund reconciliation
+|--------------------------------------------------------------------------
+|
+| Paystack settles refunds asynchronously: it accepts the request, answers
+| "pending", and finishes some time later without telling us. This is what
+| asks, and it is the only way a refund ever reaches succeeded -- without it
+| every refund would sit at processing for ever and no customer would be told
+| their money arrived.
+|
+| Every fifteen minutes, not every minute. A refund is settled by a bank rather
+| than by a clock of ours, and asking sixty times an hour would be sixty
+| requests to learn the same thing. A missed run delays a confirmation; it
+| never changes an outcome and never invents one.
+|
+| Idempotent, so overlapping runs settle a refund once; overlap is prevented
+| anyway. The same pass reports anything where our records and the provider's
+| disagree, and repairs none of it.
+|
+*/
+
+Schedule::command('refunds:reconcile')
+    ->everyFifteenMinutes()
+    ->withoutOverlapping()
+    ->runInBackground();

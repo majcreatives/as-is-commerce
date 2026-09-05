@@ -7,6 +7,7 @@ use App\Domain\Auction\Actions\PlaceBid;
 use App\Domain\Auction\Services\AuctionLifecycle;
 use App\Domain\Catalog\Services\InventoryService;
 use App\Domain\Credit\Services\CreditLedgerService;
+use App\Domain\Delivery\Services\DeliveryLifecycle;
 use App\Domain\Orders\Actions\FulfillOrderPayment;
 use App\Domain\Orders\Actions\InitializeOrderPayment;
 use App\Domain\Orders\Actions\StartBuyNowCheckout;
@@ -14,13 +15,16 @@ use App\Domain\Orders\Actions\StartSettlementCheckout;
 use App\Domain\Refunds\Actions\RequestRefund;
 use App\Domain\Shared\Money\Money;
 use App\Enums\CreditTransactionType;
+use App\Enums\DeliveryStatus;
 use App\Enums\NotificationType;
 use App\Enums\RefundReason;
+use App\Models\Address;
 use App\Models\Auction;
 use App\Models\AuctionRuleset;
 use App\Models\Bid;
 use App\Models\CreditTransaction;
 use App\Models\CreditWallet;
+use App\Models\Delivery;
 use App\Models\Notification;
 use App\Models\Order;
 use App\Models\OrderPayment;
@@ -479,4 +483,94 @@ function notificationsFor(User $user, ?NotificationType $type = null)
         ->where('notifiable_id', $user->id)
         ->when($type !== null, fn ($q) => $q->where('event_type', $type->value))
         ->get();
+}
+
+/*
+|--------------------------------------------------------------------------
+| Delivery
+|--------------------------------------------------------------------------
+*/
+
+/**
+ * A paid order with a delivery already opened against it.
+ *
+ * Goes through the real checkout and the real verified-payment path, so the
+ * delivery is created the way the application actually creates one: by
+ * fulfilment, at the moment a payment is verified.
+ *
+ * The address is optional, because a delivery legitimately begins without one
+ * -- that is the auction winner's case, and several tests exist for it.
+ */
+function paidOrderFor(User $buyer, ?Address $address = null): Order
+{
+    $product = Product::factory()->active()->create();
+    app(InventoryService::class)->initialStock($product, 1);
+
+    $order = buyNowCheckout($buyer, $product->fresh());
+
+    if ($address !== null) {
+        $order->delivery_address_id = $address->id;
+        $order->save();
+    }
+
+    payOrder($order->fresh());
+
+    return $order->fresh();
+}
+
+/**
+ * A delivery that has been taken all the way to a given state.
+ *
+ * Through the lifecycle rather than the factory, so every guard, every history
+ * row and every order transition happens the way it would in the warehouse.
+ */
+function deliveryAt(DeliveryStatus $status, ?User $staff = null, ?Order $order = null): Delivery
+{
+    $staff ??= userWithRole('admin');
+    $order ??= paidOrderFor(bidder(), Address::factory()->ownedBy(bidder())->create());
+
+    $delivery = $order->delivery;
+
+    if ($delivery === null) {
+        throw new RuntimeException('That order has no delivery to advance.');
+    }
+
+    // Given an order whose address came from somebody else's book, copy one on
+    // so the package has somewhere to go.
+    if (! $delivery->hasAddress()) {
+        $address = Address::factory()->ownedBy($order->user)->create();
+
+        foreach ($address->toSnapshot() as $field => $value) {
+            $delivery->{$field} = $value;
+        }
+
+        $delivery->source_address_id = $address->id;
+        $delivery->save();
+    }
+
+    $lifecycle = app(DeliveryLifecycle::class);
+
+    // A list of pairs rather than a keyed array: PHP arrays cannot be keyed by
+    // an enum, and the order of these steps is the point anyway.
+    $path = [
+        [DeliveryStatus::Preparing, fn (Delivery $d): Delivery => $lifecycle->prepare($d, $staff)],
+        [DeliveryStatus::ReadyForDispatch, fn (Delivery $d): Delivery => $lifecycle->markReady($d, $staff)],
+        [DeliveryStatus::Dispatched, fn (Delivery $d): Delivery => $lifecycle->dispatch($d, $staff)],
+        [DeliveryStatus::OutForDelivery, fn (Delivery $d): Delivery => $lifecycle->markOutForDelivery($d, $staff)],
+        [DeliveryStatus::Delivered, fn (Delivery $d): Delivery => $lifecycle->markDelivered($d, $staff)],
+    ];
+
+    foreach ($path as [$step, $move]) {
+        if ($delivery->status === $status) {
+            break;
+        }
+
+        $delivery = $move($delivery->fresh());
+
+        if ($step === $status) {
+            break;
+        }
+    }
+
+    return $delivery->fresh();
 }

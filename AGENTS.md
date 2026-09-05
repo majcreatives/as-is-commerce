@@ -8,7 +8,8 @@ This file records the rules that are not obvious from the code.
 **A customer marketplace over a finished engine.** Auctions run themselves,
 customers are told what happened, money that could not be delivered against
 can be given back, everything else is packed and delivered by hand, and the
-whole of it is now presented as a shop somebody can actually use. Foundation (auth, roles,
+whole of it is now presented as a shop somebody can actually use, with a
+narrow referral programme on top that pays in ordinary credits. Foundation (auth, roles,
 shell), the credit and cash ledgers, Paystack credit purchases, the product
 catalog with an auditable inventory ledger, the auction rules engine, the
 auction engine, and checkout: `orders`, `order_items`, `order_payments`,
@@ -899,6 +900,105 @@ refund in a delivery message — that decision belongs to somebody else.
 Courier APIs, driver accounts or apps, GPS, route optimisation, automated
 dispatch, delivery commissions, shipping pricing, zones, weights, automated
 retries, or physical returns and restocking.
+
+## Referrals
+
+A controlled growth layer over the credit ledger. Not a promotions engine, and
+not a second financial system.
+
+### Referral credits are ordinary credits
+
+They enter through `CreditLedgerService::addCredits` as `ReferralCredit`, land
+in a lot whose source is `CreditLotSource::Referral`, and are consumed in the
+ledger's own deterministic order like everything else. Stage 3 already defined
+both, including the consumption priority.
+
+There is **no referral balance, reward balance, bonus balance or promo wallet**,
+and there must never be one. `referrals.credit_transaction_id` is a pointer into
+the real ledger, not a copy of it. A test asserts no such column or table
+exists.
+
+### What qualifies, precisely
+
+A verified successful payment, on an order that reached `Paid`, which is **not
+fulfilment-blocked**, made by the referred customer.
+
+Each clause excludes something. Registration alone earns nothing. An
+initialised or failed payment earns nothing. A cancelled or expired order never
+qualifies even when a payment later succeeds against it. And a blocked order
+does not qualify: the money is real but the platform owes that customer an item
+or a refund, and paying a referrer for it would reward a transaction the
+business could not complete.
+
+`Paid` rather than `Fulfilled` was a genuine ambiguity, resolved deliberately —
+waiting for a manual delivery would make a reward depend on warehouse timing and
+on the customer supplying an address, neither of which says whether the purchase
+was real. See `ReferralProgramme`'s class comment.
+
+### One of everything, enforced by the database
+
+- One referrer per customer: `referred_user_id` is **unique**.
+- One reward per referral: `credit_transaction_id` is **unique**.
+- No self-referral: a CHECK constraint, as well as the application check.
+- The relationship cannot be reassigned: a trigger refuses any change to the
+  pair or the code used.
+- An issued reward cannot be revalued, repointed or deleted: another trigger.
+
+Application checks exist too, but the database is what makes these guarantees
+rather than conventions.
+
+### The reward amount is snapshotted
+
+Read from settings once, at the moment of issue, and written onto the referral.
+Never recompute a historical reward from today's setting — the ledger would
+disagree, and the customer's balance is the honest record.
+
+### Nothing is ever clawed back
+
+There is no clawback method, and there must not be one. If a qualifying purchase
+is refunded, or a referral turns out to be fraudulent, the credits stay — they
+may already be spent on bids that cannot be unwound. An administrator can refuse
+a referral *before* it is paid; afterwards, the honest record is that it was
+paid. Reversal policy is a future financial stage.
+
+### Two steps, so a failure is recoverable
+
+`qualify()` records that a real purchase happened. `reward()` issues the
+credits, and may legitimately decline — cap reached, programme off, no amount
+configured. A declined reward leaves the referral at `Qualified`, which is
+retryable and is what `referrals:reconcile` surfaces. Never collapse these.
+
+### Reconciliation reports and never repairs
+
+`referrals:reconcile` must never issue a credit. A command that granted what it
+thought was missing would mint credits on every run of a buggy qualifying rule.
+It reports and exits non-zero.
+
+### Settings and permissions
+
+`referrals_enabled`, `referral_reward_credits`,
+`referral_max_rewards_per_referrer` (zero means no cap, stated explicitly).
+
+`referrals.view`, `referrals.manage`, `referrals.settings` — staff only. A
+customer sees their own referrals because the query is scoped, not because of a
+permission.
+
+### Privacy and wording
+
+A referrer is never told who they referred — only that somebody joined and what
+it earned. Rewards are always a count of credits, never a cedis figure, and no
+copy anywhere promises income, earnings, commission or a payout.
+
+### Attribution is at registration only
+
+A code in the query string, resolved on the server. No cookie, no session, no
+tracking window — the simplest safe design, and the one the brief prefers. A
+mistyped code attributes nothing and must never break registration.
+
+### Do not build here
+
+Loyalty points or tiers, coupons, promo codes, cashback, cash commissions,
+withdrawals, customer-to-customer transfers, marketing campaigns, or fraud AI.
 
 ## Refunds
 

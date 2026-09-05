@@ -31,7 +31,9 @@ units (pesewas). Never as floating point.
 >
 > All of it is now presented as a marketplace somebody can actually shop in:
 > discover products, compare buying outright against bidding, and understand
-> exactly what a credit does before spending one.
+> exactly what a credit does before spending one. Customers can invite others,
+> and a referral earns ordinary platform credits -- never cash -- once the
+> person they invited actually buys something.
 >
 > Delivery is deliberately manual: no courier API, no driver app, no shipping
 > pricing engine.
@@ -1303,6 +1305,129 @@ not the authority to declare an order complete.
 
 No customer holds any of them. Customers hold `addresses.manage`, which lets
 them say where a package should go and never where it has got to.
+
+---
+
+## Referrals
+
+Inviting somebody, and what it earns. A growth layer over the credit ledger,
+deliberately narrow.
+
+```
+Someone shares a link  →  a friend registers through it  →  Attributed
+                                                              ↓
+                          that friend makes a real purchase  →  Qualified
+                                                              ↓
+                             credits into the ordinary ledger →  Rewarded
+```
+
+### Referral credits are just credits
+
+They enter through the same ledger service as every other credit, land in a lot
+whose source says `referral`, and are spent on bids in the ledger's own order
+like anything else. Once in a wallet there is nothing special about them.
+
+There is **no referral balance, reward balance or bonus wallet** — the referral
+record holds a pointer to the ledger row, not a copy of the amount. A test
+asserts no such column or table exists anywhere.
+
+They are also not money. They cannot be withdrawn, transferred to another
+customer, or converted to cedis, and no page describes them as earnings.
+
+### A signup earns nothing
+
+An account costs nothing to create, and rewarding one would pay for signups
+rather than for customers. What earns a reward is the referred customer's first
+**real purchase**: a payment verified with the provider, on an order the
+platform can actually deliver against.
+
+That excludes, specifically:
+
+| | Why not |
+| --- | --- |
+| Registration | Nobody has bought anything |
+| An opened checkout | No money moved |
+| A failed payment | No money moved |
+| An expired or cancelled order | It closed; a late payment landing on it is a recovery case, not a purchase |
+| A paid but blocked order | The money is real, but we owe that customer an item or a refund |
+| Bidding and losing | Bidding is not buying |
+
+Both purchase paths count equally — bought outright, or an auction won and
+settled.
+
+**Why "paid" rather than "delivered"** was a real decision, not an accident.
+Waiting for a manual delivery would make a referral reward depend on warehouse
+timing and on the customer supplying an address, neither of which says anything
+about whether the purchase was genuine.
+
+### One of everything, and the database enforces it
+
+- One referrer per customer, for ever. A unique index, so a second attribution
+  is a database refusal rather than a check two concurrent registrations could
+  both pass — and a trigger refuses any later change to the pair. Nobody can
+  be re-attributed by editing a URL.
+- One reward per referral. The credit transaction is unique, so two rewards
+  cannot exist even if the application were wrong.
+- No self-referral. Refused in the application, and again by a CHECK
+  constraint.
+
+### The reward amount is frozen when it is granted
+
+An administrator raising the reward from 50 to 100 does not revalue anything
+already given. The referral records what was actually granted; recomputing it
+from today's setting would disagree with the ledger.
+
+### Nothing is ever taken back
+
+If a qualifying purchase is later refunded, the referral credits stay. They may
+already have been spent on bids, which cannot be unwound, and the ledger is
+immutable.
+
+An administrator can refuse a referral **before** it is paid, recording who
+decided and why — the relationship stays on record rather than being deleted.
+After credits are issued, the honest record is that they were issued. Reversal
+policy is a separate financial question nobody has answered yet.
+
+### Failure is recoverable, never silent
+
+Qualifying and rewarding are separate steps. A reward can legitimately not
+happen — the cap is full, the programme is switched off, no amount is
+configured — and when that occurs the qualifying purchase stays recorded and the
+referral waits. `referrals:reconcile` reports those, along with anything else
+that does not add up.
+
+**It repairs nothing and issues no credits.** A command that granted what it
+thought was missing would mint credits on every run of a buggy rule.
+
+### Controls
+
+| Setting | Meaning |
+| --- | --- |
+| `referrals_enabled` | Whether qualifying referrals are rewarded at all |
+| `referral_reward_credits` | What one is worth today |
+| `referral_max_rewards_per_referrer` | A cap. Zero means no cap, said explicitly |
+
+All three start conservative: the programme is off and the reward is zero until
+somebody decides otherwise.
+
+### Privacy
+
+A referrer is told that somebody joined and whether it earned anything. They are
+never told who — the person who followed a link did not agree to be reported on.
+No name, no phone number, no email, no orders.
+
+### Attribution happens at registration and nowhere else
+
+A code in the link, read from the query string and resolved on the server. No
+cookie, no session tracking, no attribution window that could later override a
+relationship somebody else established. A mistyped code attributes nothing and
+never stops somebody joining.
+
+### Not built
+
+Loyalty points, tiers, coupons, promo codes, cashback, cash commissions,
+withdrawals, customer-to-customer transfers, marketing campaigns, and fraud
+detection beyond the first-generation controls above.
 
 ---
 

@@ -136,6 +136,17 @@ class PermissionSeeder extends Seeder
         'deliveries.complete',
         'deliveries.retry',
         'deliveries.cancel',
+
+        // The referral programme. Seeing who introduced whom, acting on a
+        // referral, and setting what a reward is worth are three different
+        // kinds of authority -- the last one decides promotional liability,
+        // and should not come free with the ability to read a list.
+        //
+        // No customer holds any of these. A customer sees their own referrals
+        // because the query is scoped to them, not because of a permission.
+        'referrals.view',
+        'referrals.manage',
+        'referrals.settings',
     ];
 
     /**

@@ -120,6 +120,37 @@ class SettingsSeeder extends Seeder
                 'description' => 'Shown to users who need help. Leave blank to hide it.',
                 'is_public' => true,
             ],
+            [
+                'key' => 'referrals_enabled',
+                'value' => false,
+                'type' => SettingType::Boolean,
+                'group' => 'referrals',
+                'label' => 'Referral rewards enabled',
+                'description' => 'Whether a qualifying referral grants the referrer credits. '
+                    .'Switching this off stops new rewards and changes nothing already granted.',
+                'is_public' => false,
+            ],
+            [
+                'key' => 'referral_reward_credits',
+                'value' => 0,
+                'type' => SettingType::Integer,
+                'group' => 'referrals',
+                'label' => 'Referral reward (credits)',
+                'description' => 'Credits granted to the referrer when a referred customer makes '
+                    .'their first qualifying purchase. Snapshotted at the moment of issue, so '
+                    .'changing it never revalues a reward already granted.',
+                'is_public' => false,
+            ],
+            [
+                'key' => 'referral_max_rewards_per_referrer',
+                'value' => 0,
+                'type' => SettingType::Integer,
+                'group' => 'referrals',
+                'label' => 'Maximum rewarded referrals per customer',
+                'description' => 'A cap on how many referral rewards one customer may accumulate. '
+                    .'Zero means no cap, stated explicitly rather than left unbounded by default.',
+                'is_public' => false,
+            ],
         ];
     }
 

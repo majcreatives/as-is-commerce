@@ -18,6 +18,50 @@
         </x-alert>
     @endif
 
+    {{-- What is true about the money, and nothing more. A refund is only
+         described as done once the provider has confirmed it — never while it
+         is still on its way, and never as a promise of one that has not been
+         started. --}}
+    @if ($refunds->isNotEmpty())
+        <x-card title="Refund" class="mb-6">
+            <ul class="space-y-4 text-sm">
+                @foreach ($refunds as $refund)
+                    <li class="flex flex-wrap items-baseline justify-between gap-3">
+                        <div>
+                            <x-badge :classes="$refund->status->badgeClasses()">
+                                {{ $refund->status->label() }}
+                            </x-badge>
+                            <p class="mt-2 text-slate-700">
+                                @switch($refund->status)
+                                    @case(App\Enums\RefundStatus::Succeeded)
+                                        We returned this to the payment method you used on
+                                        {{ $refund->succeeded_at?->timezone(settings()->getString('display_timezone', 'UTC'))->format('j M Y') }}.
+                                        @break
+                                    @case(App\Enums\RefundStatus::Processing)
+                                        We have asked our payment provider to return this. We will
+                                        confirm as soon as it is done.
+                                        @break
+                                    @default
+                                        This refund did not go through. Nothing has been taken from
+                                        you, and our team has been notified.
+                                @endswitch
+                            </p>
+                            @if ($order->auction_id)
+                                <p class="mt-2 text-xs text-slate-500">
+                                    Any Credits you spent bidding remain consumed. This returns
+                                    cedis only.
+                                </p>
+                            @endif
+                        </div>
+                        <span class="text-lg font-bold tabular-nums text-slate-900">
+                            <x-money :amount="$refund->amount()" />
+                        </span>
+                    </li>
+                @endforeach
+            </ul>
+        </x-card>
+    @endif
+
     <div class="grid gap-6 lg:grid-cols-3">
         <div class="space-y-6 lg:col-span-2">
             <x-card title="What you paid">

@@ -30,9 +30,90 @@
             <p class="mt-1">{{ $order->fulfilment_blocked_reason }}</p>
             <p class="mt-2">
                 The payment is real and recorded. What is owed to this customer is a decision for a
-                person — refunds are not built into the platform, so this needs handling outside it.
+                person — the platform will not refund anything on its own.
             </p>
         </x-alert>
+    @endif
+
+    @error('refund')
+        <x-alert variant="danger" class="mb-6">{{ $message }}</x-alert>
+    @enderror
+
+    {{-- The confirmation. Nothing moves until this is confirmed: returning
+         somebody's money is not a thing to do on a stray click. --}}
+    @if ($confirmingRefund && $refundablePayment)
+        <x-card title="Confirm this refund"
+                subtitle="Read it back before anything is sent to the provider."
+                class="mb-6 ring-2 ring-amber-300">
+            <dl class="grid gap-3 text-sm sm:grid-cols-2">
+                <div>
+                    <dt class="text-slate-600">Order</dt>
+                    <dd class="font-semibold text-slate-900">{{ $order->order_number }}</dd>
+                </div>
+                <div>
+                    <dt class="text-slate-600">Customer</dt>
+                    <dd class="font-semibold text-slate-900">{{ $order->user?->name }}</dd>
+                </div>
+                <div>
+                    <dt class="text-slate-600">Originally paid</dt>
+                    <dd class="font-semibold tabular-nums text-slate-900">
+                        <x-money :amount="$refundablePayment->amount()" />
+                    </dd>
+                </div>
+                <div>
+                    <dt class="text-slate-600">Already returned</dt>
+                    <dd class="tabular-nums text-slate-900"><x-money :amount="$refunded" /></dd>
+                </div>
+                <div class="sm:col-span-2">
+                    <dt class="text-slate-600">This refund</dt>
+                    <dd class="text-xl font-bold tabular-nums text-slate-900">
+                        <x-money :amount="$refundable" />
+                    </dd>
+                </div>
+            </dl>
+
+            <div class="mt-5 grid gap-4 sm:grid-cols-2">
+                <x-field label="Why" name="refundReason">
+                    <select wire:model="refundReason" id="refundReason"
+                            class="block w-full rounded-lg border-0 bg-white px-3 py-2.5 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-inset focus:ring-brand-600 sm:text-sm">
+                        @foreach ($reasons as $reason)
+                            <option value="{{ $reason->value }}">{{ $reason->label() }}</option>
+                        @endforeach
+                    </select>
+                </x-field>
+
+                <x-field label="Note (optional)" name="refundNote">
+                    <input type="text" wire:model="refundNote" id="refundNote" maxlength="500"
+                           class="block w-full rounded-lg border-0 bg-white px-3 py-2.5 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-inset focus:ring-brand-600 sm:text-sm">
+                </x-field>
+            </div>
+
+            <x-alert variant="warning" class="mt-5">
+                <p class="font-semibold">What this does, and what it does not.</p>
+                <ul class="mt-2 list-disc space-y-1 pl-5">
+                    <li>Asks the provider to return <x-money :amount="$refundable" /> to the customer.</li>
+                    <li>Leaves the original payment exactly as it is. It stays a successful payment.</li>
+                    <li>Returns no Credits. Bid credits are consumed permanently and are not affected.</li>
+                    <li>Puts no stock back. Inventory is not changed by a refund.</li>
+                    <li>Cannot be undone here. A mistake is answered by a new financial act.</li>
+                </ul>
+            </x-alert>
+
+            <div class="mt-5 flex flex-wrap gap-3">
+                @can('refunds.process')
+                    <x-button wire:click="confirmRefund" wire:loading.attr="disabled">
+                        Refund <x-money :amount="$refundable" />
+                    </x-button>
+                @else
+                    <p class="text-sm text-slate-600">
+                        You may record a refund but not send one. Someone holding
+                        <span class="font-mono text-xs">refunds.process</span> has to complete it.
+                    </p>
+                @endcan
+
+                <x-button variant="ghost" wire:click="cancelRefund">Cancel</x-button>
+            </div>
+        </x-card>
     @endif
 
     <div class="grid gap-6 lg:grid-cols-3">
@@ -184,6 +265,94 @@
                                     <tr>
                                         <td colspan="5" class="px-5 py-4 text-slate-500">
                                             No payment has been started.
+                                        </td>
+                                    </tr>
+                                @endforelse
+                            </tbody>
+                        </table>
+                    </div>
+                </x-card>
+            @endcan
+
+            {{-- Money returned, as its own record. The payment attempts above
+                 are untouched by any of this: what was paid and what was
+                 given back are two questions with two answers. --}}
+            @can('refunds.view')
+                <x-card title="Refunds" :padded="false">
+                    <div class="border-b border-slate-100 px-5 py-4">
+                        <div class="flex flex-wrap items-baseline justify-between gap-4 text-sm">
+                            <span class="text-slate-600">Returned so far</span>
+                            <span class="font-semibold tabular-nums text-slate-900">
+                                <x-money :amount="$refunded" />
+                            </span>
+                        </div>
+                        <div class="mt-2 flex flex-wrap items-baseline justify-between gap-4 text-sm">
+                            <span class="text-slate-600">Still refundable</span>
+                            <span class="font-semibold tabular-nums text-slate-900">
+                                <x-money :amount="$refundable" />
+                            </span>
+                        </div>
+
+                        @if ($canRefund && ! $confirmingRefund)
+                            <x-button class="mt-4" wire:click="startRefund">
+                                Refund this payment
+                            </x-button>
+                        @endif
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-slate-200 text-sm">
+                            <thead class="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                                <tr>
+                                    <th class="px-5 py-3 font-semibold">Amount</th>
+                                    <th class="px-5 py-3 font-semibold">Status</th>
+                                    <th class="px-5 py-3 font-semibold">Reason</th>
+                                    <th class="px-5 py-3 font-semibold">Requested by</th>
+                                    <th class="px-5 py-3 font-semibold">Provider</th>
+                                    <th class="px-5 py-3 font-semibold">When</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100">
+                                @forelse ($refunds as $refund)
+                                    <tr>
+                                        <td class="px-5 py-3 tabular-nums font-semibold text-slate-900">
+                                            <x-money :amount="$refund->amount()" />
+                                        </td>
+                                        <td class="px-5 py-3">
+                                            <x-badge :classes="$refund->status->badgeClasses()">
+                                                {{ $refund->status->label() }}
+                                            </x-badge>
+                                            @if ($refund->failure_reason)
+                                                <span class="mt-1 block text-xs text-red-700">
+                                                    {{ $refund->failure_reason }}
+                                                </span>
+                                            @endif
+                                        </td>
+                                        <td class="px-5 py-3 text-slate-600">
+                                            {{ $refund->reason->label() }}
+                                            @if ($refund->note)
+                                                <span class="mt-1 block text-xs text-slate-500">
+                                                    {{ $refund->note }}
+                                                </span>
+                                            @endif
+                                        </td>
+                                        <td class="px-5 py-3 text-slate-600">
+                                            {{ $refund->requestedBy?->name ?? '—' }}
+                                        </td>
+                                        <td class="px-5 py-3 font-mono text-xs text-slate-500">
+                                            {{ $refund->provider_reference ?? '—' }}
+                                            @if ($refund->provider_status)
+                                                <span class="block">{{ $refund->provider_status }}</span>
+                                            @endif
+                                        </td>
+                                        <td class="px-5 py-3 text-slate-500">
+                                            {{ $refund->requested_at->timezone(settings()->getString('display_timezone', 'UTC'))->format('j M, H:i') }}
+                                        </td>
+                                    </tr>
+                                @empty
+                                    <tr>
+                                        <td colspan="6" class="px-5 py-4 text-slate-500">
+                                            Nothing has been refunded on this order.
                                         </td>
                                     </tr>
                                 @endforelse

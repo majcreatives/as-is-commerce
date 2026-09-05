@@ -14,6 +14,7 @@ use App\Livewire\Admin\Catalog\InventoryManager;
 use App\Livewire\Admin\Catalog\ProductManager;
 use App\Livewire\Admin\Catalog\TaxonomyManager;
 use App\Livewire\Admin\Notifications\NotificationIndex;
+use App\Livewire\Admin\Refunds\RefundQueue;
 use App\Livewire\Admin\Orders\OrderDetail as AdminOrderDetail;
 use App\Livewire\Admin\Orders\OrderManager;
 use App\Livewire\Admin\Payments\PackageManager;
@@ -233,4 +234,13 @@ Route::middleware(['auth', 'role:admin|super_admin'])
         Route::get('/notifications', NotificationIndex::class)
             ->middleware('can:notifications.inspect')
             ->name('notifications');
+
+        // Returning money. Gated on refunds.view, which no customer holds --
+        // a refund is never something the person being refunded sets in
+        // motion. The narrower capabilities (requesting, sending, retrying)
+        // are checked again inside the component, so holding the view
+        // permission alone shows the queue without offering the actions.
+        Route::get('/refunds', RefundQueue::class)
+            ->middleware('can:refunds.view')
+            ->name('refunds');
     });

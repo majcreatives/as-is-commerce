@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Livewire\Orders;
 
+use App\Enums\RefundStatus;
 use App\Models\Order;
 use Illuminate\View\View;
 use Livewire\Attributes\Layout;
@@ -43,6 +44,17 @@ class OrderDetail extends Component
             // The successful attempt, if there was one. Failed and abandoned
             // attempts are the customer's own history and are shown too.
             'payments' => $this->order->payments()->orderByDesc('id')->get(),
+            // Money returned, if any has been. Shown as its own record rather
+            // than folded into the payment, because what was paid and what
+            // was given back are two different facts.
+            //
+            // Pending refunds are deliberately excluded: at that point the
+            // provider has not been asked, and showing one would tell a
+            // customer something is happening when nothing has yet.
+            'refunds' => $this->order->refunds()
+                ->whereIn('status', [RefundStatus::Processing, RefundStatus::Succeeded, RefundStatus::Failed])
+                ->orderByDesc('id')
+                ->get(),
         ])->title('Order '.$this->order->order_number);
     }
 }

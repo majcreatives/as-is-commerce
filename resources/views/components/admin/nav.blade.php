@@ -54,6 +54,11 @@
                     :active="request()->routeIs('admin.payment-events')">Payment events</x-nav-link>
     @endcan
 
+    @can('refunds.view')
+        <x-nav-link href="{{ route('admin.refunds') }}" wire:navigate
+                    :active="request()->routeIs('admin.refunds')">Refunds</x-nav-link>
+    @endcan
+
     @can('notifications.inspect')
         <x-nav-link href="{{ route('admin.notifications') }}" wire:navigate
                     :active="request()->routeIs('admin.notifications')">Notifications</x-nav-link>

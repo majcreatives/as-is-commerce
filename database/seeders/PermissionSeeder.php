@@ -103,6 +103,23 @@ class PermissionSeeder extends Seeder
         // them. Staff-only and read-only: there is no permission to edit,
         // resend or delete a notification, because no such capability exists.
         'notifications.inspect',
+
+        // Returning money. Split deliberately rather than granted as one
+        // capability: seeing that a customer is owed something, deciding to
+        // give it back, and sending it to the provider are three different
+        // acts, and a narrower finance role should be able to hold some of
+        // them without holding the rest.
+        //
+        // No customer holds any of these. A refund is never something the
+        // person being refunded sets in motion.
+        'refunds.view',
+        'refunds.request',
+        'refunds.process',
+        'refunds.retry',
+        // Seeing where our records and the provider's disagree. Separate from
+        // `refunds.view` because it is a different kind of question -- not
+        // "what did we refund" but "is what we believe actually true".
+        'refunds.inspect',
     ];
 
     /**

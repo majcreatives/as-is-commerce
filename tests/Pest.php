@@ -12,6 +12,8 @@ use App\Domain\Orders\Actions\FulfillOrderPayment;
 use App\Domain\Orders\Actions\InitializeOrderPayment;
 use App\Domain\Orders\Actions\StartBuyNowCheckout;
 use App\Domain\Orders\Actions\StartSettlementCheckout;
+use App\Domain\Referrals\Actions\AttributeReferral;
+use App\Domain\Referrals\Services\ReferralCodes;
 use App\Domain\Refunds\Actions\RequestRefund;
 use App\Domain\Shared\Money\Money;
 use App\Enums\CreditTransactionType;
@@ -29,6 +31,7 @@ use App\Models\Notification;
 use App\Models\Order;
 use App\Models\OrderPayment;
 use App\Models\Product;
+use App\Models\Referral;
 use App\Models\Refund;
 use App\Models\User;
 use Database\Seeders\PermissionSeeder;
@@ -573,4 +576,49 @@ function deliveryAt(DeliveryStatus $status, ?User $staff = null, ?Order $order =
     }
 
     return $delivery->fresh();
+}
+
+/*
+|--------------------------------------------------------------------------
+| Referrals
+|--------------------------------------------------------------------------
+*/
+
+/**
+ * A referrer, and somebody they introduced.
+ *
+ * Shared rather than declared in one test file: a function defined in a test
+ * file exists only once that file has been loaded, so two suites needing it
+ * would either collide on redeclaration or depend on load order.
+ *
+ * @return array{0: User, 1: User, 2: Referral|null}
+ */
+function referralPair(): array
+{
+    $referrer = bidder(0);
+    $joiner = bidder(0);
+
+    $referral = app(AttributeReferral::class)->handle(
+        $joiner,
+        app(ReferralCodes::class)->forUser($referrer),
+    );
+
+    return [$referrer->fresh(), $joiner->fresh(), $referral];
+}
+
+/**
+ * Take a customer through a real, verified Buy Now purchase.
+ *
+ * The whole path, so the order genuinely reaches `Paid` through a payment the
+ * provider confirmed -- which is what the referral programme asks about.
+ */
+function qualifyingPurchase(User $buyer): Order
+{
+    $product = Product::factory()->active()->pricedAt(550_000)->create();
+    app(InventoryService::class)->initialStock($product, 1);
+
+    $order = buyNowCheckout($buyer, $product->fresh());
+    payOrder($order->fresh());
+
+    return $order->fresh();
 }

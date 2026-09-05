@@ -1,4 +1,4 @@
-<x-layouts.app :title="$product->name">
+<div>
     {{-- Breadcrumb --}}
     <nav class="mb-4 flex flex-wrap items-center gap-1 text-sm text-slate-500" aria-label="Breadcrumb">
         <a href="{{ route('products.index') }}" wire:navigate class="hover:text-slate-900">Products</a>
@@ -52,20 +52,59 @@
                 </p>
 
                 <div class="mt-4 border-t border-slate-100 pt-4">
-                    @if ($product->isInStock())
+                    {{-- Availability from authoritative state. A live auction
+                         reserves the unit it is selling, so asking the catalog
+                         alone would call an auctioned product out of stock. --}}
+                    @if ($availability->hasAuction())
+                        <p class="text-sm font-medium text-slate-700">
+                            This product is in an auction right now.
+                        </p>
+                    @elseif ($availability->obtainable)
                         <p class="text-sm font-medium text-emerald-700">
                             In stock &middot; {{ number_format($product->availableStock()) }} available
                         </p>
                     @else
-                        <p class="text-sm font-medium text-slate-600">Currently out of stock</p>
+                        <p class="text-sm font-medium text-slate-600">Currently unavailable</p>
                     @endif
                 </div>
 
-                {{-- No Buy Now button: checkout does not exist yet, and a
-                     control that does nothing is worse than none at all. --}}
-                <p class="mt-4 text-xs text-slate-500">
-                    Online checkout is not open yet.
-                </p>
+                @error('checkout')
+                    <x-alert variant="danger" class="mt-4" role="alert">{{ $message }}</x-alert>
+                @enderror
+
+                <div class="mt-4 flex flex-wrap gap-3">
+                    @if ($availability->hasAuction())
+                        {{-- The auction owns the Buy Now path for this unit:
+                             its price carries the bidder's credit discount, and
+                             completing it ends the auction. --}}
+                        <x-button href="{{ route('auctions.show', $availability->auction) }}" wire:navigate>
+                            View the auction
+                        </x-button>
+                    @elseif ($availability->canBuyNow)
+                        @auth
+                            <x-button wire:click="buyNow" wire:loading.attr="disabled" wire:target="buyNow">
+                                <span wire:loading.remove wire:target="buyNow">Buy now</span>
+                                <span wire:loading wire:target="buyNow">Starting checkout…</span>
+                            </x-button>
+                        @else
+                            <x-button href="{{ route('login') }}" wire:navigate>Sign in to buy</x-button>
+                        @endauth
+                    @else
+                        {{-- No purchase control at all on something that cannot
+                             be bought. A button that always fails is worse than
+                             none. --}}
+                        <p class="text-sm text-slate-600">
+                            This product is not available to buy right now.
+                        </p>
+                    @endif
+                </div>
+
+                @if ($availability->hasAuction())
+                    <p class="mt-3 text-xs text-slate-500">
+                        Bid with credits, or buy it outright from the auction page. Completing a
+                        Buy Now ends the auction.
+                    </p>
+                @endif
             </div>
 
             <dl class="mt-6 grid gap-3 text-sm sm:grid-cols-2">
@@ -110,4 +149,4 @@
             </div>
         </section>
     @endif
-</x-layouts.app>
+</div>

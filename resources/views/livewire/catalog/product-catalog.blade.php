@@ -45,9 +45,13 @@
                     </x-field>
 
                     <label class="flex items-center gap-2 text-sm text-slate-700">
-                        <input type="checkbox" wire:model.live="inStockOnly"
+                        <input type="checkbox" wire:model.live="availableOnly"
                                class="size-4 rounded border-slate-300 text-brand-700 focus:ring-brand-600">
-                        In stock only
+                        {{-- "Available" means obtainable, which includes a
+                             product whose unit a live auction is holding.
+                             Available stock alone would hide every auctioned
+                             item. --}}
+                        Available now
                     </label>
 
                     @if ($this->hasFilters())
@@ -89,7 +93,7 @@
             @else
                 <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                     @foreach ($products as $product)
-                        <x-product-card :product="$product" />
+                        <x-product-card :product="$product" :availability="$availability[$product->id] ?? null" />
                     @endforeach
                 </div>
 

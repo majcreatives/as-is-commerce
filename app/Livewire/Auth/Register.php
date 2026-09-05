@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Livewire\Auth;
 
+use App\Domain\Referrals\Actions\AttributeReferral;
 use App\Domain\Shared\Phone\PhoneNumberNormalizer;
 use App\Domain\User\Actions\RegisterUser;
 use App\Models\User;
@@ -15,6 +16,7 @@ use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
+use Livewire\Attributes\Url;
 use Livewire\Component;
 
 #[Layout('components.layouts.guest')]
@@ -31,8 +33,25 @@ class Register extends Component
 
     public string $password_confirmation = '';
 
-    public function register(RegisterUser $action, PhoneNumberNormalizer $normalizer): void
-    {
+    /**
+     * A referral code, when somebody arrived through a shared link.
+     *
+     * Read from the query string and nothing else. Attribution happens only at
+     * registration, deliberately: no cookie, no session, no tracking window to
+     * expire and no persistent browser state that could later override a
+     * relationship somebody else established. The simplest safe design.
+     *
+     * Its value is never trusted -- the server resolves it to an account, and
+     * an unrecognised code simply attributes nothing.
+     */
+    #[Url(as: 'ref')]
+    public string $ref = '';
+
+    public function register(
+        RegisterUser $action,
+        PhoneNumberNormalizer $normalizer,
+        AttributeReferral $referrals,
+    ): void {
         $this->validate([
             'name' => ['nullable', 'string', 'max:120'],
             'phone' => ['required', 'string', new GhanaPhoneNumber($normalizer)],
@@ -56,6 +75,12 @@ class Register extends Component
             'email' => $this->email !== '' ? $this->email : null,
             'password' => $this->password,
         ]);
+
+        // After the account exists, and never allowed to break registration:
+        // a mistyped or expired referral link must not stop somebody joining.
+        // The action resolves the code on the server, refuses a self-referral,
+        // and does nothing at all when there is nothing to record.
+        $referrals->handle($user, $this->ref !== '' ? $this->ref : null);
 
         Auth::login($user);
         Session::regenerate();

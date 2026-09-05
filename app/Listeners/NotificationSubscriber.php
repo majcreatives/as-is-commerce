@@ -7,15 +7,18 @@ namespace App\Listeners;
 use App\Domain\Notifications\Services\NotificationDispatcher;
 use App\Enums\NotificationType;
 use App\Enums\OrderStatus;
+use App\Enums\RefundStatus;
 use App\Events\AuctionClosed;
 use App\Events\AuctionForfeited;
 use App\Events\AuctionSoldViaBuyNow;
 use App\Events\BidAccepted;
 use App\Events\OrderFulfilmentBlocked;
 use App\Events\OrderStatusChanged;
+use App\Events\RefundStatusChanged;
 use App\Events\SettlementCheckoutOpened;
 use App\Models\Auction;
 use App\Models\Order;
+use App\Models\Refund;
 use App\Models\User;
 use Illuminate\Events\Dispatcher;
 use Illuminate\Support\Collection;
@@ -64,6 +67,7 @@ class NotificationSubscriber
             SettlementCheckoutOpened::class => 'onSettlementOpened',
             OrderStatusChanged::class => 'onOrderStatusChanged',
             OrderFulfilmentBlocked::class => 'onFulfilmentBlocked',
+            RefundStatusChanged::class => 'onRefundStatusChanged',
         ];
     }
 
@@ -396,6 +400,96 @@ class NotificationSubscriber
                 context: ['order_id' => $order->id],
             );
         }, 'fulfilment_blocked');
+    }
+
+    // ------------------------------------------------------------- Refunds
+
+    /**
+     * Money the platform took is going back, or has, or could not.
+     *
+     * THE HARDEST MESSAGE ON THIS PLATFORM TO GET RIGHT, and the rules are
+     * strict:
+     *
+     *   Never say a refund completed until the provider has confirmed it.
+     *   `RefundStatus::Succeeded` is the only state that produces that
+     *   sentence, and the only way into it is the provider's own account.
+     *   Saying it early cannot be taken back.
+     *
+     *   Never say bid credits are coming back, because they are not. A
+     *   customer who bid and then bought outright is told plainly that the
+     *   cedis are returning and the Credits stay consumed -- otherwise a
+     *   refund notice reads like a reversal of everything.
+     *
+     *   Never promise a timeline. The platform does not control when a bank
+     *   posts a credit, and inventing "3-5 working days" would be a commitment
+     *   somebody else has to keep.
+     */
+    public function onRefundStatusChanged(RefundStatusChanged $event): void
+    {
+        $this->guard(function () use ($event): void {
+            $refund = $event->refund;
+            $order = $refund->order;
+            $amount = $this->money($refund->amount()->format());
+
+            [$type, $title, $message] = match ($event->to) {
+                RefundStatus::Processing => [
+                    NotificationType::RefundStarted,
+                    'Refund started',
+                    "We have started returning {$amount} for order {$order->order_number}, because "
+                        .$refund->reason->customerDescription().'. We will confirm when it is done.',
+                ],
+                RefundStatus::Succeeded => [
+                    NotificationType::RefundCompleted,
+                    'Refund completed',
+                    "We have returned {$amount} for order {$order->order_number} to the payment "
+                        .'method you used.',
+                ],
+                RefundStatus::Failed => [
+                    NotificationType::RefundFailed,
+                    'Refund could not be completed',
+                    "We tried to return {$amount} for order {$order->order_number} and it did not "
+                        .'go through. No money has been taken from you, and our support team has '
+                        .'been notified.',
+                ],
+                // Pending is internal: the refund is on record here and the
+                // provider has not been asked yet. Telling a customer at that
+                // point would be announcing an intention, not an event.
+                RefundStatus::Pending => [null, '', ''],
+            };
+
+            if ($type === null) {
+                return;
+            }
+
+            $this->notifications->send(
+                recipient: $order->user,
+                type: $type,
+                title: $title,
+                message: $message.$this->creditsStayConsumed($refund),
+                // The refund and the state it reached: a repeated sweep
+                // reaches the same pair and writes nothing the second time.
+                eventKey: "refund.status:{$refund->id}:{$event->to->value}",
+                actionUrl: route('orders.show', $order, absolute: false),
+                actionLabel: 'View your order',
+                context: ['order_id' => $order->id, 'refund_id' => $refund->id],
+            );
+        }, 'refund_status_changed');
+    }
+
+    /**
+     * The sentence that stops a refund reading like a reversal.
+     *
+     * Only where credits were actually involved -- an order tied to an auction
+     * -- because on a plain catalog purchase there were none, and mentioning
+     * them would raise a question nobody asked.
+     */
+    private function creditsStayConsumed(Refund $refund): string
+    {
+        if ($refund->order->auction_id === null) {
+            return '';
+        }
+
+        return ' Any Credits you spent bidding remain consumed; this returns cedis only.';
     }
 
     // ----------------------------------------------------------- Internals

@@ -59,6 +59,11 @@
                     :active="request()->routeIs('admin.fulfilment')">Fulfilment</x-nav-link>
     @endcan
 
+    @can('referrals.view')
+        <x-nav-link href="{{ route('admin.referrals') }}" wire:navigate
+                    :active="request()->routeIs('admin.referrals')">Referrals</x-nav-link>
+    @endcan
+
     @can('refunds.view')
         <x-nav-link href="{{ route('admin.refunds') }}" wire:navigate
                     :active="request()->routeIs('admin.refunds')">Refunds</x-nav-link>

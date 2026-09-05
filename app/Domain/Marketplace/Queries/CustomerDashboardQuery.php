@@ -10,6 +10,7 @@ use App\Enums\AuctionStatus;
 use App\Enums\DeliveryStatus;
 use App\Enums\OrderSource;
 use App\Enums\OrderStatus;
+use App\Enums\ReferralStatus;
 use App\Models\Auction;
 use App\Models\Delivery;
 use App\Models\Order;
@@ -185,6 +186,31 @@ class CustomerDashboardQuery
             ->where('status', DeliveryStatus::Pending)
             ->whereNull('address_line')
             ->count();
+    }
+
+    /**
+     * How many people this customer introduced who went on to buy something.
+     *
+     * From the referral records, which are the only place a reward is
+     * recorded. Never from a wallet balance: credits move for a dozen reasons
+     * and a balance says nothing about how many people somebody introduced.
+     */
+    public function referralsRewarded(User $user): int
+    {
+        return $user->referralsMade()->where('status', ReferralStatus::Rewarded)->count();
+    }
+
+    /**
+     * Credits earned from referrals, summed from what was actually granted.
+     *
+     * A count, never money. A referral reward is platform credits and there is
+     * no cedis figure to show.
+     */
+    public function referralCreditsEarned(User $user): int
+    {
+        return (int) $user->referralsMade()
+            ->where('status', ReferralStatus::Rewarded)
+            ->sum('reward_credits');
     }
 
     /**

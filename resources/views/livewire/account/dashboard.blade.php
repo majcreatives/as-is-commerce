@@ -229,11 +229,35 @@
                 </x-button>
             </x-card>
 
+            {{-- Modest by design. The platform is a shop first, and a
+                 referral card should not out-shout what somebody came for. --}}
+            <x-card title="Invite friends">
+                @if ($referralsRewarded > 0)
+                    <p class="text-sm text-slate-700">
+                        {{ number_format($referralsRewarded) }}
+                        {{ Str::plural('person', $referralsRewarded) }} you invited
+                        {{ $referralsRewarded === 1 ? 'has' : 'have' }} bought something, earning you
+                        <strong><x-credits :amount="$referralCreditsEarned" /></strong>.
+                    </p>
+                @else
+                    <p class="text-sm text-slate-600">
+                        Share your link. When someone you invite makes their first purchase, you get
+                        credits.
+                    </p>
+                @endif
+
+                <x-button href="{{ route('referrals.index') }}" wire:navigate
+                          variant="secondary" size="sm" class="mt-3">
+                    Your referral link
+                </x-button>
+            </x-card>
+
             <x-card title="Your account">
                 <ul class="space-y-2 text-sm">
                     <li><a href="{{ route('wallet') }}" wire:navigate class="text-brand-800 underline">Credit wallet</a></li>
                     <li><a href="{{ route('credits.history') }}" wire:navigate class="text-brand-800 underline">Credit purchases</a></li>
                     <li><a href="{{ route('addresses.index') }}" wire:navigate class="text-brand-800 underline">Delivery addresses</a></li>
+                    <li><a href="{{ route('referrals.index') }}" wire:navigate class="text-brand-800 underline">Invite friends</a></li>
                     <li><a href="{{ route('profile.edit') }}" wire:navigate class="text-brand-800 underline">Profile and preferences</a></li>
                 </ul>
             </x-card>

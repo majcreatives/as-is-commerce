@@ -66,6 +66,11 @@ class Dashboard extends Component
 
             'totalSpent' => $account->totalSpent($user),
             'unreadNotifications' => $user->unreadNotificationCount(),
+
+            // A modest card, not a campaign. The platform is a shop first, and
+            // referral figures should not out-shout what somebody came for.
+            'referralsRewarded' => $account->referralsRewarded($user),
+            'referralCreditsEarned' => $account->referralCreditsEarned($user),
         ]);
     }
 }

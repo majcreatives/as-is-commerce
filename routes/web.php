@@ -8,6 +8,7 @@ use App\Http\Controllers\Orders\CheckoutCallbackController;
 use App\Http\Controllers\Payments\PaystackCallbackController;
 use App\Http\Controllers\Payments\PaystackWebhookController;
 use App\Livewire\Account\Dashboard;
+use App\Livewire\Account\ReferralDashboard;
 use App\Livewire\Admin\Auctions\AuctionDetail as AdminAuctionDetail;
 use App\Livewire\Admin\Auctions\AuctionManager;
 use App\Livewire\Admin\Catalog\InventoryManager;
@@ -20,6 +21,7 @@ use App\Livewire\Admin\Orders\OrderManager;
 use App\Livewire\Admin\Payments\PackageManager;
 use App\Livewire\Admin\Payments\PurchaseIndex;
 use App\Livewire\Admin\Payments\WebhookEventIndex;
+use App\Livewire\Admin\Referrals\ReferralQueue;
 use App\Livewire\Admin\Refunds\RefundQueue;
 use App\Livewire\Admin\Rulesets\RulesetForm;
 use App\Livewire\Admin\Rulesets\RulesetIndex;
@@ -149,6 +151,11 @@ Route::middleware('auth')->group(function (): void {
     // grants no ability to move a package.
     Route::get('/addresses', AddressBookPage::class)->name('addresses.index');
 
+    // A customer's own referrals. Scoped to the signed-in user inside the
+    // query, so there is no path to anybody else's -- and nothing on it can
+    // issue a credit.
+    Route::get('/referrals', ReferralDashboard::class)->name('referrals.index');
+
     // A customer's own notifications. Scoped to the signed-in user inside the
     // query, so there is no path to anybody else's.
     Route::get('/notifications', NotificationCentre::class)->name('notifications.index');
@@ -267,4 +274,11 @@ Route::middleware(['auth', 'role:admin|super_admin'])
         Route::get('/fulfilment', FulfilmentQueue::class)
             ->middleware('can:deliveries.view')
             ->name('fulfilment');
+
+        // The referral programme. Gated on referrals.view, which no customer
+        // holds; acting on a referral needs referrals.manage, checked again
+        // inside the component.
+        Route::get('/referrals', ReferralQueue::class)
+            ->middleware('can:referrals.view')
+            ->name('referrals');
     });

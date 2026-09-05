@@ -57,6 +57,25 @@ enum OrderStatus: string
      */
     case PaymentExpired = 'payment_expired';
 
+    /**
+     * The platform was paid, and gave the money back.
+     *
+     * Reachable only from `Paid`, and only through the refund domain once a
+     * provider has confirmed the money went back. It says three things at
+     * once: a payment succeeded, the order was never delivered, and the money
+     * has been returned.
+     *
+     * IT IS NOT WHERE EVERY REFUND ENDS. An order that was cancelled or that
+     * expired keeps the status it closed with, even when a payment that landed
+     * against it is refunded -- the refund record carries that story. Moving
+     * such an order here would overwrite why it closed, and a closed order is
+     * not resurrected by money moving afterwards.
+     *
+     * A delivered order does not come here either. Refunding a customer who
+     * has the goods is a return, which this stage does not implement.
+     */
+    case Refunded = 'refunded';
+
     public function label(): string
     {
         return match ($this) {
@@ -67,6 +86,7 @@ enum OrderStatus: string
             self::Cancelled => 'Cancelled',
             self::PaymentFailed => 'Payment failed',
             self::PaymentExpired => 'Checkout expired',
+            self::Refunded => 'Refunded',
         };
     }
 
@@ -77,7 +97,11 @@ enum OrderStatus: string
     {
         return match ($this) {
             self::Paid, self::Processing, self::Fulfilled => true,
-            self::PendingPayment, self::Cancelled, self::PaymentFailed, self::PaymentExpired => false,
+            // Refunded is deliberately not "paid". The platform held this
+            // money and no longer does, and anything asking whether it has
+            // been paid wants a no.
+            self::PendingPayment, self::Cancelled, self::PaymentFailed,
+            self::PaymentExpired, self::Refunded => false,
         };
     }
 
@@ -114,7 +138,10 @@ enum OrderStatus: string
      */
     public function isCommerciallyFrozen(): bool
     {
-        return $this->isPaid();
+        // Refunded included, even though it is not "paid": money was received
+        // against these figures once, so they describe something that
+        // happened and stay describing it.
+        return $this->isPaid() || $this === self::Refunded;
     }
 
     public function canTransitionTo(self $target): bool
@@ -139,12 +166,17 @@ enum OrderStatus: string
             self::PendingPayment => [
                 self::Paid, self::Cancelled, self::PaymentFailed, self::PaymentExpired,
             ],
-            self::Paid => [self::Processing, self::Fulfilled],
+            // Refunded is reachable only from here, and only through the
+            // refund domain once a provider has confirmed the money went
+            // back. Nothing else in the application may name it as a target.
+            self::Paid => [self::Processing, self::Fulfilled, self::Refunded],
             self::Processing => [self::Fulfilled],
             self::Fulfilled => [],
-            // Terminal. A refund is a later stage with its own records, and is
-            // not expressible as a status change here.
-            self::Cancelled, self::PaymentFailed, self::PaymentExpired => [],
+            // Terminal. A refund against one of these is recorded in the
+            // refunds table and changes nothing here: the order closed for the
+            // reason it closed for, and money moving afterwards does not
+            // reopen it or rewrite why.
+            self::Cancelled, self::PaymentFailed, self::PaymentExpired, self::Refunded => [],
         };
     }
 
@@ -155,6 +187,7 @@ enum OrderStatus: string
             self::Processing => 'bg-brand-50 text-brand-800 ring-brand-200',
             self::PendingPayment => 'bg-accent-50 text-accent-900 ring-accent-200',
             self::Cancelled, self::PaymentExpired => 'bg-slate-100 text-slate-700 ring-slate-200',
+            self::Refunded => 'bg-violet-50 text-violet-800 ring-violet-200',
             self::PaymentFailed => 'bg-red-50 text-red-800 ring-red-200',
         };
     }

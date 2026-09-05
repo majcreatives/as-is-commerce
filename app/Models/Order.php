@@ -9,6 +9,7 @@ use App\Domain\Shared\Money\Money;
 use App\Enums\OrderPaymentStatus;
 use App\Enums\OrderSource;
 use App\Enums\OrderStatus;
+use App\Enums\RefundStatus;
 use App\Models\Concerns\GuardsPaidOrderRecord;
 use Database\Factories\OrderFactory;
 use Illuminate\Database\Eloquent\Builder;
@@ -204,6 +205,45 @@ class Order extends Model
         return $this->fulfilment_blocked_reason !== null;
     }
 
+    /**
+     * Whether any money has provably gone back on this order.
+     *
+     * Succeeded refunds only. An attempt the provider is still deciding about
+     * has returned nothing yet, and a customer told otherwise would be being
+     * told something that is not true.
+     *
+     * Derived rather than cached. A stored total would be a projection needing
+     * its own guard and its own drift problem, for a sum that is almost always
+     * over a single row.
+     */
+    public function hasRefund(): bool
+    {
+        return $this->refunds()->where('status', RefundStatus::Succeeded)->exists();
+    }
+
+    /**
+     * Whether a refund is on its way but not yet settled.
+     */
+    public function hasRefundInProgress(): bool
+    {
+        return $this->refunds()
+            ->whereIn('status', [RefundStatus::Pending, RefundStatus::Processing])
+            ->exists();
+    }
+
+    /**
+     * Whether this order is waiting for somebody to decide what is owed.
+     *
+     * The administrative queue: a payment succeeded, nothing could be
+     * delivered against it, and no refund has been started. Stage 8 created
+     * this situation deliberately and left it for a person; this is that
+     * person's list.
+     */
+    public function needsRecovery(): bool
+    {
+        return $this->isFulfilmentBlocked() && ! $this->hasRefund() && ! $this->hasRefundInProgress();
+    }
+
     public function endedAnAuction(): bool
     {
         return $this->source === OrderSource::BuyNow && $this->auction_id !== null;
@@ -243,6 +283,16 @@ class Order extends Model
     public function successfulPayment(): HasOne
     {
         return $this->hasOne(OrderPayment::class)->where('status', OrderPaymentStatus::Success);
+    }
+
+    /**
+     * Money returned against this order.
+     *
+     * @return HasMany<Refund, $this>
+     */
+    public function refunds(): HasMany
+    {
+        return $this->hasMany(Refund::class);
     }
 
     /**

@@ -10,6 +10,7 @@ use App\Enums\PaymentProvider;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 
 /**
@@ -99,6 +100,21 @@ class OrderPayment extends Model
     public function order(): BelongsTo
     {
         return $this->belongsTo(Order::class);
+    }
+
+    /**
+     * Money returned against this attempt.
+     *
+     * The attempt itself never changes: after a full refund this row still
+     * reads `Success` for its original amount, because that is what happened.
+     * What was paid and what was given back are two questions with two
+     * answers, and this relation is the second one.
+     *
+     * @return HasMany<Refund, $this>
+     */
+    public function refunds(): HasMany
+    {
+        return $this->hasMany(Refund::class);
     }
 
     /**

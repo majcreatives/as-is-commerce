@@ -5,9 +5,10 @@ This file records the rules that are not obvious from the code.
 
 ## Current stage
 
-**Auctions run themselves, customers are told what happened, money that
-could not be delivered against can be given back, and everything else is
-packed and delivered by hand with every move recorded.** Foundation (auth, roles,
+**A customer marketplace over a finished engine.** Auctions run themselves,
+customers are told what happened, money that could not be delivered against
+can be given back, everything else is packed and delivered by hand, and the
+whole of it is now presented as a shop somebody can actually use. Foundation (auth, roles,
 shell), the credit and cash ledgers, Paystack credit purchases, the product
 catalog with an auditable inventory ledger, the auction rules engine, the
 auction engine, and checkout: `orders`, `order_items`, `order_payments`,
@@ -708,6 +709,106 @@ financial act with its own records, never an edit.
 Record it: `Paid`, plus `fulfilment_blocked_reason`. Do not mark it fulfilled,
 do not swallow it, and do not invent a refund. It goes in the admin queue for
 a person.
+
+## The customer marketplace
+
+The presentation layer, and nothing more. It displays what the domain decided;
+it decides nothing itself.
+
+### Availability is not `availableStock()`
+
+A live auction reserves the unit it is selling, so an auctioned product has
+**zero available stock by design**. Asking the catalog alone would print
+"currently unavailable" on something anybody can bid for this minute.
+
+`ListingAvailability` answers the question properly: when an auction holds the
+unit, the auction's state decides; otherwise `Product::isPurchasable()` does.
+Never call `isInStock()` from a listing or a product page — that is the trap
+this layer exists to avoid, and there is a test that reproduces it with a real
+reservation.
+
+### Nothing stale reaches a card
+
+Only a **currently relevant** auction — live, closing or scheduled — is passed
+to a card. A finished auction says nothing about present availability and its
+highest bid must never appear. `ProductDiscoveryQuery::availabilityFor()`
+resolves this for a whole page in one query; do not fetch per card.
+
+### The two quantities are rendered by different components
+
+- `x-money` renders GH₵ from a `Money` object.
+- `x-credits` renders a count.
+
+Never render a credit figure through `x-money`, and never write GH₵ in front of
+one. On cards the locked label is **Highest Bid (Credits)** — naming the unit
+in the label is what stops the number beside it reading as a price. "Auction
+price" must appear nowhere.
+
+### Read models, not queries in views
+
+`app/Domain/Marketplace/Queries/` holds `ProductDiscoveryQuery`,
+`AuctionDiscoveryQuery` and `CustomerDashboardQuery`. They are read-only: no
+writes, no decisions, no caching, no second source of truth. A page that needs
+data asks one of them rather than building a query in a component or a Blade
+template.
+
+Search terms are trimmed and length-capped before they reach a LIKE.
+
+### The dashboard never sums the two credit figures
+
+Available credits are in the wallet and can be bid with. Committed credits have
+been consumed on bids and are gone. A combined number would be half spendable
+and half spent, and would mean nothing. Both are shown, labelled, and the
+second says plainly it is not coming back.
+
+### Bidding takes two deliberate actions
+
+`review()` validates the shape of the amount and opens a confirmation showing
+what it costs and that the credits go immediately. `bid()` places it. Every
+business rule is still the domain's, checked against a locked auction row — so
+a confirmation left open cannot commit credits against state that has moved on,
+and a refused bid closes the confirmation and re-reads the auction.
+
+Do not move any of that logic into the component, and do not compute a minimum
+bid or a discount in Blade or JavaScript. `BidValidator` and `BuyNowPricer` are
+the answers; the page displays them.
+
+### The countdown decides nothing
+
+It is a number the server worked out at render time. An auction ends when
+`ends_at` says so and the sweep notices. When a countdown reaches zero the page
+must not announce an outcome — it has no way of knowing one.
+
+"Ending soonest" is ordered by `ends_at`, never by anything a browser computed.
+
+### Customer-facing status wording
+
+`AuctionStatus::customerLabel()` and `DeliveryStatus::customerLabel()` exist so
+engine vocabulary stays out of customer screens. A settled auction that ended
+through Buy Now is labelled by `x-auction-status-badge`, which knows to say
+"Sold via Buy Now" — the status alone cannot tell.
+
+No bidder is ever named to another bidder, and no Buy Now buyer to anybody.
+
+### An auction owns the Buy Now path for its unit
+
+A product with a live auction sends Buy Now to the auction page rather than
+opening a plain checkout: the auction's price carries the bidder's credit
+discount, and completing it ends the auction. Two checkouts on one unit would
+be wrong in both directions.
+
+### SEO
+
+The layout emits title, description, canonical, Open Graph and — where a page
+supplies it — structured data. Signed-in pages carry `noindex`. Structured data
+is truthful only: availability follows the same authoritative reading the page
+shows a human, and nothing invents a rating or a review count.
+
+### Do not build here
+
+A CMS, blog, coupons, referrals, loyalty, reviews, recommendations,
+personalisation, analytics, or any gamification beyond the auction mechanism
+itself. This layer improves usability; it does not change economics.
 
 ## Fulfilment and delivery
 

@@ -29,6 +29,10 @@ units (pesewas). Never as floating point.
 > ever returning a credit or a unit of stock. Everything else is packed,
 > dispatched and delivered by hand, with every move recorded.
 >
+> All of it is now presented as a marketplace somebody can actually shop in:
+> discover products, compare buying outright against bidding, and understand
+> exactly what a credit does before spending one.
+>
 > Delivery is deliberately manual: no courier API, no driver app, no shipping
 > pricing engine.
 >
@@ -552,6 +556,111 @@ visibly outstanding rather than looking complete, so a retry can put it right.
 A refund event is recorded but does **not** claw credits back. They may
 already have been spent, and reversing a spend is a business decision rather
 than something to infer from a provider event.
+
+---
+
+## The marketplace
+
+What a customer actually sees, and the rules that keep it honest.
+
+```
+/                     both paths, and what is live right now
+/products             the shop, with search, filters and sorting
+/products/{slug}      one product, with Buy Now or its auction
+/auctions             every auction open to bid on
+/auctions/{auction}   one auction: bid, or buy it outright
+/how-it-works         credits, bidding, Buy Now, settlement, delivery
+/dashboard            one customer's own account
+```
+
+### Availability is not the same question as stock
+
+A live auction reserves the unit it is selling. So a product with one unit and
+an auction running on it has **zero available stock** — and a page that asked
+the catalog alone would tell a customer an item was unavailable while an
+auction for it was open in the next tab.
+
+`ListingAvailability` answers it properly: when an auction holds the unit, the
+auction's own state decides whether the product can be had; otherwise the
+catalog does. There is a test that creates the real reservation and checks the
+page does not call the product unavailable.
+
+### Nothing stale ever reaches a card
+
+Only a currently relevant auction — live, closing or scheduled — is attached to
+a listing. A settled, cancelled, forfeited or unsold auction is history: it
+never appears among things to bid on, and its highest bid never appears on a
+card. Both are tested for every one of those states.
+
+### Credits and cedis are rendered by different components
+
+`x-money` prints GH₵ from a `Money` object; `x-credits` prints a count. Neither
+can be used for the other without it being obvious in the markup, which is the
+point. On cards the label is **Highest Bid (Credits)**, so the number beside it
+cannot be read as a price, and the phrase "auction price" appears nowhere on
+the platform.
+
+### The dashboard shows two credit figures and never adds them
+
+| | |
+| --- | --- |
+| Available credits | in the wallet, ready to bid with |
+| Credits committed | consumed on bids, and gone |
+
+A combined total would be half spendable and half spent. The page shows both,
+labelled, and says of the second: *not returned, whether you won or lost*.
+
+### Bidding takes two deliberate actions
+
+Entering an amount opens a confirmation that states what it costs, what the
+current highest bid is, what the balance will be afterwards, and — in plain
+words — that the credits go immediately and do not come back if you lose. Only
+then is the bid placed.
+
+Every rule is still the domain's. The confirmation is checked again against a
+locked auction row when the bid is actually placed, so one left open while
+somebody else bid cannot commit credits against state that has moved on: the
+bid is refused, the confirmation closes, and the page re-reads the auction.
+
+A bidder is told when they lead and when they have been outbid, with the amount
+to beat and nothing else. No bidder is ever named to another bidder.
+
+### The countdown decides nothing
+
+It is a number the server worked out when the page rendered. An auction ends
+when its own `ends_at` says so and the sweep notices, whether or not anybody is
+watching. When a countdown reaches zero the page does not announce a result —
+it has no way of knowing one — it refreshes and shows whatever the server says.
+
+"Ending soonest" is ordered by the auction's own timestamp, never by anything a
+browser computed.
+
+### An auction owns the Buy Now path for its unit
+
+A product with a live auction sends Buy Now to the auction page. That price
+carries the bidder's credit discount and completing it ends the auction;
+opening a second, discount-free checkout on the same unit would be wrong in
+both directions.
+
+### Read models
+
+`app/Domain/Marketplace/Queries/` holds the three query services the pages use.
+They are read-only: no writes, no decisions, no caching, no second source of
+truth. Search terms are trimmed and length-capped before reaching the database,
+and availability for a whole page is resolved in one query rather than one per
+card.
+
+### What is deliberately not here
+
+No blog or CMS, no coupons, no referrals, no loyalty scheme, no reviews or
+ratings, no recommendation engine, no personalisation or tracking, no analytics
+platform, and no gamification beyond the auction mechanism itself. Related
+products are the same category, topped up from the same brand — deterministic,
+explicable, and identical for every customer.
+
+No real-time infrastructure either: the auction page works on ordinary request
+and response, because the database is authoritative and a socket would not make
+it more so.
 
 ---
 

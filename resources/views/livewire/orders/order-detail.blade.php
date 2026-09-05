@@ -18,6 +18,38 @@
         </x-alert>
     @endif
 
+    {{-- Where the package is, in one line, with the detail a click away.
+         The order page is about what was bought; tracking is about where it
+         has got to, and they are different questions. --}}
+    @if ($order->delivery)
+        <x-card title="Delivery" class="mb-6">
+            <div class="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                    <x-badge :classes="$order->delivery->status->badgeClasses()">
+                        {{ $order->delivery->status->customerLabel() }}
+                    </x-badge>
+                    @if ($order->delivery->hasAddress())
+                        <p class="mt-2 text-sm text-slate-600">
+                            To {{ $order->delivery->recipient_name }},
+                            {{ $order->delivery->addressSummary() }}
+                        </p>
+                    @else
+                        <p class="mt-2 text-sm text-amber-700">
+                            We need a delivery address before we can send this.
+                        </p>
+                    @endif
+                    <p class="mt-1 font-mono text-xs text-slate-500">
+                        {{ $order->delivery->reference }}
+                    </p>
+                </div>
+
+                <x-button variant="ghost" href="{{ route('orders.tracking', $order) }}" wire:navigate>
+                    Track this order
+                </x-button>
+            </div>
+        </x-card>
+    @endif
+
     {{-- What is true about the money, and nothing more. A refund is only
          described as done once the provider has confirmed it — never while it
          is still on its way, and never as a promise of one that has not been
@@ -94,7 +126,7 @@
                     @if ($order->delivery_minor > 0)
                         <div class="flex items-baseline justify-between gap-4">
                             <dt class="text-slate-600">Delivery</dt>
-                            <dd class="tabular-nums text-slate-900"><x-money :amount="$order->delivery()" /></dd>
+                            <dd class="tabular-nums text-slate-900"><x-money :amount="$order->deliveryFee()" /></dd>
                         </div>
                     @endif
 

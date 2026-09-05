@@ -19,6 +19,7 @@ use App\Livewire\Admin\Orders\OrderManager;
 use App\Livewire\Admin\Payments\PackageManager;
 use App\Livewire\Admin\Payments\PurchaseIndex;
 use App\Livewire\Admin\Payments\WebhookEventIndex;
+use App\Livewire\Admin\Delivery\FulfilmentQueue;
 use App\Livewire\Admin\Refunds\RefundQueue;
 use App\Livewire\Admin\Rulesets\RulesetForm;
 use App\Livewire\Admin\Rulesets\RulesetIndex;
@@ -34,6 +35,8 @@ use App\Livewire\Checkout\CheckoutPage;
 use App\Livewire\Credits\CreditPackages;
 use App\Livewire\Credits\PurchaseHistory;
 use App\Livewire\Notifications\NotificationCentre;
+use App\Livewire\Delivery\AddressBookPage;
+use App\Livewire\Delivery\OrderTracking;
 use App\Livewire\Orders\OrderDetail;
 use App\Livewire\Orders\OrderIndex;
 use App\Livewire\Wallet\WalletOverview;
@@ -133,6 +136,16 @@ Route::middleware('auth')->group(function (): void {
 
     Route::get('/orders', OrderIndex::class)->name('orders.index');
     Route::get('/orders/{order}', OrderDetail::class)->name('orders.show');
+
+    // Where the package is. Ownership is checked in the component, not by the
+    // route: an order number in a URL is not a capability to watch somebody
+    // else's delivery.
+    Route::get('/orders/{order}/tracking', OrderTracking::class)->name('orders.tracking');
+
+    // A customer's own addresses. Saying where you live is not an
+    // administrative act, so this needs no staff permission -- and holding it
+    // grants no ability to move a package.
+    Route::get('/addresses', AddressBookPage::class)->name('addresses.index');
 
     // A customer's own notifications. Scoped to the signed-in user inside the
     // query, so there is no path to anybody else's.
@@ -243,4 +256,13 @@ Route::middleware(['auth', 'role:admin|super_admin'])
         Route::get('/refunds', RefundQueue::class)
             ->middleware('can:refunds.view')
             ->name('refunds');
+
+        // The warehouse's own screen. Gated on deliveries.view, which no
+        // customer holds -- the narrower capabilities (packing, dispatching,
+        // completing, retrying, cancelling) are checked again inside the
+        // component, so holding the view permission alone shows the queue
+        // without offering the actions.
+        Route::get('/fulfilment', FulfilmentQueue::class)
+            ->middleware('can:deliveries.view')
+            ->name('fulfilment');
     });

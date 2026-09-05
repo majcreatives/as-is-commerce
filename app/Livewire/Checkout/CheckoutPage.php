@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Livewire\Checkout;
 
+use App\Domain\Delivery\Exceptions\DeliveryNotAllowed;
+use App\Domain\Delivery\Services\AddressBook;
 use App\Domain\Orders\Actions\InitializeOrderPayment;
 use App\Domain\Orders\Exceptions\PaymentNotAcceptable;
 use App\Domain\Orders\Services\OrderLifecycle;
@@ -36,7 +38,17 @@ class CheckoutPage extends Component
 {
     public Order $order;
 
-    public function mount(Order $order): void
+    /**
+     * Where this order should be delivered.
+     *
+     * An id from the browser, and treated as such: it is resolved through the
+     * signed-in customer's own addresses, so one belonging to somebody else
+     * finds nothing. Without that check, a request could have a package
+     * delivered to a stranger.
+     */
+    public ?int $deliveryAddressId = null;
+
+    public function mount(Order $order, AddressBook $addresses): void
     {
         $this->authorize('checkout.create');
 
@@ -45,6 +57,52 @@ class CheckoutPage extends Component
         abort_unless($order->user_id === auth()->id(), 404);
 
         $this->order = $order;
+
+        // Pre-selected from what the customer already has, so the common case
+        // takes no clicks. Still re-checked on the server when it is used.
+        $this->deliveryAddressId = $order->delivery_address_id
+            ?? $addresses->defaultFor($order->user)?->id;
+    }
+
+    /**
+     * Remember where this order is going.
+     *
+     * Only a pointer is stored. The copy that governs where a physical thing
+     * actually goes is taken when the delivery is created, at the moment a
+     * payment is verified -- so a customer editing this address afterwards
+     * changes their address book and nothing that has shipped.
+     *
+     * Deliberately not required before paying. Payment and delivery are
+     * separate concerns, and an auction winner's order is created by the
+     * closing sweep without anybody choosing anything; the address is captured
+     * before the package can be prepared instead, which is where it actually
+     * matters.
+     */
+    public function chooseAddress(AddressBook $addresses): void
+    {
+        $this->authorize('checkout.create');
+
+        abort_unless($this->order->user_id === auth()->id(), 404);
+
+        if ($this->deliveryAddressId === null) {
+            $this->addError('address', 'Choose where this should be delivered.');
+
+            return;
+        }
+
+        try {
+            $address = $addresses->resolveOwned(auth()->user(), $this->deliveryAddressId);
+        } catch (DeliveryNotAllowed $e) {
+            $this->addError('address', $e->getMessage());
+
+            return;
+        }
+
+        $this->order->delivery_address_id = $address->id;
+        $this->order->save();
+        $this->order->refresh();
+
+        session()->flash('checkout-address', 'We will deliver to '.$address->displayLabel().'.');
     }
 
     /**
@@ -109,6 +167,7 @@ class CheckoutPage extends Component
         $this->order->refresh();
 
         return view('livewire.checkout.checkout-page', [
+            'addresses' => auth()->user()->addresses()->get(),
             'pricing' => $this->order->pricing(),
             'item' => $this->order->item(),
         ])->title('Checkout '.$this->order->order_number);

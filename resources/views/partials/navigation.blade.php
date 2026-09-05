@@ -42,7 +42,8 @@
                 <x-button href="{{ route('login') }}" variant="ghost" size="sm">Sign in</x-button>
                 <x-button href="{{ route('register') }}" variant="primary" size="sm">Create account</x-button>
             @else
-                <x-nav-link href="{{ route('profile.edit') }}" :active="request()->routeIs('profile.*')">Profile</x-nav-link>
+                <x-nav-link href="{{ route('addresses.index') }}" :active="request()->routeIs('addresses.*')">Addresses</x-nav-link>
+                    <x-nav-link href="{{ route('profile.edit') }}" :active="request()->routeIs('profile.*')">Profile</x-nav-link>
 
                 <form method="POST" action="{{ route('logout') }}">
                     @csrf
@@ -84,6 +85,7 @@
                         </span>
                     @endif
                 </x-nav-link>
+                <x-nav-link href="{{ route('addresses.index') }}" class="block" :active="request()->routeIs('addresses.*')">Addresses</x-nav-link>
                 <x-nav-link href="{{ route('profile.edit') }}" class="block" :active="request()->routeIs('profile.*')">Profile</x-nav-link>
 
                 @role('admin|super_admin')

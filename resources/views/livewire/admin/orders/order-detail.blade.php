@@ -154,7 +154,7 @@
 
                     <div class="flex items-baseline justify-between gap-4">
                         <dt class="text-slate-600">Delivery</dt>
-                        <dd class="tabular-nums text-slate-900"><x-money :amount="$order->delivery()" /></dd>
+                        <dd class="tabular-nums text-slate-900"><x-money :amount="$order->deliveryFee()" /></dd>
                     </div>
 
                     <div class="flex items-baseline justify-between gap-4">
@@ -359,6 +359,230 @@
                             </tbody>
                         </table>
                     </div>
+                </x-card>
+            @endcan
+
+            {{-- Fulfilment and delivery.
+
+                 Kept visibly apart from the commercial cards above, so nobody
+                 confuses moving a box with a statement about money. Nothing in
+                 this card can mark an order paid, refund anything, move stock,
+                 return a credit or change who won an auction. --}}
+            @can('deliveries.view')
+                <x-card title="Delivery" subtitle="The physical package. Separate from the money.">
+                    @error('delivery')
+                        <x-alert variant="danger" class="mb-4">{{ $message }}</x-alert>
+                    @enderror
+
+                    @if (! $delivery)
+                        <p class="text-sm text-slate-600">
+                            No delivery yet. One is opened when a payment is verified — an
+                            unpaid, expired or blocked order has nothing to send.
+                        </p>
+                    @else
+                        <div class="flex flex-wrap items-center gap-2">
+                            <x-badge :classes="$delivery->status->badgeClasses()">
+                                {{ $delivery->status->label() }}
+                            </x-badge>
+                            <span class="font-mono text-xs text-slate-500">{{ $delivery->reference }}</span>
+                            @if ($delivery->attempts > 0)
+                                <span class="text-xs text-slate-500">
+                                    {{ $delivery->attempts }} {{ Str::plural('attempt', $delivery->attempts) }}
+                                </span>
+                            @endif
+                        </div>
+
+                        <dl class="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+                            <div class="sm:col-span-2">
+                                <dt class="text-slate-600">Delivering to</dt>
+                                <dd class="mt-1 text-slate-900">
+                                    @if ($delivery->hasAddress())
+                                        <span class="font-semibold">{{ $delivery->recipient_name }}</span>
+                                        · {{ $delivery->recipient_phone }}
+                                        <span class="mt-1 block">{{ $delivery->addressSummary() }}</span>
+                                        @if ($delivery->digital_address)
+                                            <span class="block text-xs text-slate-500">{{ $delivery->digital_address }}</span>
+                                        @endif
+                                        @if ($delivery->landmark)
+                                            <span class="block text-xs text-slate-500">Near {{ $delivery->landmark }}</span>
+                                        @endif
+                                        @if ($delivery->instructions)
+                                            <span class="mt-1 block text-xs text-slate-600">
+                                                Note from customer: {{ $delivery->instructions }}
+                                            </span>
+                                        @endif
+                                    @else
+                                        <span class="text-amber-700">
+                                            No address yet. The customer supplies this before anything
+                                            can be packed.
+                                        </span>
+                                    @endif
+                                </dd>
+                            </div>
+
+                            @if ($delivery->carrier || $delivery->tracking_reference)
+                                <div class="sm:col-span-2">
+                                    <dt class="text-slate-600">Sent with</dt>
+                                    <dd class="mt-1 text-slate-900">
+                                        {{ $delivery->carrier ?? '—' }}
+                                        @if ($delivery->tracking_reference)
+                                            <span class="font-mono text-xs text-slate-500">
+                                                {{ $delivery->tracking_reference }}
+                                            </span>
+                                        @endif
+                                        <span class="mt-1 block text-xs text-slate-500">
+                                            Recorded by hand. Not verifiable outside this platform.
+                                        </span>
+                                    </dd>
+                                </div>
+                            @endif
+
+                            @if ($delivery->failure_reason)
+                                <div class="sm:col-span-2">
+                                    <dt class="text-slate-600">Last failure</dt>
+                                    <dd class="mt-1 text-red-800">
+                                        {{ $delivery->failure_reason->label() }}
+                                        @if ($delivery->failure_note)
+                                            <span class="block text-xs">{{ $delivery->failure_note }}</span>
+                                        @endif
+                                        @if ($delivery->failure_reason->suggestsAddressReview())
+                                            <span class="mt-1 block text-xs text-slate-600">
+                                                Worth checking the address and phone number with the
+                                                customer before trying again.
+                                            </span>
+                                        @endif
+                                    </dd>
+                                </div>
+                            @endif
+
+                            @if ($delivery->received_by)
+                                <div class="sm:col-span-2">
+                                    <dt class="text-slate-600">Received by</dt>
+                                    <dd class="mt-1 text-slate-900">{{ $delivery->received_by }}</dd>
+                                </div>
+                            @endif
+                        </dl>
+
+                        @if (! $canFulfil)
+                            <x-alert variant="warning" class="mt-4">
+                                This order cannot be fulfilled in its current state, so the package
+                                must not go out. Cancelling the delivery is the only move left.
+                            </x-alert>
+                        @endif
+
+                        {{-- The controls. Each one is its own permission,
+                             because in a warehouse these are different jobs. --}}
+                        <div class="mt-5 space-y-4 border-t border-slate-100 pt-4">
+                            <div class="grid gap-3 sm:grid-cols-3">
+                                @if ($delivery->status === App\Enums\DeliveryStatus::Dispatched
+                                     || $delivery->status === App\Enums\DeliveryStatus::ReadyForDispatch)
+                                    <x-field label="Carrier or rider" name="carrier">
+                                        <input type="text" wire:model="carrier" id="carrier"
+                                               class="block w-full rounded-lg border-0 bg-white px-3 py-2 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-inset focus:ring-brand-600 sm:text-sm">
+                                    </x-field>
+
+                                    <x-field label="Reference" name="trackingReference">
+                                        <input type="text" wire:model="trackingReference" id="trackingReference"
+                                               class="block w-full rounded-lg border-0 bg-white px-3 py-2 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-inset focus:ring-brand-600 sm:text-sm">
+                                    </x-field>
+                                @endif
+
+                                @if ($delivery->status === App\Enums\DeliveryStatus::Dispatched
+                                     || $delivery->status === App\Enums\DeliveryStatus::OutForDelivery)
+                                    <x-field label="Received by" name="receivedBy">
+                                        <input type="text" wire:model="receivedBy" id="receivedBy"
+                                               class="block w-full rounded-lg border-0 bg-white px-3 py-2 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-inset focus:ring-brand-600 sm:text-sm">
+                                    </x-field>
+                                @endif
+
+                                <x-field label="Note" name="deliveryNote" class="sm:col-span-3">
+                                    <input type="text" wire:model="deliveryNote" id="deliveryNote" maxlength="500"
+                                           class="block w-full rounded-lg border-0 bg-white px-3 py-2 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-inset focus:ring-brand-600 sm:text-sm">
+                                </x-field>
+                            </div>
+
+                            <div class="flex flex-wrap gap-2">
+                                @foreach ($delivery->status->allowedTransitions() as $next)
+                                    @continue ($next === App\Enums\DeliveryStatus::DeliveryFailed)
+
+                                    @if ($delivery->status === App\Enums\DeliveryStatus::DeliveryFailed
+                                         && $next !== App\Enums\DeliveryStatus::Cancelled)
+                                        @can('deliveries.retry')
+                                            <x-button size="sm" variant="ghost"
+                                                      wire:click="retryDelivery('{{ $next->value }}')">
+                                                Retry — {{ $next->label() }}
+                                            </x-button>
+                                        @endcan
+                                    @else
+                                        <x-button size="sm"
+                                                  :variant="$next === App\Enums\DeliveryStatus::Cancelled ? 'ghost' : 'primary'"
+                                                  wire:click="moveDelivery('{{ $next->value }}')">
+                                            {{ $next->label() }}
+                                        </x-button>
+                                    @endif
+                                @endforeach
+                            </div>
+
+                            {{-- Failure needs a reason, so it is a separate
+                                 control rather than one more button. --}}
+                            @if ($delivery->status->hasLeft() && ! $delivery->isDelivered())
+                                <div class="flex flex-wrap items-end gap-3 border-t border-slate-100 pt-4">
+                                    <div class="w-full sm:w-64">
+                                        <x-field label="Delivery did not work because" name="failureReason">
+                                            <select wire:model="failureReason" id="failureReason"
+                                                    class="block w-full rounded-lg border-0 bg-white px-3 py-2 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-inset focus:ring-brand-600 sm:text-sm">
+                                                <option value="">Choose a reason</option>
+                                                @foreach ($failureReasons as $reason)
+                                                    <option value="{{ $reason->value }}">{{ $reason->label() }}</option>
+                                                @endforeach
+                                            </select>
+                                        </x-field>
+                                    </div>
+
+                                    <x-button size="sm" variant="ghost" wire:click="failDelivery">
+                                        Record a failed attempt
+                                    </x-button>
+                                </div>
+
+                                <p class="text-xs text-slate-500">
+                                    Recording a failure changes nothing financial. It refunds nothing,
+                                    restores no stock, returns no credits and reopens no auction.
+                                </p>
+                            @endif
+                        </div>
+
+                        @if ($deliveryTransitions && $deliveryTransitions->isNotEmpty())
+                            <div class="mt-6 border-t border-slate-100 pt-4">
+                                <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                    Delivery history
+                                </p>
+                                <ul class="mt-3 space-y-2 text-sm">
+                                    @foreach ($deliveryTransitions as $transition)
+                                        <li class="flex flex-wrap justify-between gap-3">
+                                            <span class="text-slate-700">
+                                                {{ $transition->from_status?->label() ?? 'Opened' }}
+                                                &rarr;
+                                                <span class="font-semibold">{{ $transition->to_status->label() }}</span>
+                                                @if ($transition->reason_code)
+                                                    <span class="block text-xs text-red-700">
+                                                        {{ $transition->reason_code->label() }}
+                                                    </span>
+                                                @endif
+                                                @if ($transition->note)
+                                                    <span class="block text-xs text-slate-500">{{ $transition->note }}</span>
+                                                @endif
+                                            </span>
+                                            <span class="text-xs text-slate-500">
+                                                {{ $transition->causedBy?->name ?? 'System' }}
+                                                ·
+                                                {{ $transition->created_at->timezone(settings()->getString('display_timezone', 'UTC'))->format('j M, H:i') }}
+                                            </span>
+                                        </li>
+                                    @endforeach
+                                </ul>
+                            </div>
+                        @endif
+                    @endif
                 </x-card>
             @endcan
 

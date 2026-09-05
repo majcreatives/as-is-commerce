@@ -98,6 +98,7 @@ class PermissionSeeder extends Seeder
         // Buying. Held by every customer.
         'orders.view_own',
         'checkout.create',
+        'addresses.manage',
 
         // Seeing what the platform told people, and what failed to reach
         // them. Staff-only and read-only: there is no permission to edit,
@@ -120,6 +121,21 @@ class PermissionSeeder extends Seeder
         // `refunds.view` because it is a different kind of question -- not
         // "what did we refund" but "is what we believe actually true".
         'refunds.inspect',
+
+        // Moving physical packages. Split the way the work is actually split
+        // in a warehouse: seeing the queue, packing, sending something out,
+        // confirming it arrived, and stopping one are different acts done by
+        // different people, and a packer should not need the authority to
+        // declare an order complete.
+        //
+        // No customer holds any of these. A customer cannot advance their own
+        // delivery, however much they would like to.
+        'deliveries.view',
+        'deliveries.update',
+        'deliveries.dispatch',
+        'deliveries.complete',
+        'deliveries.retry',
+        'deliveries.cancel',
     ];
 
     /**
@@ -151,6 +167,12 @@ class PermissionSeeder extends Seeder
         // reason.
         'checkout.create',
         'orders.view_own',
+
+        // Managing your own address book. Not an administrative act -- it is
+        // saying where you live -- and deliberately not paired with any
+        // `deliveries.*` permission: a customer may say where a package
+        // should go and may never say where it has got to.
+        'addresses.manage',
     ];
 
     /**

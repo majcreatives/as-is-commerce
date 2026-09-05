@@ -26,6 +26,52 @@
 
     <div class="grid gap-6 lg:grid-cols-3">
         <div class="space-y-6 lg:col-span-2">
+    {{-- Where it should go. Not required before paying: payment and delivery
+         are separate concerns, and an auction winner never sees this page at
+         all. The address is captured before the package can be prepared,
+         which is where it actually matters. --}}
+    <x-card title="Delivery address" class="mb-6">
+        @if (session('checkout-address'))
+            <x-alert variant="success" class="mb-4">{{ session('checkout-address') }}</x-alert>
+        @endif
+
+        @error('address')
+            <x-alert variant="danger" class="mb-4">{{ $message }}</x-alert>
+        @enderror
+
+        @if ($addresses->isEmpty())
+            <p class="text-sm text-slate-600">
+                You have no saved addresses. You can pay now and tell us where to send it
+                afterwards, or add one first.
+            </p>
+            <x-button class="mt-3" variant="ghost" href="{{ route('addresses.index') }}" wire:navigate>
+                Add a delivery address
+            </x-button>
+        @else
+            <form wire:submit="chooseAddress" class="space-y-4">
+                <x-field label="Deliver to" name="deliveryAddressId">
+                    <select wire:model="deliveryAddressId" id="deliveryAddressId"
+                            class="block w-full rounded-lg border-0 bg-white px-3 py-2.5 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-inset focus:ring-brand-600 sm:text-sm">
+                        <option value="">Choose an address</option>
+                        @foreach ($addresses as $address)
+                            <option value="{{ $address->id }}">
+                                {{ $address->displayLabel() }} — {{ $address->summary() }}
+                            </option>
+                        @endforeach
+                    </select>
+                </x-field>
+
+                <div class="flex flex-wrap gap-3">
+                    <x-button type="submit" variant="secondary" size="sm">Use this address</x-button>
+                    <x-button type="button" variant="ghost" size="sm"
+                              href="{{ route('addresses.index') }}" wire:navigate>
+                        Manage addresses
+                    </x-button>
+                </div>
+            </form>
+        @endif
+    </x-card>
+
             <x-card title="What you are buying">
                 @if ($item)
                     <div class="flex items-start justify-between gap-6">
@@ -105,7 +151,7 @@
                         <div class="flex items-baseline justify-between gap-4">
                             <dt class="text-slate-600">Delivery</dt>
                             <dd class="font-semibold tabular-nums text-slate-900">
-                                <x-money :amount="$order->delivery()" />
+                                <x-money :amount="$order->deliveryFee()" />
                             </dd>
                         </div>
                     @endif

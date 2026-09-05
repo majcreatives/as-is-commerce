@@ -50,9 +50,16 @@ it('redirects an authenticated user away from the guest pages', function (string
  * stages exist, it shows empty states.
  */
 it('shows honest empty states rather than fabricated activity', function (): void {
+    // A brand new account: real zeros read from the real tables, and empty
+    // states that say what to do rather than inventing activity.
     $this->actingAs(User::factory()->create())
         ->get(route('dashboard'))
         ->assertOk()
-        ->assertSee('No auctions scheduled')
-        ->assertSee('Nothing to show yet');
+        ->assertSee('bid on anything yet')
+        ->assertSee('No orders yet')
+        ->assertSee('Nothing in transit')
+        // And the two credit figures are shown separately, never summed.
+        ->assertSee('Available credits')
+        ->assertSee('Credits committed')
+        ->assertSee('Consumed on bids. Not returned, whether you won or lost.');
 });

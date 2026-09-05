@@ -33,11 +33,15 @@ beforeEach(function (): void {
 // --------------------------------------------------------- Public listing
 
 it('lists no auctions when none exist', function (): void {
-    // An honest empty state rather than examples. The page says so itself.
+    // An honest empty state rather than examples, and one that gives the
+    // customer somewhere to go rather than a dead end.
     $this->get(route('auctions.index'))
         ->assertOk()
-        ->assertSee('No auctions to show')
-        ->assertSee('nothing has been created');
+        ->assertSee('No auctions open right now')
+        ->assertSee('New auctions open regularly')
+        ->assertSee('Browse the shop')
+        // And it still tells them the rule that matters most before they bid.
+        ->assertSee('not returned if you do not win');
 });
 
 it('lists an open auction', function (): void {
@@ -52,7 +56,10 @@ it('lists an open auction', function (): void {
 it('never lists a draft auction', function (): void {
     Auction::factory()->create();
 
-    Livewire::test(AuctionIndex::class)->assertSee('No auctions to show');
+    Livewire::test(AuctionIndex::class)
+        ->assertSee('No auctions open right now')
+        // The draft is not merely hidden from the list: it is not there at all.
+        ->assertViewHas('auctions', fn ($page): bool => $page->total() === 0);
 });
 
 it('keeps a closed auction visible', function (): void {

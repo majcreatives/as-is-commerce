@@ -10,6 +10,7 @@ use App\Livewire\Admin\Catalog\InventoryManager;
 use App\Livewire\Admin\Catalog\ProductManager;
 use App\Livewire\Admin\Catalog\TaxonomyManager;
 use App\Livewire\Catalog\ProductCatalog;
+use App\Livewire\Catalog\ProductDetail;
 use App\Models\Brand;
 use App\Models\Category;
 use App\Models\Product;
@@ -89,7 +90,12 @@ it('shows an out-of-stock product without claiming it is available', function ()
     $this->get("/products/{$product->slug}")
         ->assertOk()
         ->assertSee('Sold Out Item')
-        ->assertSee('Currently out of stock');
+        // One phrase for this state across the whole marketplace, so a card
+        // and a product page never disagree about the same product.
+        ->assertSee('Currently unavailable')
+        // And no purchase control anywhere on it.
+        ->assertDontSee('Buy now')
+        ->assertDontSee('Sign in to buy');
 });
 
 /*
@@ -107,13 +113,34 @@ it('shows no auction, bid or credit-discount figures', function (): void {
         ->assertDontSee('Place bid');
 });
 
-it('offers no checkout button, because checkout does not exist', function (): void {
+/*
+ * Checkout has existed since the orders stage; this page finally offers it.
+ * A guest is sent to sign in rather than to a control that would fail.
+ */
+it('offers a buy now control on a purchasable product', function (): void {
     $product = Product::factory()->active()->withStock(2)->create();
 
     $this->get("/products/{$product->slug}")
         ->assertOk()
-        ->assertSee('Online checkout is not open yet')
+        ->assertSee('Sign in to buy')
         ->assertDontSee('Add to cart');
+
+    Livewire::actingAs(userWithRole('customer'))
+        ->test(ProductDetail::class, ['slug' => $product->slug])
+        ->assertSee('Buy now');
+});
+
+/*
+ * And none at all on something that cannot be bought. A button that always
+ * fails is worse than no button.
+ */
+it('offers no purchase control on an unavailable product', function (): void {
+    $product = Product::factory()->status(ProductStatus::OutOfStock)->create();
+
+    Livewire::actingAs(userWithRole('customer'))
+        ->test(ProductDetail::class, ['slug' => $product->slug])
+        ->assertSee('not available to buy right now')
+        ->assertDontSee('Sign in to buy');
 });
 
 // --------------------------------------------------------------- Filtering
@@ -156,8 +183,10 @@ it('filters by availability', function (): void {
     Product::factory()->active()->withStock(5)->create(['name' => 'Available Item']);
     Product::factory()->status(ProductStatus::OutOfStock)->create(['name' => 'Unavailable Item']);
 
+    // "Available" means obtainable, which also covers a product whose unit a
+    // live auction is holding -- available stock alone would hide those.
     Livewire::test(ProductCatalog::class)
-        ->set('inStockOnly', true)
+        ->set('availableOnly', true)
         ->assertSee('Available Item')
         ->assertDontSee('Unavailable Item');
 });

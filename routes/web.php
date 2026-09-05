@@ -13,6 +13,7 @@ use App\Livewire\Admin\Auctions\AuctionManager;
 use App\Livewire\Admin\Catalog\InventoryManager;
 use App\Livewire\Admin\Catalog\ProductManager;
 use App\Livewire\Admin\Catalog\TaxonomyManager;
+use App\Livewire\Admin\Notifications\NotificationIndex;
 use App\Livewire\Admin\Orders\OrderDetail as AdminOrderDetail;
 use App\Livewire\Admin\Orders\OrderManager;
 use App\Livewire\Admin\Payments\PackageManager;
@@ -31,6 +32,7 @@ use App\Livewire\Catalog\ProductCatalog;
 use App\Livewire\Checkout\CheckoutPage;
 use App\Livewire\Credits\CreditPackages;
 use App\Livewire\Credits\PurchaseHistory;
+use App\Livewire\Notifications\NotificationCentre;
 use App\Livewire\Orders\OrderDetail;
 use App\Livewire\Orders\OrderIndex;
 use App\Livewire\Wallet\WalletOverview;
@@ -130,6 +132,10 @@ Route::middleware('auth')->group(function (): void {
 
     Route::get('/orders', OrderIndex::class)->name('orders.index');
     Route::get('/orders/{order}', OrderDetail::class)->name('orders.show');
+
+    // A customer's own notifications. Scoped to the signed-in user inside the
+    // query, so there is no path to anybody else's.
+    Route::get('/notifications', NotificationCentre::class)->name('notifications.index');
 });
 
 /*
@@ -221,4 +227,10 @@ Route::middleware(['auth', 'role:admin|super_admin'])
         Route::get('/orders/{order}', AdminOrderDetail::class)
             ->middleware('can:orders.view')
             ->name('orders.show');
+
+        // Read-only delivery inspection. Staff-only, and distinct from a
+        // customer's own notification list, which needs no permission at all.
+        Route::get('/notifications', NotificationIndex::class)
+            ->middleware('can:notifications.inspect')
+            ->name('notifications');
     });

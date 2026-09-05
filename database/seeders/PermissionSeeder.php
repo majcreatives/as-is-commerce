@@ -98,6 +98,11 @@ class PermissionSeeder extends Seeder
         // Buying. Held by every customer.
         'orders.view_own',
         'checkout.create',
+
+        // Seeing what the platform told people, and what failed to reach
+        // them. Staff-only and read-only: there is no permission to edit,
+        // resend or delete a notification, because no such capability exists.
+        'notifications.inspect',
     ];
 
     /**

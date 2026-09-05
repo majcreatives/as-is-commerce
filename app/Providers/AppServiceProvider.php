@@ -13,10 +13,12 @@ use App\Domain\Shared\Phone\GhanaPhoneNumberNormalizer;
 use App\Domain\Shared\Phone\PhoneNumberNormalizer;
 use App\Domain\User\Contracts\OtpChannel;
 use App\Domain\User\Support\UnconfiguredOtpChannel;
+use App\Listeners\NotificationSubscriber;
 use App\Models\User;
 use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Client\Factory as HttpFactory;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\ServiceProvider;
@@ -67,6 +69,11 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Every notification the platform sends, in one place. Registered as
+        // a subscriber rather than a listener per event so the wording, the
+        // recipients and the idempotency keys can be read against each other.
+        Event::subscribe(NotificationSubscriber::class);
+
         // Surfaces lazy loading and mass-assignment mistakes during
         // development, where they are cheap to fix. Left off in production so
         // a missed eager-load degrades performance rather than erroring.

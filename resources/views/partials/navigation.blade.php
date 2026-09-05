@@ -15,6 +15,20 @@
                     <x-nav-link href="{{ route('dashboard') }}" :active="request()->routeIs('dashboard')">Dashboard</x-nav-link>
                     <x-nav-link href="{{ route('wallet') }}" :active="request()->routeIs('wallet')">Wallet</x-nav-link>
                     <x-nav-link href="{{ route('credits.packages') }}" :active="request()->routeIs('credits.*')">Credits</x-nav-link>
+                    <x-nav-link href="{{ route('orders.index') }}" :active="request()->routeIs('orders.*')">Orders</x-nav-link>
+
+                    {{-- The unread count is a single indexed COUNT, not a load of
+                         the rows, because this runs on every authenticated page. --}}
+                    @php($unread = auth()->user()->unreadNotificationCount())
+                    <x-nav-link href="{{ route('notifications.index') }}"
+                                :active="request()->routeIs('notifications.*')">
+                        Notifications
+                        @if ($unread > 0)
+                            <span class="ml-1 inline-flex min-w-5 items-center justify-center rounded-full bg-brand-700 px-1.5 py-0.5 text-xs font-bold text-white">
+                                {{ $unread > 99 ? '99+' : $unread }}
+                            </span>
+                        @endif
+                    </x-nav-link>
 
                     @role('admin|super_admin')
                         <x-nav-link href="{{ route('admin.dashboard') }}" :active="request()->routeIs('admin.*')">Admin</x-nav-link>
@@ -61,6 +75,15 @@
                 <x-nav-link href="{{ route('dashboard') }}" class="block" :active="request()->routeIs('dashboard')">Dashboard</x-nav-link>
                 <x-nav-link href="{{ route('wallet') }}" class="block" :active="request()->routeIs('wallet')">Wallet</x-nav-link>
                 <x-nav-link href="{{ route('credits.packages') }}" class="block" :active="request()->routeIs('credits.*')">Credits</x-nav-link>
+                <x-nav-link href="{{ route('orders.index') }}" class="block" :active="request()->routeIs('orders.*')">Orders</x-nav-link>
+                <x-nav-link href="{{ route('notifications.index') }}" class="block" :active="request()->routeIs('notifications.*')">
+                    Notifications
+                    @if (auth()->user()->unreadNotificationCount() > 0)
+                        <span class="ml-1 rounded-full bg-brand-700 px-1.5 py-0.5 text-xs font-bold text-white">
+                            {{ auth()->user()->unreadNotificationCount() }}
+                        </span>
+                    @endif
+                </x-nav-link>
                 <x-nav-link href="{{ route('profile.edit') }}" class="block" :active="request()->routeIs('profile.*')">Profile</x-nav-link>
 
                 @role('admin|super_admin')

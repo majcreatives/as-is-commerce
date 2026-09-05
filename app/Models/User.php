@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Domain\Notifications\ValueObjects\NotificationPreferences;
 use App\Enums\UserStatus;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
@@ -24,6 +26,7 @@ use Spatie\Permission\Traits\HasRoles;
  * @property Carbon|null $email_verified_at
  * @property string $password
  * @property UserStatus $status
+ * @property array<string, mixed>|null $notification_preferences
  */
 #[Fillable(['name', 'phone', 'email', 'password'])]
 #[Hidden(['password', 'remember_token'])]
@@ -44,7 +47,56 @@ class User extends Authenticatable
             'phone_verified_at' => 'datetime',
             'password' => 'hashed',
             'status' => UserStatus::class,
+            'notification_preferences' => 'array',
         ];
+    }
+
+    /**
+     * This account's notifications.
+     *
+     * Overridden so the relation yields this platform's Notification model
+     * rather than the framework's base class. Everything a template reads --
+     * the title, the message, the link, whether it is unread -- lives on the
+     * subclass, and without this the relation would hand back rows that
+     * cannot answer any of it.
+     *
+     * @return MorphMany<Notification, $this>
+     */
+    public function notifications(): MorphMany
+    {
+        return $this->morphMany(Notification::class, 'notifiable')->latest();
+    }
+
+    /**
+     * @return MorphMany<Notification, $this>
+     */
+    public function unreadNotifications(): MorphMany
+    {
+        return $this->notifications()->whereNull('read_at');
+    }
+
+    /**
+     * What this account wants to be told about.
+     *
+     * Null means every default, so an account that has never opened the
+     * preferences screen needs no row and no backfill. Transactional
+     * notifications reach them regardless of what is stored -- the value
+     * object enforces that rather than each caller remembering it.
+     */
+    public function notificationPreferences(): NotificationPreferences
+    {
+        return NotificationPreferences::fromArray($this->notification_preferences);
+    }
+
+    /**
+     * How many notifications this account has not read.
+     *
+     * Runs on every authenticated page, so it counts against an index on
+     * (notifiable, read_at) rather than loading the rows.
+     */
+    public function unreadNotificationCount(): int
+    {
+        return $this->notifications()->whereNull('read_at')->count();
     }
 
     /**

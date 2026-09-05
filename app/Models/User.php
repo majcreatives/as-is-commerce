@@ -85,7 +85,17 @@ class User extends Authenticatable
      */
     public function notificationPreferences(): NotificationPreferences
     {
-        return NotificationPreferences::fromArray($this->notification_preferences);
+        // Guarded because a user instance does not always carry every column.
+        // A model just written -- by registration, or by a factory -- holds
+        // only the attributes that were inserted, and strict mode throws on
+        // reading one that was never loaded. Not loaded means nothing is known
+        // about this account's preferences, and the defaults are exactly the
+        // right answer to that.
+        $stored = array_key_exists('notification_preferences', $this->getAttributes())
+            ? $this->notification_preferences
+            : null;
+
+        return NotificationPreferences::fromArray($stored);
     }
 
     /**

@@ -231,6 +231,25 @@ it('cannot switch off a transactional category', function (): void {
         ->and($preferences->allowsInApp(NotificationType::AuctionWon))->toBeTrue();
 });
 
+/*
+ * A user instance written this request carries only the attributes that were
+ * inserted, and strict mode throws on reading one that was never loaded. That
+ * is the shape registration produces, and it 500'd the profile page once.
+ */
+it('reads preferences from a user whose column was never loaded', function (): void {
+    $fresh = User::factory()->create();
+
+    expect(array_key_exists('notification_preferences', $fresh->getAttributes()))->toBeFalse()
+        ->and($fresh->notificationPreferences()->inAppEnabled(NotificationCategory::Bidding))->toBeTrue();
+});
+
+it('serves the profile page to an account created this request', function (): void {
+    $this->actingAs(User::factory()->create())
+        ->get(route('profile.edit'))
+        ->assertOk()
+        ->assertSee('Bidding activity');
+});
+
 // ------------------------------------------------------------- Admin
 
 it('shows staff a failed delivery', function (): void {

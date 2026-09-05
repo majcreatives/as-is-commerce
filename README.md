@@ -8,7 +8,7 @@ outright first, which ends the auction immediately.
 All monetary values are in Ghana Cedis (GH₵) and are stored as integer minor
 units (pesewas). Never as floating point.
 
-> **Development status — auctions run themselves, end to end.**
+> **Development status — auctions run themselves, and customers are told what happened.**
 > This repository contains the application foundation (authentication, roles,
 > application shell), the auction rules engine, the credit and cash ledgers,
 > Paystack credit purchases, the product catalog with an auditable inventory
@@ -1036,6 +1036,119 @@ financial act — not a rewrite of the original transaction.
 They were consumed when the bids were placed, permanently. No checkout or
 payment path posts a credit transaction in either direction, and a regression
 test asserts the count does not move.
+
+---
+
+## Notifications
+
+Everything the platform tells a customer, and — more importantly — everything
+it cannot break by telling them.
+
+```
+Domain event  →  NotificationSubscriber  →  in-app notification
+                                         →  email, where warranted
+```
+
+### Informational, never authoritative
+
+Nothing in the application reads a notification to decide anything. Deleting
+every row in `notifications` leaves the ledgers, the auctions, the orders and
+the inventory exactly as they are, and there is a test that does precisely that
+and then checks.
+
+That guarantee rests on two rules:
+
+**Dispatch after the commit, never inside it.** A notification written inside a
+transaction that later rolls back would describe an event that did not happen,
+and one that threw would take the transaction with it. Every dispatch point
+sits after its `DB::transaction()` has returned.
+
+**Nothing may throw into a caller.** Every handler is wrapped and every failure
+path ends in a log line. A test replaces the dispatcher with one that throws on
+everything and proves that bids, credit consumption, auction closures, payment
+verification, settlements, Buy Now terminations and the operational clock all
+still complete.
+
+### One event, one notification
+
+Every notification carries an `event_key` derived from the business event and
+its recipient — never from the message text, which may be reworded without
+changing what happened. A unique index turns "this webhook arrived five times"
+into one notification, and does so without an application check that two
+simultaneous retries could both pass. The same defence as
+`payment_webhook_events`.
+
+### Channels
+
+**In-app** is the notification. Laravel's own `notifications` table, extended
+with `event_key` and three columns recording what happened to the email.
+
+**Email** is supplementary, and narrow: money and obligations warrant one, a
+bid does not — an email per bid on a busy auction is how an address gets marked
+as spam. It is attempted after the row exists, failures are recorded on that
+row rather than raised, and a customer whose mail bounces still has everything
+waiting when they sign in.
+
+Mail is sent inline rather than queued, deliberately: a queued send would need
+a running worker for anybody to hear anything, which would make correctness
+depend on infrastructure this stage does not introduce. Moving it onto the
+queue is a one-line change once a worker exists.
+
+**No SMS.** `OtpChannel` remains bound to its unconfigured implementation, and
+no provider or credential is invented.
+
+### Preferences
+
+Two switches per optional category — in-app and email — and nothing else.
+
+| Category | Switchable |
+| --- | --- |
+| Payments and orders | **No** |
+| Bidding activity | Yes |
+| Auction results | Yes |
+
+Transactional notifications are not negotiable. A switch that silently stopped
+the platform telling somebody it had taken their payment and could not deliver
+would be a misleading experience rather than a quieter one, so the value object
+refuses to store one and the preferences screen does not offer it.
+
+An account that has never opened that screen has a null column and gets every
+default, so nothing needs backfilling.
+
+### What the messages say
+
+Three things the wording is careful about, because they are the three easiest
+to get wrong:
+
+- **Credits are a count.** "180 Credits", never "GH₵180".
+- **A settlement is money, and its own figure.** A winner is told their bid was
+  180 Credits *and* that their Auction Settlement Amount is GH₵100. Never that
+  one became the other.
+- **A blocked payment promises nothing.** "We received your payment, but
+  fulfilment is blocked… our support team will be in touch." No refund is
+  offered, because no refund mechanism exists.
+
+Losing bidders are told plainly that they did not win and that their credits
+remain consumed. There is no refund control anywhere on that page.
+
+### Privacy
+
+A bidder is never named to another bidder; an outbid message discloses the
+amount to beat and nothing else. A Buy Now buyer is never named to the people
+they outbid. The staff screen shows a recipient's name and no contact details.
+
+### Pending product decisions
+
+Two notification types were **deliberately not built**, because each needs a
+threshold nobody has chosen, and seeding one would make that decision by
+default:
+
+- **"Auction ending soon"** — how soon is soon?
+- **"Settlement deadline approaching"** — how long before the deadline?
+
+Both are listed in `NotificationType`'s docblock as absent for this reason.
+Once the business chooses the thresholds they become settings, and the sweeps
+that would send them attach to the existing `auctions:tick`.
 
 ---
 

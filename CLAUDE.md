@@ -5,7 +5,7 @@ This file records the rules that are not obvious from the code.
 
 ## Current stage
 
-**Auctions run themselves, end to end.** Foundation (auth, roles,
+**Auctions run themselves, and customers are told what happened.** Foundation (auth, roles,
 shell), the credit and cash ledgers, Paystack credit purchases, the product
 catalog with an auditable inventory ledger, the auction rules engine, the
 auction engine, and checkout: `orders`, `order_items`, `order_payments`,
@@ -703,6 +703,67 @@ financial act with its own records, never an edit.
 Record it: `Paid`, plus `fulfilment_blocked_reason`. Do not mark it fulfilled,
 do not swallow it, and do not invent a refund. It goes in the admin queue for
 a person.
+
+## Notifications
+
+Notifications are informational and never authoritative. Nothing in the
+application reads one to decide anything.
+
+### Two rules, and everything else follows
+
+**Dispatch after the commit.** Never inside a transaction. A notification
+written inside one that later rolls back describes an event that did not
+happen; one that throws takes the transaction with it. Every dispatch point
+sits after `DB::transaction()` returns — check that before adding a new one.
+
+**Never throw into a caller.** Handlers are wrapped and failures are logged.
+If you add a listener, wrap it the same way. A failure to describe an event
+must never look like a failure to do it.
+
+There is a suite that replaces the dispatcher with one that throws on
+everything and proves bids, closures, payments, settlements and the clock all
+still complete. Keep it passing.
+
+### Idempotency is the database's job
+
+Every notification carries an `event_key` derived from the business event and
+its recipient. **Never derive it from the message text** — wording changes
+without the event changing. A unique index does the deduplicating, not an
+application check that two simultaneous webhook retries could both pass.
+
+### Wording
+
+Three things to get right, because they are the three easiest to get wrong:
+
+- Credits are a count: "180 Credits", never "GH₵180".
+- A settlement is its own GH₵ figure. Never say a bid was converted into it.
+- A blocked payment promises nothing. No refund is offered anywhere, because
+  no refund mechanism exists.
+
+### Do not add a refund message
+
+Not to a losing bidder, not to a forfeited winner, not to a blocked order. Bid
+credits are consumed permanently, and the Refund & Recovery stage does not
+exist yet.
+
+### Preferences
+
+Transactional notifications cannot be switched off. `NotificationPreferences`
+enforces this rather than each caller remembering it, and
+`NotificationType::isTransactional()` decides which are which. If you add a
+type that concerns money or an obligation, mark it transactional.
+
+### Privacy
+
+A bidder is never named to another bidder. A Buy Now buyer is never named to
+the people they outbid. No contact details on the staff screen.
+
+### Two types deliberately absent
+
+"Auction ending soon" and "settlement deadline approaching" are **not built**.
+Both need a threshold nobody has decided, and seeding one would make the
+decision by default — the same reason `minimum_bid_credits` is null. Do not add
+either until the business chooses the value.
 
 ## Product price, credits and bids are separate
 

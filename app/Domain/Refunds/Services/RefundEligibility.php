@@ -143,7 +143,13 @@ class RefundEligibility
      */
     private function assertOrderIsRecoverable(Order $order): void
     {
-        if (in_array($order->status, [OrderStatus::Processing, OrderStatus::Fulfilled], true)) {
+        // Only `Fulfilled` means the customer has the goods. `Processing`
+        // means staff are packing -- since deliveries exist, that is a
+        // concrete state with a package still in the building -- so a blocked
+        // order there is a legitimate recovery case, and the blocked check
+        // below is what governs it. Refusing it here would tell an operator a
+        // package had been delivered when it is on their own shelf.
+        if ($order->status === OrderStatus::Fulfilled) {
             throw RefundNotAllowed::alreadyDelivered();
         }
 

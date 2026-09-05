@@ -31,9 +31,14 @@ use Illuminate\Support\Facades\Log;
  *
  * WHEN THE ORDER MOVES, AND WHEN IT DOES NOT.
  *
- *   Paid → Refunded    Only once every pesewa taken for the order has gone
- *                      back. The order says what is now true: money came in,
- *                      nothing was delivered, and the money went out again.
+ *   Paid,
+ *   Processing
+ *     → Refunded       Only once every pesewa taken for the order has gone
+ *                      back. Both states mean the platform held the money and
+ *                      the customer never received the goods -- a package
+ *                      being packed is still in the building -- so the order
+ *                      says what is now true: money came in, nothing was
+ *                      delivered, and the money went out again.
  *
  *   Cancelled,
  *   PaymentExpired,
@@ -43,9 +48,9 @@ use Illuminate\Support\Facades\Log;
  *                      would erase the more useful fact. A closed order is
  *                      never resurrected by money moving.
  *
- *   Processing,
  *   Fulfilled          Unchanged. The customer has the goods; eligibility
- *                      refuses these long before this point.
+ *                      refuses it long before this point, because taking money
+ *                      back for something somebody is holding is a return.
  *
  * A PARTIAL REFUND MOVES NOTHING. An order with money still outstanding to it
  * has not finished being refunded, and calling it `Refunded` would overstate
@@ -178,15 +183,18 @@ class RefundLifecycle
     /**
      * Move a paid order to `Refunded`, if everything has gone back.
      *
-     * Only from `Paid`. An order that closed as cancelled or expired keeps the
-     * status it closed with -- see the class comment -- and the refund record
+     * Only from `Paid` or `Processing` -- an order the platform was paid for
+     * and never delivered. An order that closed as cancelled or expired keeps
+     * the status it closed with, see the class comment, and the refund record
      * is what says the money was returned.
      */
     private function closeOrderIfFullyRefunded(Refund $refund): void
     {
         $order = $this->orders->lock($refund->order);
 
-        if ($order->status !== OrderStatus::Paid) {
+        // Paid, or being packed. Both mean the platform held the money and the
+        // customer never received the goods, which is what `Refunded` says.
+        if (! in_array($order->status, [OrderStatus::Paid, OrderStatus::Processing], true)) {
             return;
         }
 

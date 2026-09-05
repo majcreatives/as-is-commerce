@@ -60,8 +60,9 @@ enum OrderStatus: string
     /**
      * The platform was paid, and gave the money back.
      *
-     * Reachable only from `Paid`, and only through the refund domain once a
-     * provider has confirmed the money went back. It says three things at
+     * Reachable only from `Paid` or `Processing`, and only through the refund
+     * domain once a provider has confirmed the money went back. Both mean the
+     * platform held the money and the customer never received the goods. It says three things at
      * once: a payment succeeded, the order was never delivered, and the money
      * has been returned.
      *
@@ -170,7 +171,12 @@ enum OrderStatus: string
             // refund domain once a provider has confirmed the money went
             // back. Nothing else in the application may name it as a target.
             self::Paid => [self::Processing, self::Fulfilled, self::Refunded],
-            self::Processing => [self::Fulfilled],
+            // Refunded is reachable from here too. Since deliveries exist,
+            // `Processing` means a package is being packed and is still in the
+            // building -- so an order refunded at that point was genuinely
+            // never delivered, and saying it is still being prepared would
+            // describe work nobody may now do.
+            self::Processing => [self::Fulfilled, self::Refunded],
             self::Fulfilled => [],
             // Terminal. A refund against one of these is recorded in the
             // refunds table and changes nothing here: the order closed for the

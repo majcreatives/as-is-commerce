@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Providers;
 
 use App\Domain\Auction\Contracts\SettlementHandoff;
+use App\Domain\Delivery\Services\OrderFulfilmentHandoff;
+use App\Domain\Orders\Contracts\FulfilmentHandoff;
 use App\Domain\Orders\Services\AuctionSettlementHandoff;
 use App\Domain\Payments\Contracts\PaymentGateway;
 use App\Domain\Payments\Paystack\PaystackGateway;
@@ -40,6 +42,11 @@ class AppServiceProvider extends ServiceProvider
         // layer, and a direct call back would tie the two together in both
         // directions.
         $this->app->bind(SettlementHandoff::class, AuctionSettlementHandoff::class);
+
+        // And the same shape one layer further on: a paid order hands itself
+        // to the delivery domain through an interface, so orders never has to
+        // know that deliveries exist.
+        $this->app->bind(FulfilmentHandoff::class, OrderFulfilmentHandoff::class);
 
         // No SMS provider is integrated. The default binding throws rather
         // than pretending a code was delivered.

@@ -9,6 +9,7 @@ use App\Domain\Auction\Exceptions\BuyNowUnavailable;
 use App\Domain\Auction\Exceptions\InvalidAuctionTransition;
 use App\Domain\Auction\Services\AuctionLifecycle;
 use App\Domain\Auction\ValueObjects\BuyNowQuote;
+use App\Domain\Orders\Contracts\FulfilmentHandoff;
 use App\Domain\Orders\Exceptions\PaymentNotAcceptable;
 use App\Domain\Orders\Services\OrderLifecycle;
 use App\Domain\Payments\Contracts\PaymentGateway;
@@ -83,6 +84,7 @@ final class FulfillOrderPayment
         private readonly OrderLifecycle $orders,
         private readonly AuctionLifecycle $auctions,
         private readonly CompleteBuyNow $buyNow,
+        private readonly FulfilmentHandoff $fulfilment,
     ) {}
 
     /**
@@ -256,8 +258,18 @@ final class FulfillOrderPayment
                 // Paid, and provably so, but nothing could be handed over.
                 // Recorded rather than hidden: it puts the order in a queue
                 // for a person, because what is owed to the customer is their
-                // decision and refunds are not built in this stage.
+                // decision and is made through the refund workflow.
                 $this->orders->blockFulfilment($order, $blocked);
+            } else {
+                // The unit is genuinely this customer's, so a physical thing
+                // now has to reach them. Through the handoff interface rather
+                // than a direct call, because the delivery domain already
+                // depends on this one.
+                //
+                // Deliberately not for a blocked order: there is nothing to
+                // send, and queueing a package nobody can pack would put work
+                // in front of the warehouse that does not exist.
+                $this->fulfilment->openFor($order);
             }
 
             Log::info('Order payment fulfilled', [

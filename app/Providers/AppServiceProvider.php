@@ -16,6 +16,7 @@ use App\Domain\Shared\Phone\PhoneNumberNormalizer;
 use App\Domain\User\Contracts\OtpChannel;
 use App\Domain\User\Support\UnconfiguredOtpChannel;
 use App\Listeners\NotificationSubscriber;
+use App\Listeners\ReferralSubscriber;
 use App\Models\User;
 use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Illuminate\Database\Eloquent\Model;
@@ -80,6 +81,11 @@ class AppServiceProvider extends ServiceProvider
         // a subscriber rather than a listener per event so the wording, the
         // recipients and the idempotency keys can be read against each other.
         Event::subscribe(NotificationSubscriber::class);
+
+        // The referral programme listens to the same order events. A separate
+        // subscriber, so the orders domain knows nothing about referrals and
+        // removing the programme would mean deleting one file.
+        Event::subscribe(ReferralSubscriber::class);
 
         // Surfaces lazy loading and mass-assignment mistakes during
         // development, where they are cheap to fix. Left off in production so

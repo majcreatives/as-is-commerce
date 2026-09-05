@@ -16,6 +16,7 @@ use App\Events\BidAccepted;
 use App\Events\DeliveryStatusChanged;
 use App\Events\OrderFulfilmentBlocked;
 use App\Events\OrderStatusChanged;
+use App\Events\ReferralRewarded;
 use App\Events\RefundStatusChanged;
 use App\Events\SettlementCheckoutOpened;
 use App\Models\Auction;
@@ -71,6 +72,7 @@ class NotificationSubscriber
             OrderStatusChanged::class => 'onOrderStatusChanged',
             OrderFulfilmentBlocked::class => 'onFulfilmentBlocked',
             RefundStatusChanged::class => 'onRefundStatusChanged',
+            ReferralRewarded::class => 'onReferralRewarded',
             DeliveryStatusChanged::class => 'onDeliveryStatusChanged',
         ];
     }
@@ -595,6 +597,40 @@ class NotificationSubscriber
         $line = $order->item();
 
         return $line === null ? 'your order' : $line->product_name_snapshot;
+    }
+
+    // ----------------------------------------------------------- Referrals
+
+    /**
+     * Somebody the customer introduced made a purchase, and credits arrived.
+     *
+     * CREDITS, NOT MONEY. The message says a count and never a cedis figure --
+     * a referral reward is platform credits, cannot be withdrawn, and calling
+     * it earnings would be describing a payout that does not exist.
+     *
+     * The referred customer is never named. The referrer knows they invited
+     * people; which of them bought something is that person's business.
+     */
+    public function onReferralRewarded(ReferralRewarded $event): void
+    {
+        $this->guard(function () use ($event): void {
+            $referral = $event->referral;
+            $credits = $this->credits($referral->reward_credits ?? 0);
+
+            $this->notifications->send(
+                recipient: $referral->referrer,
+                type: NotificationType::ReferralRewarded,
+                title: 'Referral reward received',
+                message: "Someone you invited made their first purchase, so {$credits} have been "
+                    .'added to your balance. They are bidding credits, not cash, and cannot be '
+                    .'withdrawn.',
+                // The referral and the event, never the wording.
+                eventKey: "referral.rewarded:{$referral->id}",
+                actionUrl: route('referrals.index', absolute: false),
+                actionLabel: 'View your referrals',
+                context: ['referral_id' => $referral->id],
+            );
+        }, 'referral_rewarded');
     }
 
     // ----------------------------------------------------------- Internals

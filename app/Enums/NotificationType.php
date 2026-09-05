@@ -54,6 +54,9 @@ enum NotificationType: string
     case DeliveryDelivered = 'delivery.delivered';
     case DeliveryFailed = 'delivery.failed';
 
+    // ---- Referrals -------------------------------------------------------
+    case ReferralRewarded = 'referral.rewarded';
+
     // ---- Refunds ---------------------------------------------------------
     case RefundStarted = 'refund.started';
     case RefundCompleted = 'refund.completed';
@@ -84,6 +87,7 @@ enum NotificationType: string
             self::DeliveryOutForDelivery => 'Out for delivery',
             self::DeliveryDelivered => 'Delivered',
             self::DeliveryFailed => 'Delivery attempt unsuccessful',
+            self::ReferralRewarded => 'Referral reward received',
             self::RefundStarted => 'Refund started',
             self::RefundCompleted => 'Refund completed',
             self::RefundFailed => 'Refund could not be completed',
@@ -116,6 +120,7 @@ enum NotificationType: string
             self::DeliveryDispatched,
             self::DeliveryDelivered,
             self::DeliveryFailed,
+            self::ReferralRewarded,
             self::RefundStarted,
             self::RefundCompleted,
             self::RefundFailed,
@@ -176,7 +181,8 @@ enum NotificationType: string
             // of one order is how an address gets marked as spam.
             self::DeliveryDispatched,
             self::DeliveryDelivered,
-            self::DeliveryFailed => true,
+            self::DeliveryFailed,
+            self::ReferralRewarded => true,
             // Deliberately no email when a refund starts. It is an
             // acknowledgement rather than an outcome, and the outcome is
             // coming; two emails for one refund is one too many.
@@ -191,6 +197,7 @@ enum NotificationType: string
             self::OrderFulfilmentBlocked, self::OrderPaymentFailed => 'bg-amber-50 text-amber-800 ring-amber-200',
             self::SettlementCreated, self::SettlementForfeited => 'bg-brand-50 text-brand-800 ring-brand-200',
             self::RefundCompleted => 'bg-violet-50 text-violet-800 ring-violet-200',
+            self::ReferralRewarded => 'bg-emerald-50 text-emerald-800 ring-emerald-200',
             self::RefundStarted => 'bg-slate-100 text-slate-700 ring-slate-200',
             self::RefundFailed => 'bg-red-50 text-red-800 ring-red-200',
             self::Outbid => 'bg-accent-50 text-accent-900 ring-accent-200',

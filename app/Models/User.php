@@ -53,6 +53,20 @@ class User extends Authenticatable
     }
 
     /**
+     * Every bid this customer has ever placed.
+     *
+     * Historical facts, each chained to the credit transaction that paid for
+     * it. Nothing here is reversible: the credits these consumed are gone,
+     * whether the bid won, lost or was overtaken.
+     *
+     * @return HasMany<Bid, $this>
+     */
+    public function bids(): HasMany
+    {
+        return $this->hasMany(Bid::class);
+    }
+
+    /**
      * This customer's own address book.
      *
      * A convenience, not a record of anything. Where a package actually went

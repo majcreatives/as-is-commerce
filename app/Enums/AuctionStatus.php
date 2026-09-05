@@ -91,6 +91,34 @@ enum AuctionStatus: string
     }
 
     /**
+     * What a customer is told this means.
+     *
+     * Plainer than the internal label, and never less true. "Awaiting
+     * settlement" is engine vocabulary; "won, settlement required" is what
+     * actually happened and what the winner has to do about it.
+     *
+     * `Settled` deliberately says only that the auction was won. Whether it
+     * was won by a bidder or ended by somebody buying outright is a fact about
+     * the auction rather than about its status, so the badge component decides
+     * that from the auction itself.
+     */
+    public function customerLabel(): string
+    {
+        return match ($this) {
+            self::Draft => 'Not yet published',
+            self::Scheduled => 'Starts soon',
+            self::Live => 'Live now',
+            self::Closing => 'Closing',
+            self::PendingSettlement => 'Won — settlement required',
+            self::Settled => 'Auction won',
+            self::Unsold => 'Ended with no bids',
+            self::Cancelled => 'Auction cancelled',
+            self::Forfeited => 'Auction forfeited',
+            self::Relisted => 'Relisted',
+        };
+    }
+
+    /**
      * Whether a bid may be placed right now.
      *
      * Status alone is not sufficient -- the clock is checked too -- but no

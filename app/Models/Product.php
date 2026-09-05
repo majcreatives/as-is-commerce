@@ -147,6 +147,22 @@ class Product extends Model
     // -------------------------------------------------------- Relationships
 
     /**
+     * Auctions that have run, or are running, on this product.
+     *
+     * Several are legitimate: a product with three units may have three
+     * auctions, and an unsold one may be relisted. Anything asking "can a
+     * customer get this right now" must filter to currently relevant statuses
+     * rather than taking the newest -- a finished auction says nothing about
+     * present availability, and its highest bid must never reach a listing.
+     *
+     * @return HasMany<Auction, $this>
+     */
+    public function auctions(): HasMany
+    {
+        return $this->hasMany(Auction::class);
+    }
+
+    /**
      * @return BelongsTo<Category, $this>
      */
     public function category(): BelongsTo

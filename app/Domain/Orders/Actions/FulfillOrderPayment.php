@@ -18,6 +18,8 @@ use App\Enums\AuctionStatus;
 use App\Enums\OrderPaymentStatus;
 use App\Enums\OrderSource;
 use App\Enums\OrderStatus;
+use App\Events\OrderFulfilmentBlocked;
+use App\Events\OrderStatusChanged;
 use App\Models\Order;
 use App\Models\OrderPayment;
 use Illuminate\Support\Carbon;
@@ -105,12 +107,49 @@ final class FulfillOrderPayment
 
         $this->assertMatchesAttempt($payment, $verified);
 
-        return $this->idempotency->execute(
+        $result = $this->idempotency->execute(
             operation: self::OPERATION,
             key: $payment->idempotency_key,
             userId: $payment->order->user_id,
             work: fn (): array => $this->complete($payment, $verified),
         );
+
+        $this->announce($result);
+
+        return $result;
+    }
+
+    /**
+     * Tell the customer, once the money and the goods have both settled.
+     *
+     * Outside the guard, so outside the transaction. Everything here has
+     * already committed; a message that cannot be composed or sent is logged
+     * downstream and cannot make a completed payment look like a failure.
+     *
+     * A replayed delivery reaches this too -- the guard returns the stored
+     * result rather than re-running the work -- which is why every notification
+     * downstream is keyed on the order and the outcome rather than on the
+     * delivery. Five webhooks produce one message.
+     *
+     * @param  array{order_id: int, payment_id: int, already_fulfilled: bool, became_paid?: bool, blocked_reason?: string|null}  $result
+     */
+    private function announce(array $result): void
+    {
+        $order = Order::find($result['order_id']);
+
+        if ($order === null) {
+            return;
+        }
+
+        if (($result['became_paid'] ?? false) === true) {
+            OrderStatusChanged::dispatch($order, OrderStatus::Paid);
+        }
+
+        $blocked = $result['blocked_reason'] ?? null;
+
+        if (is_string($blocked) && $blocked !== '') {
+            OrderFulfilmentBlocked::dispatch($order, $blocked);
+        }
     }
 
     /**
@@ -192,6 +231,10 @@ final class FulfillOrderPayment
                     'order_id' => $order->id,
                     'payment_id' => $payment->id,
                     'already_fulfilled' => false,
+                    // Not paid: the order kept its terminal status. Only the
+                    // block is announced.
+                    'became_paid' => false,
+                    'blocked_reason' => $order->fulfilment_blocked_reason,
                 ];
             }
 
@@ -232,6 +275,8 @@ final class FulfillOrderPayment
                 'order_id' => $order->id,
                 'payment_id' => $payment->id,
                 'already_fulfilled' => false,
+                'became_paid' => true,
+                'blocked_reason' => $blocked,
             ];
         });
     }

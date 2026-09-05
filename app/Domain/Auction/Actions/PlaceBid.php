@@ -12,6 +12,7 @@ use App\Domain\Credit\Services\CreditLedgerService;
 use App\Domain\Shared\Idempotency\IdempotencyGuard;
 use App\Enums\BidStatus;
 use App\Enums\CreditTransactionType;
+use App\Events\BidAccepted;
 use App\Models\Auction;
 use App\Models\Bid;
 use App\Models\User;
@@ -96,11 +97,29 @@ final class PlaceBid
         // Re-read rather than returning a cached instance: on a replay there
         // is no in-memory bid to return, and on a fresh run the projection has
         // moved on since the row was written.
-        return Bid::findOrFail($result['bid_id']);
+        $bid = Bid::findOrFail($result['bid_id']);
+
+        // AFTER the transaction, never inside it. A notification written
+        // inside a transaction that later rolled back would tell somebody
+        // about a bid that does not exist, and one that threw would take the
+        // bid down with it. The event carries the id of whoever this bid
+        // displaced, read before the bid landed.
+        //
+        // A replayed request reaches here too, which is why the subscriber
+        // keys its notifications on the bid: one bid, one confirmation.
+        BidAccepted::dispatch(
+            $bid,
+            $result['previous_highest_bid_id'] === null
+                ? null
+                : Bid::find($result['previous_highest_bid_id']),
+            $result['extended_seconds'],
+        );
+
+        return $bid;
     }
 
     /**
-     * @return array{bid_id: int, auction_id: int, amount_credits: int, sequence: int, credit_transaction_id: int, extended_seconds: int}
+     * @return array{bid_id: int, auction_id: int, amount_credits: int, sequence: int, credit_transaction_id: int, extended_seconds: int, previous_highest_bid_id: int|null}
      */
     private function record(Auction $auction, User $user, int $amountCredits, string $idempotencyKey): array
     {
@@ -116,6 +135,10 @@ final class PlaceBid
 
             // Decided before the bid lands, from the clock as it stands.
             $extension = $this->clock->extensionFor($locked, $now);
+
+            // Read before this bid is written, so it is genuinely the bid
+            // being displaced rather than the one about to be placed.
+            $previousHighest = $this->bids->highestBidForUpdate($locked);
 
             $sequence = $this->bids->nextSequence($locked);
 
@@ -181,6 +204,7 @@ final class PlaceBid
                 'sequence' => $sequence,
                 'credit_transaction_id' => $transaction->id,
                 'extended_seconds' => $extension,
+                'previous_highest_bid_id' => $previousHighest?->id,
             ];
         });
     }

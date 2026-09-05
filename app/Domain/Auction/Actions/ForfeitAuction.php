@@ -7,6 +7,7 @@ namespace App\Domain\Auction\Actions;
 use App\Domain\Auction\Contracts\SettlementHandoff;
 use App\Domain\Auction\Services\AuctionLifecycle;
 use App\Enums\AuctionStatus;
+use App\Events\AuctionForfeited;
 use App\Models\Auction;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
@@ -38,7 +39,9 @@ final class ForfeitAuction
 
     public function handle(Auction $auction, ?User $actor = null): Auction
     {
-        return DB::transaction(function () use ($auction, $actor): Auction {
+        $before = $auction->status;
+
+        $forfeited = DB::transaction(function () use ($auction, $actor): Auction {
             $locked = $this->lifecycle->lock($auction);
 
             // Somebody settled, or another sweep got here first. Both are
@@ -57,5 +60,14 @@ final class ForfeitAuction
 
             return $this->lifecycle->forfeit($locked, $actor);
         });
+
+        // After commit, and only when this call did the forfeiting: repeated
+        // sweeps must not tell the winner twice.
+        if ($before === AuctionStatus::PendingSettlement
+            && $forfeited->status === AuctionStatus::Forfeited) {
+            AuctionForfeited::dispatch($forfeited);
+        }
+
+        return $forfeited;
     }
 }

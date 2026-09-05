@@ -7,6 +7,7 @@ namespace App\Domain\Orders\Services;
 use App\Domain\Catalog\Services\InventoryService;
 use App\Domain\Orders\Exceptions\InvalidOrderTransition;
 use App\Enums\OrderStatus;
+use App\Events\OrderStatusChanged;
 use App\Models\Order;
 use App\Models\OrderTransition;
 use App\Models\User;
@@ -54,7 +55,7 @@ class OrderLifecycle
      */
     public function cancel(Order $order, string $reason, ?User $actor = null): Order
     {
-        return DB::transaction(function () use ($order, $reason, $actor): Order {
+        $order = DB::transaction(function () use ($order, $reason, $actor): Order {
             $locked = $this->lock($order);
 
             $this->assertCanMove($locked, OrderStatus::Cancelled);
@@ -65,6 +66,10 @@ class OrderLifecycle
 
             return $this->apply($locked, OrderStatus::Cancelled, $reason, $actor);
         });
+
+        $this->announce($order, OrderStatus::Cancelled);
+
+        return $order;
     }
 
     /**
@@ -76,7 +81,7 @@ class OrderLifecycle
      */
     public function expire(Order $order, ?Carbon $now = null): Order
     {
-        return DB::transaction(function () use ($order, $now): Order {
+        $order = DB::transaction(function () use ($order, $now): Order {
             $locked = $this->lock($order);
 
             // Somebody paid, or cancelled, between the sweep selecting this
@@ -98,6 +103,10 @@ class OrderLifecycle
                 null,
             );
         });
+
+        $this->announce($order, OrderStatus::PaymentExpired);
+
+        return $order;
     }
 
     /**
@@ -105,7 +114,7 @@ class OrderLifecycle
      */
     public function markPaymentFailed(Order $order, string $reason): Order
     {
-        return DB::transaction(function () use ($order, $reason): Order {
+        $order = DB::transaction(function () use ($order, $reason): Order {
             $locked = $this->lock($order);
 
             if (! $locked->status->acceptsPayment()) {
@@ -116,6 +125,10 @@ class OrderLifecycle
 
             return $this->apply($locked, OrderStatus::PaymentFailed, $reason, null);
         });
+
+        $this->announce($order, OrderStatus::PaymentFailed);
+
+        return $order;
     }
 
     /**
@@ -134,7 +147,7 @@ class OrderLifecycle
             );
         }
 
-        return DB::transaction(function () use ($order, $target, $actor): Order {
+        $order = DB::transaction(function () use ($order, $target, $actor): Order {
             $locked = $this->lock($order);
 
             $this->assertCanMove($locked, $target);
@@ -152,6 +165,10 @@ class OrderLifecycle
                 $actor,
             );
         });
+
+        $this->announce($order, $target);
+
+        return $order;
     }
 
     /**
@@ -174,7 +191,32 @@ class OrderLifecycle
             'reason' => $reason,
         ]);
 
+        // Deliberately no event dispatched here. Every caller of this method is
+        // inside its own transaction, and an event raised there would be
+        // describing something not yet committed. Fulfilment dispatches it
+        // once the transaction has closed.
+
         return $order;
+    }
+
+    /**
+     * Tell the customer their order moved.
+     *
+     * Called once each transaction has committed, never inside one. Every
+     * handler downstream is wrapped, so a message that cannot be composed or
+     * delivered cannot make a completed transition look like a failure.
+     *
+     * A transition that did not actually happen -- a sweep reaching an order
+     * somebody already paid -- announces nothing, because the status it was
+     * asked to announce is not the status the order ended up in.
+     */
+    private function announce(Order $order, OrderStatus $reached): void
+    {
+        if ($order->status !== $reached) {
+            return;
+        }
+
+        OrderStatusChanged::dispatch($order, $reached);
     }
 
     // ------------------------------------------------------------ Inventory

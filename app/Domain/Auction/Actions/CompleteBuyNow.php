@@ -12,6 +12,7 @@ use App\Domain\Shared\Idempotency\IdempotencyGuard;
 use App\Domain\Shared\Money\Money;
 use App\Enums\AuctionClosureReason;
 use App\Enums\AuctionStatus;
+use App\Events\AuctionSoldViaBuyNow;
 use App\Models\Auction;
 use App\Models\User;
 use Illuminate\Support\Carbon;
@@ -94,7 +95,13 @@ final class CompleteBuyNow
             work: fn (): array => $this->terminate($auction, $buyer, $amountPaid, $agreedQuote),
         );
 
-        return Auction::findOrFail($result['auction_id']);
+        $auction = Auction::findOrFail($result['auction_id']);
+
+        // After commit. A replayed confirmation reaches here too, which is why
+        // the subscriber keys these on the auction rather than the delivery.
+        AuctionSoldViaBuyNow::dispatch($auction, $buyer);
+
+        return $auction;
     }
 
     /**

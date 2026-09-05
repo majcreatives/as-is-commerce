@@ -10,6 +10,8 @@ use App\Domain\Auction\Services\AuctionLifecycle;
 use App\Domain\Auction\Services\HighestBidResolver;
 use App\Enums\AuctionClosureReason;
 use App\Enums\AuctionStatus;
+use App\Events\AuctionClosed;
+use App\Events\SettlementCheckoutOpened;
 use App\Models\Auction;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -65,7 +67,9 @@ final class CloseAuction
     {
         $now ??= Carbon::now();
 
-        return DB::transaction(function () use ($auction, $force, $now): Auction {
+        $before = $auction->status;
+
+        $closed = DB::transaction(function () use ($auction, $force, $now): Auction {
             $locked = $this->lifecycle->lock($auction);
 
             // Somebody else closed it, or a Buy Now ended it, between this
@@ -124,6 +128,25 @@ final class CloseAuction
 
             return $auction;
         });
+
+        // AFTER the transaction commits, never inside it. Telling people about
+        // a closure that later rolled back would be worse than telling them
+        // late, and a message that threw would take the closure with it.
+        //
+        // Only when this call is the one that closed it: a second sweep
+        // arriving on an already-closed auction returns it unchanged and must
+        // not tell everybody a second time.
+        if ($before->acceptsBids() && ! $closed->status->acceptsBids()) {
+            AuctionClosed::dispatch($closed);
+
+            $settlement = $closed->settlementOrder;
+
+            if ($settlement !== null) {
+                SettlementCheckoutOpened::dispatch($settlement);
+            }
+        }
+
+        return $closed;
     }
 
     /**

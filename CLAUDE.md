@@ -5,8 +5,9 @@ This file records the rules that are not obvious from the code.
 
 ## Current stage
 
-**Auctions run themselves, customers are told what happened, and money
-that could not be delivered against can be given back.** Foundation (auth, roles,
+**Auctions run themselves, customers are told what happened, money that
+could not be delivered against can be given back, and everything else is
+packed and delivered by hand with every move recorded.** Foundation (auth, roles,
 shell), the credit and cash ledgers, Paystack credit purchases, the product
 catalog with an auditable inventory ledger, the auction rules engine, the
 auction engine, and checkout: `orders`, `order_items`, `order_payments`,
@@ -21,9 +22,9 @@ wins and settles, and in both cases the product changes hands only after a
 payment verified with Paystack.
 
 What must not be built ahead of its stage: disputes and chargebacks, physical
-returns and reverse logistics, delivery and courier integration, tracking, a
-tax engine, referrals, gamification, automated compensation, and real-time
-delivery (Redis, Reverb, WebSockets).
+returns and reverse logistics, courier and driver integration, automated
+tracking, shipping pricing, a tax engine, referrals, gamification, automated
+compensation, and real-time delivery (Redis, Reverb, WebSockets).
 
 **A paid order that could not be completed is recorded with
 `fulfilment_blocked_reason` and queued for a person.** Nothing refunds it
@@ -707,6 +708,96 @@ financial act with its own records, never an edit.
 Record it: `Paid`, plus `fulfilment_blocked_reason`. Do not mark it fulfilled,
 do not swallow it, and do not invent a refund. It goes in the admin queue for
 a person.
+
+## Fulfilment and delivery
+
+Delivery is manual. There is no courier integration and none is coming in this
+stage — do not add one.
+
+### Five concepts, never collapsed
+
+Payment, order, fulfilment, delivery, refund. An order stays `Processing`
+through every delivery state up to `Delivered`, because the box moving is not a
+commercial event. Collapsing any two would mean staff carrying a package
+appearing to make a statement about money.
+
+### Manual does not mean ungoverned
+
+`DeliveryLifecycle` is the only thing that writes `deliveries.status`. Every
+move is checked against `DeliveryStatus::allowedTransitions()`, authorized,
+recorded in `delivery_transitions` with an actor, and applied under a lock.
+
+Never let a browser set a status. Never add a second path that moves a package.
+
+The history table matters more here than anywhere else on the platform: a
+manual process has no provider to ask afterwards what happened, so those rows
+are the only account. Triggers refuse updates and deletes.
+
+### What a delivery must never do
+
+Mark an order paid, create or alter a payment, refund anything, move a credit,
+post an inventory movement, or change an auction result. There is no method for
+any of it, and the domain does not import the payment gateway. Keep it that
+way.
+
+A failed or cancelled delivery changes nothing financial. If money is owed it
+goes through the refund workflow, which has its own permission and its own
+record.
+
+### The address is copied, never referenced
+
+`addresses` is the customer's book; a delivery holds its own frozen copy. A
+trigger refuses to let that copy change once the status leaves `pending`.
+
+Never make a delivery read the address book at render or dispatch time. The
+whole point of two tables is that editing an address cannot redirect a package
+that has already gone.
+
+The address may still be supplied while `pending` — that is the auction
+winner's path, since their order is created by the closing sweep with nobody at
+a keyboard.
+
+### Creation
+
+`OpenDelivery` runs from `FulfillOrderPayment`, through the `FulfilmentHandoff`
+interface so the orders domain does not depend on the delivery domain. One
+order, one delivery, enforced by a unique index. A blocked order gets none.
+
+Do not create deliveries at checkout: an abandoned cart is not work.
+
+### Order completion
+
+`Delivered` moves the order to `Fulfilled` through `OrderLifecycle::apply()`,
+in the same transaction, so the order's own guards still apply. Never write
+`orders.status` from the delivery domain directly.
+
+### Lock order
+
+```
+1. the order row      SELECT ... FOR UPDATE
+2. the delivery row
+```
+
+Appended after everything financial. A delivery reaches no auction, product or
+wallet.
+
+### Idempotency
+
+A move to the status a delivery is already at does nothing: no history row, no
+order change, no notification. That is what makes a double-click and two staff
+pressing the same button harmless. Preserve it.
+
+### Wording
+
+Never say dispatched before a dispatch is recorded, or delivered before a
+handover is. Never accuse a customer of a failed delivery, and never offer a
+refund in a delivery message — that decision belongs to somebody else.
+
+### Do not build
+
+Courier APIs, driver accounts or apps, GPS, route optimisation, automated
+dispatch, delivery commissions, shipping pricing, zones, weights, automated
+retries, or physical returns and restocking.
 
 ## Refunds
 

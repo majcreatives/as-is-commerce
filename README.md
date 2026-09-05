@@ -26,12 +26,16 @@ units (pesewas). Never as floating point.
 >
 > A payment the platform could not deliver against is recorded, queued for a
 > person, and -- once somebody decides -- given back through Paystack, without
-> ever returning a credit or a unit of stock.
+> ever returning a credit or a unit of stock. Everything else is packed,
+> dispatched and delivered by hand, with every move recorded.
+>
+> Delivery is deliberately manual: no courier API, no driver app, no shipping
+> pricing engine.
 >
 > What is deliberately absent: disputes and chargebacks, physical returns and
-> reverse logistics, delivery and courier integration, tracking, a tax engine,
-> and real-time delivery (Redis, Reverb, WebSockets). Nothing refunds itself:
-> deciding what is owed remains a business decision.
+> reverse logistics, courier and driver integration, automated tracking, a tax
+> engine, and real-time delivery (Redis, Reverb, WebSockets). Nothing refunds
+> itself and nothing dispatches itself: both remain decisions a person makes.
 
 ---
 
@@ -1040,6 +1044,156 @@ financial act — not a rewrite of the original transaction.
 They were consumed when the bids were placed, permanently. No checkout or
 payment path posts a credit transaction in either direction, and a regression
 test asserts the count does not move.
+
+---
+
+## Fulfilment and delivery
+
+Getting the thing to the customer. By hand, on purpose.
+
+```
+Payment verified  →  Delivery opened (Pending)
+                          ↓  address
+                     Preparing → ReadyForDispatch → Dispatched → OutForDelivery → Delivered
+                                                         ↓              ↓            ↓
+                                                    DeliveryFailed ─────┘        Order Fulfilled
+                                                         ↓
+                                                    retry (a person decides)
+```
+
+### Five things that are not one thing
+
+| Question | Answered by |
+| --- | --- |
+| Did the customer pay? | the payment |
+| What did they buy? | the order |
+| Is it being prepared? | the delivery, and the order's `Processing` |
+| Has it reached them? | the delivery |
+| Did money go back? | the refund |
+
+An order sits at `Processing` throughout `Preparing`, `ReadyForDispatch`,
+`Dispatched` and `OutForDelivery`, because commercially nothing changes — the
+platform was paid and is getting the item to the customer, whether the box is
+on a shelf or in a van. Only `Delivered` completes the order.
+
+Collapsing any two of these would mean a member of staff carrying a box
+appearing to make a statement about money. The whole design is arranged so
+they cannot.
+
+### Manual, and therefore guarded
+
+Every transition is somebody in a warehouse saying what they just did. That is
+exactly why each one is checked against the state machine, authorized,
+recorded with an actor and a time, and applied under a lock.
+
+A manual process has no courier API to ask afterwards what really happened. The
+`delivery_transitions` table is the only account there will ever be, so it is
+written for every move and never edited — database triggers refuse both updates
+and deletes.
+
+### What a delivery cannot do
+
+There is no method for any of it:
+
+- **Mark an order paid.** `Paid` is reachable only through a payment verified
+  with the provider. A control here would have nothing to call.
+- **Move a credit.** Bid credits are consumed permanently. A package failing,
+  being cancelled, or arriving returns none of them, and the `deliveries` table
+  has no column that could express one.
+- **Post an inventory movement.** The unit was sold when the payment was
+  verified. A package coming back does not put it on the shelf — that is a
+  physical return, and reverse logistics do not exist here.
+- **Refund anything.** A failed delivery is an operational exception, not a
+  financial decision. If money is owed it goes through the refund workflow,
+  with its own permission and its own record. The delivery domain does not
+  import the payment gateway at all, and there is a test asserting that.
+- **Change an auction result.** A winner whose delivery failed still won, still
+  has their credits consumed, and the auction does not reopen.
+
+### The address is a copy, not a reference
+
+Customers keep an address book. A delivery takes a **copy** when it is created,
+and a database trigger freezes that copy the moment anybody starts handling the
+package.
+
+So a customer who moves house in March cannot redirect a package that went out
+in February, and an order from last year still says where it actually went.
+Editing or deleting an address book entry changes where the *next* order goes
+and nothing else.
+
+Before anybody has touched the package the address may still be supplied or
+corrected. That is deliberate and is the auction winner's path: their order is
+created by the closing sweep while nobody is at a keyboard, so they were never
+asked. Their delivery begins with nowhere to go, cannot leave `Pending` until
+it has somewhere, and they supply it from the tracking page.
+
+Ghana-shaped and forgiving: who receives it, a number to call, something to
+find and a town are required. Area, region, landmark and GhanaPostGPS are
+optional — most people do not know their digital address, and demanding one
+would block the checkout of everybody who does not.
+
+### When a delivery is created
+
+At the moment a payment is verified, and never before. Creating one at checkout
+would fill the warehouse queue with abandoned carts, expired checkouts and
+failed payments — work that does not exist, for orders nobody paid for.
+
+One order, one package, enforced by a unique index rather than an application
+check that two concurrent fulfilments could both pass. A blocked order gets no
+delivery at all: there is nothing to send.
+
+### When an order becomes Fulfilled
+
+Only when a delivery is marked `Delivered`, in the same transaction, through
+the order's own lifecycle — so every guard that governs an order reaching
+`Fulfilled` still applies. A delivery cannot push an order somewhere the order
+refuses to go.
+
+### Failure and retry
+
+A failed attempt records the reason as a controlled code, a note, who reported
+it and when. It changes nothing else: the order stays where it is, the money
+stays where it is, the stock stays sold.
+
+Retrying is a decision somebody makes, never a timer. A delivery that failed
+failed for a reason, and something — a corrected phone number, a different day,
+a conversation — has to change before another attempt is worth making. A
+scheduled retry would simply repeat the failure.
+
+### What is deliberately not automated
+
+No courier API, no DHL, no FedEx, no Ghana Post integration, no shipping-rate
+API, no courier webhooks. No driver accounts, no driver app, no GPS, no route
+optimisation, no automated dispatch, no delivery commissions. No shipping
+pricing engine — what delivery costs was decided at checkout and frozen on the
+order, and there is no amount column on a delivery at all.
+
+The carrier and reference fields are free text and internal. Nothing on this
+platform can be looked up anywhere else, and the customer's tracking page says
+so rather than implying otherwise.
+
+### Tracking, and telling the truth
+
+The customer's timeline marks a step complete because a timestamp exists for
+it, not because of where the package is now. A package that went straight from
+dispatched to delivered never shows "out for delivery" as done, because it
+never was.
+
+Nothing internal reaches the customer: no staff notes, no internal reference,
+no raw failure code, no audit trail. A failed attempt is described neutrally —
+a package refused at the door and one nobody answered read the same, because
+telling somebody the delivery failed because they refused it is a conversation,
+not a status line.
+
+### Permissions
+
+`deliveries.view`, `deliveries.update`, `deliveries.dispatch`,
+`deliveries.complete`, `deliveries.retry`, `deliveries.cancel` — six, because
+in a warehouse these are different jobs done by different people. Packing is
+not the authority to declare an order complete.
+
+No customer holds any of them. Customers hold `addresses.manage`, which lets
+them say where a package should go and never where it has got to.
 
 ---
 

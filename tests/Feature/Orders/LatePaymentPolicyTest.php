@@ -17,6 +17,7 @@ use App\Models\Order;
 use App\Models\OrderPayment;
 use App\Models\PaymentWebhookEvent;
 use App\Models\Product;
+use App\Models\Refund;
 use Illuminate\Support\Facades\DB;
 
 /*
@@ -345,14 +346,52 @@ it('refunds nothing automatically in any blocked case', function (string $case):
         ->and($order->fresh()->isFulfilmentBlocked())->toBeTrue();
 })->with(['conflict', 'expired', 'cancelled']);
 
-it('has no refund machinery to invoke', function (): void {
-    // Structural, and the point of it: there is nothing to call. A future
-    // Refund and Recovery stage introduces this deliberately; until then the
-    // absence is the policy.
-    expect(class_exists('App\\Domain\\Orders\\Actions\\RefundOrderPayment'))->toBeFalse()
+/*
+ * Refunds now exist, and this is where the line between the two stages sits.
+ *
+ * Stage 8 recorded the money and left the decision to a person; Stage 10 gave
+ * that person a way to act. What has not changed is that nothing acts on its
+ * own -- a blocked payment is still never refunded automatically, by a
+ * webhook, by a sweep, or by the fulfilment path that recorded it.
+ */
+it('refunds nothing automatically when a payment is blocked', function (): void {
+    $product = policyProduct();
+    $order = buyNowCheckout(bidder(), $product);
+    $payment = initializePayment($order);
+
+    $this->travel(2)->hours();
+    $this->orders->expire($order->fresh());
+    payOrder($order->fresh(), $payment->fresh());
+
+    // The sweeps run and decide nothing.
+    $this->artisan('orders:expire-checkouts')->assertSuccessful();
+    $this->artisan('auctions:tick')->assertSuccessful();
+    $this->artisan('refunds:reconcile', ['--skip-report' => true])->assertSuccessful();
+
+    expect(Refund::count())->toBe(0)
+        ->and($order->fresh()->isFulfilmentBlocked())->toBeTrue();
+});
+
+it('keeps refunds out of the order and payment domains', function (): void {
+    // Refund state is owned by the refund domain. The order lifecycle still
+    // has no refund method, and nothing there asserts that money moved --
+    // both would put the same decision in two places.
+    expect(class_exists('App\Domain\Orders\Actions\RefundOrderPayment'))->toBeFalse()
         ->and(method_exists(OrderLifecycle::class, 'refund'))->toBeFalse()
-        ->and(method_exists(PaymentGateway::class, 'refundTransaction'))
-        ->toBeFalse();
+        // The provider-specific half stays behind the gateway interface rather
+        // than being reimplemented in the orders domain.
+        ->and(method_exists(PaymentGateway::class, 'refundTransaction'))->toBeTrue()
+        ->and(class_exists('App\Domain\Refunds\Actions\RequestRefund'))->toBeTrue();
+});
+
+it('still returns no credits on any late-payment path', function (): void {
+    // The rule Stage 8 established, unchanged by refunds existing: bid credits
+    // are consumed permanently, and no refund of cedis returns any of them.
+    expect(CreditTransaction::whereIn('type', [
+        CreditTransactionType::Refund,
+        CreditTransactionType::Reversal,
+    ])->count())->toBe(0)
+        ->and(Schema::hasColumn('refunds', 'credits'))->toBeFalse();
 });
 
 // ------------------------------------------------- The queue it lands in

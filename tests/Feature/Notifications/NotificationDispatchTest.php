@@ -18,8 +18,6 @@ use App\Models\Bid;
 use App\Models\InventoryTransaction;
 use App\Models\Notification;
 use App\Models\Product;
-use App\Models\User;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Mail;
 
 /*
@@ -36,19 +34,6 @@ beforeEach(function (): void {
     $this->close = app(CloseAuction::class);
     $this->orders = app(OrderLifecycle::class);
 });
-
-/**
- * Every notification this user has, of a given type.
- *
- * @return Collection<int, Notification>
- */
-function notificationsFor(User $user, ?NotificationType $type = null)
-{
-    return Notification::query()
-        ->where('notifiable_id', $user->id)
-        ->when($type !== null, fn ($q) => $q->where('event_type', $type->value))
-        ->get();
-}
 
 // ------------------------------------------------------------- Bidding
 

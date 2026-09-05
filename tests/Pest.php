@@ -11,16 +11,21 @@ use App\Domain\Orders\Actions\FulfillOrderPayment;
 use App\Domain\Orders\Actions\InitializeOrderPayment;
 use App\Domain\Orders\Actions\StartBuyNowCheckout;
 use App\Domain\Orders\Actions\StartSettlementCheckout;
+use App\Domain\Refunds\Actions\RequestRefund;
 use App\Domain\Shared\Money\Money;
 use App\Enums\CreditTransactionType;
+use App\Enums\NotificationType;
+use App\Enums\RefundReason;
 use App\Models\Auction;
 use App\Models\AuctionRuleset;
 use App\Models\Bid;
 use App\Models\CreditTransaction;
 use App\Models\CreditWallet;
+use App\Models\Notification;
 use App\Models\Order;
 use App\Models\OrderPayment;
 use App\Models\Product;
+use App\Models\Refund;
 use App\Models\User;
 use Database\Seeders\PermissionSeeder;
 use Database\Seeders\RoleSeeder;
@@ -28,6 +33,7 @@ use Database\Seeders\SettingsSeeder;
 use Illuminate\Foundation\Testing\DatabaseTruncation;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Factory;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
@@ -364,4 +370,113 @@ function postOrderWebhook(array $payload): TestResponse
         ['HTTP_X_PAYSTACK_SIGNATURE' => paystackSignature($raw), 'CONTENT_TYPE' => 'application/json'],
         $raw,
     );
+}
+
+/*
+|--------------------------------------------------------------------------
+| Refunds
+|--------------------------------------------------------------------------
+*/
+
+/**
+ * Stub Paystack's refund endpoints, replacing any previous stub.
+ *
+ * Both are stubbed together because the two halves of a refund's life --
+ * asking, and later finding out -- use different endpoints, and a test that
+ * stubbed only one would have the reconcile pass silently fall through to a
+ * real request.
+ *
+ * `Http::fake()` appends rather than replaces and the first match wins, so
+ * this goes through `fakeHttp()`, which swaps the factory outright. Anything
+ * that stubbed a verify response earlier must re-stub it here if it still
+ * needs one.
+ *
+ * @param  array<string, mixed>  $create  What POST /refund answers.
+ * @param  array<string, mixed>|null  $fetch  What GET /refund/:id answers.
+ *                                            Defaults to the same body.
+ */
+function fakePaystackRefund(array $create, ?array $fetch = null): void
+{
+    fakeHttp([
+        'api.paystack.co/refund/*' => Http::response(['status' => true, 'data' => $fetch ?? $create]),
+        'api.paystack.co/refund' => Http::response(['status' => true, 'data' => $create]),
+    ]);
+}
+
+/**
+ * A Paystack refund body, in the shape the provider actually returns.
+ *
+ * @return array<string, mixed>
+ */
+function paystackRefundBody(
+    int $amountMinor,
+    string $status = 'pending',
+    string|int $id = 'RF-1',
+    string $currency = 'GHS',
+): array {
+    return [
+        'id' => $id,
+        'status' => $status,
+        'amount' => $amountMinor,
+        'currency' => $currency,
+    ];
+}
+
+/**
+ * An order that was paid and could not be delivered against.
+ *
+ * The situation Stages 7 and 8 deliberately left open, and the only one Stage
+ * 10 refunds. Produced by two customers racing for one unit: the first takes
+ * it, the second's verified payment has nothing to buy.
+ *
+ * Returns the loser's order -- paid, blocked, and refundable.
+ */
+function blockedPaidOrder(?User $buyer = null): Order
+{
+    $product = Product::factory()->active()->pricedAt(550_000)->create();
+    $auction = liveAuction(product: $product);
+
+    $loser = buyNowCheckout($buyer ?? bidder(), $product->fresh(), $auction->fresh());
+
+    // Somebody else's payment lands first and takes the unit.
+    payOrder(buyNowCheckout(bidder(), $product->fresh(), $auction->fresh()));
+
+    payOrder($loser->fresh());
+
+    return $loser->fresh();
+}
+
+/**
+ * Ask for a refund the way the admin screen does.
+ *
+ * Shared rather than declared in one test file: a function defined in a test
+ * file exists only once that file has been loaded, so two suites needing it
+ * would either collide on redeclaration or depend on load order.
+ */
+function requestRefund(Order $order, ?Money $amount = null, ?string $key = null, ?User $actor = null): Refund
+{
+    return app(RequestRefund::class)->handle(
+        order: $order,
+        actor: $actor ?? userWithRole('admin'),
+        reason: RefundReason::InventoryConflict,
+        amount: $amount,
+        idempotencyKey: $key,
+    );
+}
+
+/**
+ * Every notification this user has, of a given type.
+ *
+ * Shared rather than declared in one test file: a function defined in a test
+ * file exists only once that file has been loaded, so two suites needing it
+ * would either collide on redeclaration or depend on load order.
+ *
+ * @return Collection<int, Notification>
+ */
+function notificationsFor(User $user, ?NotificationType $type = null)
+{
+    return Notification::query()
+        ->where('notifiable_id', $user->id)
+        ->when($type !== null, fn ($q) => $q->where('event_type', $type->value))
+        ->get();
 }

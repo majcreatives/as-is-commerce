@@ -300,13 +300,15 @@ thereafter. There is a test asserting exactly that.
 
 Laravel 13 · PHP 8.3+ · MySQL 8 · Livewire 4 · Tailwind v4 · Vite · Pest
 
-Redis, Horizon and Reverb are deliberately not installed, and the Stage 15A
-assessment established that they cannot be assumed: Hostinger states Redis is
-unavailable on the Web and Cloud plans this deploys to, and those plans run
-cron tasks rather than persistent daemons. Adding any of them makes a VPS a
-requirement rather than a choice, which is an architectural decision and not a
-package install. Do not add packages that duplicate something the framework
-already provides.
+Broadcasting is wired but switched off: `BROADCAST_CONNECTION=null`, because
+Hostinger states Redis is unavailable on the Web and Cloud plans this deploys
+to, and those plans run cron tasks rather than persistent daemons. The
+application can broadcast (`pusher/pusher-php-server` is installed and speaks
+Reverb's protocol); the Reverb *server* and Redis are not installed, because
+running them makes a VPS a requirement rather than a choice.
+
+Horizon is not installed. Do not add packages that duplicate something the
+framework already provides.
 
 ## Non-negotiable rules
 
@@ -1186,67 +1188,115 @@ either until the business chooses the value.
 
 ## The live auction transport
 
-Polling is the transport. It is not a placeholder.
+Polling is the transport. Broadcasting is an enhancement on top of it, and the
+current production deployment runs without it.
 
-`AuctionRoom` polls, the server computes every figure on it, and the browser
-holds no auction state of its own. That is what makes the page recover from a
-dropped connection, a slept tab or a restarted server without any reconnection
-logic: the next poll is a fresh authoritative read, and there is no missed-event
-gap to reconcile because nothing is pushed.
+```
+Browser ── HTTP/Livewire ──► Laravel ──► MySQL          authoritative
+   ▲                            │
+   │                            │ domain event, after commit
+   │                            ▼
+   └───── WebSocket ◄──── AuctionBroadcastSubscriber ──► Reverb
+```
 
-### The cadence is the server's, and it decides nothing
+**A Reverb or Redis outage is not a commerce outage.** Bids, closures, Buy Now,
+forfeiture, settlement, payments and inventory are decided in MySQL under row
+locks and committed before anything is broadcast. The worst a broken transport
+can do is leave a page updating on its poll interval.
 
-`AuctionRoom::POLL_*` set how often the page asks: five seconds inside the
-closing window or the last two minutes, fifteen while an auction is live but
-further out, thirty once it has ended. Computed server-side from `AuctionClock`.
+### Broadcasting is off by default
 
-They are display cadences, not business rules. An auction ends when its stored
-`ends_at` says so and the sweep notices; a bid is validated against a locked
-auction row, never against what the page last drew. Polling slowly means seeing
-a change late — it never means the change happened late.
+`BROADCAST_CONNECTION=null`. Hostinger Premium runs scheduled cron tasks, not
+persistent processes, so there is no Reverb server to broadcast to and the
+application attempts nothing. Turning it on is a deliberate act on
+infrastructure that can host the server.
 
-Never derive an outcome, a deadline or a validity check from a poll interval.
+`laravel/reverb` is deliberately **not** installed. It is the server, it cannot
+run on the current plan, and installing a daemon that cannot start would be
+documentation pretending to be infrastructure. The application broadcasts
+through `pusher/pusher-php-server`, which speaks the same protocol.
 
-### One render reads each fact once
+### The transport is a subscriber, never a flag on the domain events
 
-`AuctionRoom::viewFor()` reads everything the template needs and hands it over
-as data. The template calls no component method and resolves no service.
+`AuctionBroadcastSubscriber` listens to `BidAccepted`, `AuctionClosed`,
+`AuctionSoldViaBuyNow` and `AuctionForfeited`, and reduces each to a public
+payload. The domain events themselves are untouched.
 
-That shape is the optimization. Before it, Blade called
-`viewerCommittedCredits()` three times and `myBids()` in four branches, and each
-call was another query — on a page that polls for every viewer watching. If you
-add a figure to this page, add it to `viewFor()`; a query issued twice per render
-is issued twice per viewer per interval, and there is a test that fails when one
-is.
+This is not decoration. Making `BidAccepted` implement `ShouldBroadcast` hands
+delivery to Laravel's dispatcher, and a broadcaster that throws then throws
+through `PlaceBid::handle()` — giving a bidder a 500 for a bid whose credits
+were consumed and whose row is committed. On a `sync` queue that is not
+hypothetical. The subscriber is wrapped exactly as `NotificationSubscriber` is,
+so a transport failure ends in a log line.
 
-Nothing there is cached between requests. Each poll re-reads from the same
-authoritative queries as before.
+It is also why no file under `app/Domain/Auction/` changed to add real-time. A
+bid does not know it is being broadcast, and it must not learn.
 
-### What must stay true if real-time is ever added
+### The payload is a whitelist
 
-Redis and Reverb would be transport. They would never be authority.
+`AuctionStatePayload` names seven fields and builds them explicitly. Nothing is
+serialized — `BidAccepted` carries a `Bid`, which relates to a `User`, and a
+default serialization would put a bidder's identity on a public channel in one
+line.
 
-- **Consume domain events; do not join the decision.** `BidAccepted`,
-  `AuctionClosed`, `AuctionSoldViaBuyNow` and `AuctionForfeited` already exist
-  and already dispatch after commit. A broadcast layer subscribes to them.
-  There is deliberately **no** `AuctionExtended` event: an extension is carried
-  on `BidAccepted` as `extendedBySeconds`, because it happens as part of
-  accepting a bid and inventing a second event for it would be decoration.
-- **Do not modify `PlaceBid`, `CloseAuction`, `CompleteBuyNow`,
-  `HighestBidResolver` or the inventory and credit services to prepare for it.**
-  If broadcasting requires changing any of them, the design is wrong.
-- **Build payloads explicitly.** Never serialize a model onto a channel.
-  `BidAccepted` carries a `Bid`, which relates to a `User`; a default
-  serialization would put bidder identity on a public channel in one line.
-- **Keep polling as the floor.** A broadcast outage must be a slower page, not
-  a stopped marketplace.
-- **Order by `sequence`.** It is already monotonic per auction and allocated
-  under the auction row lock, so a client holding sequence *N* can discard
-  anything at or below it — which is what makes a duplicated or out-of-order
-  delivery harmless.
-- **Render state; never accumulate it.** A client that appends broadcast bids
-  to a list breaks on redelivery. One that replaces its state from a payload
-  does not.
+```
+auction_id  status  highest_bid_credits  bid_count  ends_at  sequence  extended_by_seconds
+```
+
+**Never add:** a bidder's name, id, phone, email or address; a wallet balance,
+credit lot or credit transaction; an order number, payment reference or payment
+detail; the settlement amount a named person owes; the identity of a Buy Now
+buyer; delivery, refund, referral or notification content. A screen that needs
+any of that reads it over HTTP, where authorization applies.
+
+`highest_bid_credits` is a **count**. Not money, never through a money
+formatter, never with a currency symbol. The settlement amount and the Buy Now
+price are separate cedis figures and neither belongs on this channel.
+
+### The channel is public, and that is the point
+
+`auction.{id}`. Everything on it is already visible to anyone who opens the
+page, so a private channel would add an authorization round trip that protects
+nothing. What keeps it safe is the payload whitelist, not the channel type — so
+review the whitelist, not the channel, when adding a field.
+
+No `routes/channels.php` exists, because a public channel needs no
+authorization callback. That is the minimum required configuration, not an
+omission.
+
+### The client replaces state; it never accumulates it
+
+A message says "here is the public state now", never "add one bid". That is
+what makes a duplicated delivery harmless: applying the same state twice leaves
+the same state.
+
+`resources/js/auction-stream.js` holds the ordering rules, and
+`resources/js/auction-stream.test.mjs` proves them (`npm run test:js`):
+
+1. Once an auction has ended, nothing more is applied.
+2. A terminal message is always applied — no bid produced it, so it carries no
+   sequence, and an ended auction is its own ordering.
+3. A sequence at or below the one already seen is discarded. This is the
+   duplicate case and the out-of-order case at once.
+4. Anything strictly newer is applied and becomes the high-water mark.
+
+`sequence` is the per-auction bid sequence, allocated under the auction row
+lock, so it is monotonic without a counter of its own.
+
+### Reconnection re-reads; it never replays
+
+A dropped socket means messages were missed and there is no way to know how
+many. The client asks the server for current state — one round trip, complete
+answer. Replaying a buffer would answer partially and invite the browser to
+reconstruct auction facts, which is the one thing it must never do.
+
+### Polling stays
+
+Never remove `wire:poll`, and never widen the Stage 15 cadence to compensate
+for having a socket. The page must work with JavaScript disabled, with Echo
+failing, with Reverb down and with a tab that slept — and polling answers all
+of them identically, because a poll is a fresh authoritative read carrying no
+assumption about what came before it.
 
 ## Queued work
 

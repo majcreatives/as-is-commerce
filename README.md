@@ -38,6 +38,11 @@ units (pesewas). Never as floating point.
 > Delivery is deliberately manual: no courier API, no driver app, no shipping
 > pricing engine.
 >
+> The auction room can also update live over a WebSocket where the hosting can
+> run one. It is switched off on the current plan and the platform is complete
+> without it: MySQL decides every auction, credit, payment and inventory
+> outcome, and a broadcast outage is not a commerce outage.
+>
 > All of it is now operable by a person. One dashboard counts what is true from
 > the records themselves, one exception list holds everything needing human
 > judgement, one search box finds whatever reference support is holding, and the
@@ -2152,15 +2157,85 @@ front door.
 | `SESSION_SECURE_COOKIE` | `true` | |
 | `MAIL_MAILER` | a real transport | `log` writes mail to a file and sends nothing |
 | `NOTIFICATIONS_QUEUE_MAIL` | `false` unless a worker cron exists | |
+| `BROADCAST_CONNECTION` | `null` on Premium | no Reverb server to broadcast to |
+
+### Real-time auction updates
+
+The auction room can update over a WebSocket instead of waiting for its next
+poll. It is **off in production today**, and the application is complete
+without it.
+
+```
+Browser ── HTTP/Livewire ──► Laravel ──► MySQL          authoritative
+   ▲                            │
+   │                            │ domain event, after commit
+   │                            ▼
+   └───── WebSocket ◄──── broadcast ──► Reverb ──► (Redis fan-out, multi-node)
+```
+
+**Current production**
+
+| | |
+| --- | --- |
+| Target | Hostinger Premium Web Hosting / hPanel |
+| Transport | Livewire polling |
+| `BROADCAST_CONNECTION` | `null` — nothing is transmitted |
+| Reverb server | not installed, not required |
+| Redis | not installed, not required |
+
+Premium runs scheduled cron tasks rather than persistent processes, so there is
+no server for a socket to connect to. With `null` the application performs no
+broadcast work at all: no connection attempt, no queued job, no log line. The
+auction room polls exactly as it did before, and every figure on it is computed
+server-side from MySQL.
+
+**Turning it on**, on infrastructure that can run the server:
+
+1. `composer require laravel/reverb` — the *server*, deliberately absent from
+   this repository because it cannot start on the current plan. The application
+   already broadcasts through `pusher/pusher-php-server`.
+2. Fill in `REVERB_*` and the `VITE_REVERB_*` mirrors in `.env`. The app key is
+   compiled into the frontend bundle and is public by design — it identifies
+   the application to the socket and authorises nothing. **The secret never
+   leaves the server.**
+3. `BROADCAST_CONNECTION=reverb`.
+4. `npm run build`, then run `php artisan reverb:start` under process
+   supervision and proxy `wss://` to it.
+
+Nothing about the auction engine changes. No migration, no domain change, no
+different winner.
+
+**What is broadcast, and what is not.** One public channel per auction,
+`auction.{id}`, carrying seven fields and nothing else:
+
+```
+auction_id  status  highest_bid_credits  bid_count  ends_at  sequence  extended_by_seconds
+```
+
+`highest_bid_credits` is a count of credits — never money, never a currency
+symbol. No bidder is named, no Buy Now buyer is named, and no wallet, order,
+payment, settlement, delivery, refund or referral detail is on the wire.
+Anything viewer-specific — your Buy Now discount, whether you are leading, your
+own bids, a settlement link — comes over HTTP where authorization applies.
+
+**A Reverb or Redis outage is not a commerce outage.** Every auction decision is
+made in MySQL under row locks and committed before anything is broadcast, and
+the transport is wrapped so a failure cannot reach the bidder. If it breaks,
+pages update on their poll interval and bidding continues. Redis, if introduced,
+is fan-out between Reverb nodes — never a store of bids, balances or stock.
+
+**The browser holds no auction state.** It tracks one number, `sequence`, to
+discard duplicated and out-of-order deliveries, and it re-reads authoritative
+state over HTTP after a reconnection rather than replaying anything. With
+JavaScript disabled the page loses live updates and nothing else.
 
 ### Future VPS upgrade
 
 Redis and Reverb can be introduced later without changing auction authority.
 MySQL and the domain services decide bids, winners, credits, inventory,
-payments, settlement, refunds and delivery today and would continue to; a
-broadcast layer would consume the domain events that already exist and
-transport what the server had already decided. Polling remains the fallback, so
-a real-time outage would be a slower page rather than a stopped marketplace.
+payments, settlement, refunds and delivery today and would continue to; the
+broadcast layer already consumes the domain events that exist and transports
+what the server had already decided. Polling remains the fallback.
 
 Nothing in this application needs redesigning for that. It is a hosting
 decision, not an architectural one.

@@ -179,8 +179,16 @@ return new class extends Migration
             // milliseconds and a whole-second column could not enforce it.
             $table->timestamp('created_at', 3)->useCurrent();
 
-            // The highest-bid lookup, tie-break included: MySQL walks this
-            // index backwards on amount and forwards on sequence.
+            // The highest-bid lookup, tie-break included.
+            //
+            // This ascending shape does NOT serve the resolver's
+            // `amount_credits DESC, sequence ASC` ordering -- one index scan
+            // has one direction, and a mixed ordering needs matching column
+            // directions. The original comment here claimed otherwise and was
+            // wrong; `2026_09_08_120000_correct_highest_bid_index_direction`
+            // replaces this index with the descending form and records the
+            // measurement that proved it. Left as written so the correction
+            // reads as a correction.
             $table->index(['auction_id', 'amount_credits', 'sequence'], 'bids_highest_bid_index');
             // Bid history, newest first.
             $table->index(['auction_id', 'created_at']);

@@ -53,7 +53,13 @@ it('accepts a sequence of different amounts from the same auction', function ():
     placeBid($auction, $b, 150);
 
     expect($auction->fresh()->bid_count)->toBe(4)
-        ->and(Bid::pluck('amount_credits')->all())->toBe([20, 50, 100, 150])
+        // Ordered by sequence explicitly. An unordered query has no defined
+        // order -- this previously read back in insertion order only because
+        // of which index MySQL happened to scan, and it changed the moment
+        // `bids_highest_bid_index` became descending. `sequence` is the column
+        // that makes bid order a fact rather than an accident: it is allocated
+        // under the auction row lock and carries a unique index.
+        ->and(Bid::orderBy('sequence')->pluck('amount_credits')->all())->toBe([20, 50, 100, 150])
         // Four bids, 320 credits between them: nothing charged a flat rate.
         ->and((int) Bid::sum('amount_credits'))->toBe(320);
 });

@@ -13,6 +13,7 @@ use App\Models\AuctionRuleset;
 use App\Models\Product;
 use DomainException;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
@@ -50,11 +51,39 @@ class AuctionManager extends Component
 {
     use WithPagination;
 
+    /**
+     * How close to its end an auction has to be to count as ending soon.
+     *
+     * A display threshold for a filter, not a business rule: nothing about
+     * how an auction runs or who wins depends on it.
+     */
+    public const ENDING_SOON_HOURS = 6;
+
     #[Url]
     public string $status = '';
 
     #[Url]
     public string $search = '';
+
+    /**
+     * Live auctions closing within the configured window.
+     *
+     * The operational question a status filter cannot answer: Live says an
+     * auction is running, not that somebody should be watching it. The clock
+     * is the only authority on when one ends.
+     */
+    #[Url]
+    public bool $endingSoon = false;
+
+    /**
+     * Auctions with a winner who has not paid yet.
+     *
+     * Separate from status because the operationally interesting subset is
+     * narrower than PendingSettlement: an overdue deadline is the one worth
+     * looking at.
+     */
+    #[Url]
+    public string $settlement = '';
 
     public bool $showForm = false;
 
@@ -77,6 +106,22 @@ class AuctionManager extends Component
 
     public function updatedStatus(): void
     {
+        $this->resetPage();
+    }
+
+    public function updatedEndingSoon(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedSettlement(): void
+    {
+        $this->resetPage();
+    }
+
+    public function clearFilters(): void
+    {
+        $this->reset('status', 'search', 'endingSoon', 'settlement');
         $this->resetPage();
     }
 
@@ -165,6 +210,7 @@ class AuctionManager extends Component
         return view('livewire.admin.auctions.auction-manager', [
             'auctions' => $this->auctions(),
             'statuses' => AuctionStatus::cases(),
+            'endingSoonHours' => self::ENDING_SOON_HOURS,
         ]);
     }
 
@@ -176,6 +222,18 @@ class AuctionManager extends Component
         return Auction::query()
             ->with(['product', 'ruleset', 'winner', 'buyNowBuyer'])
             ->when($this->status !== '', fn ($q) => $q->where('status', $this->status))
+            // The clock decides, never the status. An auction past its end
+            // time stays marked Live until the sweep notices.
+            ->when($this->endingSoon, fn ($q) => $q
+                ->whereIn('status', [AuctionStatus::Live, AuctionStatus::Closing])
+                ->whereNotNull('ends_at')
+                ->where('ends_at', '<=', Carbon::now()->addHours(self::ENDING_SOON_HOURS)))
+            ->when($this->settlement === 'awaiting', fn ($q) => $q
+                ->where('status', AuctionStatus::PendingSettlement))
+            ->when($this->settlement === 'overdue', fn ($q) => $q
+                ->where('status', AuctionStatus::PendingSettlement)
+                ->whereNotNull('settlement_due_at')
+                ->where('settlement_due_at', '<', Carbon::now()))
             ->when($this->search !== '', fn ($q) => $q->whereHas(
                 'product',
                 fn ($p) => $p->where('name', 'like', '%'.$this->search.'%')

@@ -114,6 +114,30 @@
             </x-field>
         </div>
 
+        {{-- Where the winner's money is. Narrower than the status filter:
+             PendingSettlement says a winner owes; overdue says the deadline
+             has already passed. --}}
+        <div class="w-full sm:w-56">
+            <x-field label="Settlement" name="settlement">
+                <select wire:model.live="settlement" id="settlement"
+                        class="block w-full rounded-lg border-0 bg-white px-3 py-2.5 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-inset focus:ring-brand-600 sm:text-sm">
+                    <option value="">Any settlement state</option>
+                    <option value="awaiting">Winner has not paid</option>
+                    <option value="overdue">Deadline has passed</option>
+                </select>
+            </x-field>
+        </div>
+
+        {{-- The clock decides, never the status: an auction stays marked Live
+             until the sweep notices it has ended. --}}
+        <label class="flex items-center gap-2 pb-2 text-sm text-slate-700">
+            <input type="checkbox" wire:model.live="endingSoon"
+                   class="rounded border-slate-300 text-brand-700 focus:ring-brand-600">
+            Ending within {{ $endingSoonHours }} hours
+        </label>
+
+        <x-button variant="ghost" size="sm" wire:click="clearFilters" class="mb-1">Clear</x-button>
+
         @can('auctions.create')
             <div class="ml-auto">
                 <x-button wire:click="create">New auction</x-button>

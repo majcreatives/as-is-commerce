@@ -52,11 +52,43 @@
             </x-field>
         </div>
 
+        {{-- Where the package is. A separate question from the order's own
+             status: an order can be Paid with nothing packed, and Processing
+             with a delivery that has already failed. --}}
+        <div class="w-full sm:w-48">
+            <x-field label="Delivery" name="delivery">
+                <select wire:model.live="delivery" id="delivery"
+                        class="block w-full rounded-lg border-0 bg-white px-3 py-2.5 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-inset focus:ring-brand-600 sm:text-sm">
+                    <option value="">Any delivery</option>
+                    <option value="none">No delivery opened</option>
+                    @foreach ($deliveryStatuses as $case)
+                        <option value="{{ $case->value }}">{{ $case->label() }}</option>
+                    @endforeach
+                </select>
+            </x-field>
+        </div>
+
+        <div class="w-full sm:w-40">
+            <x-field label="Placed from" name="from">
+                <input type="date" id="from" wire:model.live="from"
+                       class="block w-full rounded-lg border-0 bg-white px-3 py-2.5 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-inset focus:ring-brand-600 sm:text-sm">
+            </x-field>
+        </div>
+
+        <div class="w-full sm:w-40">
+            <x-field label="Placed to" name="to">
+                <input type="date" id="to" wire:model.live="to"
+                       class="block w-full rounded-lg border-0 bg-white px-3 py-2.5 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-inset focus:ring-brand-600 sm:text-sm">
+            </x-field>
+        </div>
+
         <label class="flex items-center gap-2 pb-2 text-sm text-slate-700">
             <input type="checkbox" wire:model.live="blocked"
                    class="rounded border-slate-300 text-brand-700 focus:ring-brand-600">
             Needs attention only
         </label>
+
+        <x-button variant="ghost" size="sm" wire:click="clearFilters" class="mb-1">Clear</x-button>
     </div>
 
     <x-card :padded="false">

@@ -11,9 +11,11 @@
 {{-- The interval is the server's, not the browser's, and it decides nothing:
      an auction ends when its stored end time says so. Tight inside the closing
      window, looser when the auction is days away, loosest once it has ended. --}}
-<div wire:poll.{{ $pollSeconds }}s>
+<div wire:poll.{{ $pollSeconds }}s
+     data-auction-room="{{ $auction->id }}"
+     data-auction-component="{{ $this->getId() }}">
     <div class="mb-6 flex flex-wrap items-center gap-2">
-        <x-badge :classes="$auction->status->badgeClasses()">{{ $auction->status->label() }}</x-badge>
+        <x-badge :classes="$auction->status->badgeClasses()" data-auction-status>{{ $auction->status->label() }}</x-badge>
 
         @if ($auction->closure_reason)
             <x-badge :classes="$auction->closure_reason->badgeClasses()">
@@ -40,12 +42,16 @@
             <x-card title="Highest Bid (Credits)"
                     subtitle="The highest valid credit bid wins when this auction closes.">
                 @if ($highestBid)
+                    {{-- The two hooks a live update may repaint. Both are a
+                         count of credits or a count of bids -- never money --
+                         and the next poll re-renders them from the database
+                         either way. --}}
                     <p class="text-4xl font-bold tracking-tight text-slate-900">
-                        {{ number_format($highestBid->amount_credits) }}
+                        <span data-auction-highest-credits>{{ number_format($highestBid->amount_credits) }}</span>
                         <span class="text-base font-semibold text-slate-500">credits</span>
                     </p>
 
-                    <p class="mt-1 text-sm text-slate-500">
+                    <p class="mt-1 text-sm text-slate-500" data-auction-bid-count>
                         {{ $auction->bid_count }} {{ Str::plural('bid', $auction->bid_count) }} placed.
                     </p>
                 @else

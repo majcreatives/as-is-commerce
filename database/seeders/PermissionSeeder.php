@@ -147,6 +147,20 @@ class PermissionSeeder extends Seeder
         'referrals.view',
         'referrals.manage',
         'referrals.settings',
+
+        // Operations. Seeing the platform's state, the things that need a
+        // person, who a customer is, and who did what.
+        //
+        // Separate from every domain permission on purpose: somebody triaging
+        // exceptions needs to see that a refund failed without thereby being
+        // able to issue one, and the actions stay behind the permissions that
+        // already govern them.
+        'admin.dashboard.view',
+        'exceptions.view',
+        'customers.view',
+        // Reading the append-only activity log. There is no permission to
+        // edit or delete one, because no such capability exists.
+        'audit.view',
     ];
 
     /**

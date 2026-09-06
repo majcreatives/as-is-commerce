@@ -54,6 +54,29 @@ class User extends Authenticatable
     }
 
     /**
+     * Every order this customer has placed.
+     *
+     * Financial records, restricted at the database rather than cascading: an
+     * order is evidence of what somebody bought and what they paid.
+     *
+     * @return HasMany<Order, $this>
+     */
+    public function orders(): HasMany
+    {
+        return $this->hasMany(Order::class);
+    }
+
+    /**
+     * Packages on their way to this customer.
+     *
+     * @return HasMany<Delivery, $this>
+     */
+    public function deliveries(): HasMany
+    {
+        return $this->hasMany(Delivery::class);
+    }
+
+    /**
      * Customers this one introduced.
      *
      * @return HasMany<Referral, $this>

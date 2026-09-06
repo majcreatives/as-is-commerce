@@ -1,81 +1,70 @@
-{{-- Secondary navigation for the administration area. Each link is hidden
-     unless the signed-in administrator holds the permission behind it. --}}
-<nav class="mb-6 flex flex-wrap gap-1 border-b border-slate-200 pb-3" aria-label="Administration">
-    <x-nav-link href="{{ route('admin.dashboard') }}" wire:navigate
-                :active="request()->routeIs('admin.dashboard')">Overview</x-nav-link>
+{{-- Secondary navigation for the administration area.
 
-    @can('auctions.view')
-        <x-nav-link href="{{ route('admin.auctions.index') }}" wire:navigate
-                    :active="request()->routeIs('admin.auctions.*')">Auctions</x-nav-link>
-    @endcan
+     Grouped rather than flat. Twenty-one links in one wrapping row gave no clue
+     which screen answers which question, and the ordering was the order the
+     stages were built in — meaningful to nobody using it.
 
-    @can('orders.view')
-        <x-nav-link href="{{ route('admin.orders.index') }}" wire:navigate
-                    :active="request()->routeIs('admin.orders.*')">Orders</x-nav-link>
-    @endcan
+     Each link is hidden unless the signed-in administrator holds the permission
+     behind it, and a group with nothing visible in it does not render its
+     heading either. --}}
 
-    @can('auction_rulesets.view')
-        <x-nav-link href="{{ route('admin.rulesets.index') }}" wire:navigate
-                    :active="request()->routeIs('admin.rulesets.*')">Auction rulesets</x-nav-link>
-    @endcan
+@php
+    // label => [route name, active pattern, permission]
+    $groups = [
+        'Operations' => [
+            ['Overview', 'admin.dashboard', 'admin.dashboard', 'admin.dashboard.view'],
+            ['Exceptions', 'admin.exceptions', 'admin.exceptions', 'exceptions.view'],
+            ['Search', 'admin.search', 'admin.search', 'admin.dashboard.view'],
+            ['Audit', 'admin.audit', 'admin.audit', 'audit.view'],
+        ],
+        'Commerce' => [
+            ['Auctions', 'admin.auctions.index', 'admin.auctions.*', 'auctions.view'],
+            ['Orders', 'admin.orders.index', 'admin.orders.*', 'orders.view'],
+            ['Fulfilment', 'admin.fulfilment', 'admin.fulfilment', 'deliveries.view'],
+            ['Customers', 'admin.customers.index', 'admin.customers.*', 'customers.view'],
+        ],
+        'Money' => [
+            ['Payments', 'admin.payments', 'admin.payments', 'order_payments.view'],
+            ['Refunds', 'admin.refunds', 'admin.refunds', 'refunds.view'],
+            ['Wallets', 'admin.wallets.index', 'admin.wallets.*', 'wallets.inspect'],
+            ['Purchases', 'admin.credit-purchases', 'admin.credit-purchases', 'credit_purchases.view'],
+            ['Payment events', 'admin.payment-events', 'admin.payment-events', 'payment_events.view'],
+        ],
+        'Catalogue' => [
+            ['Products', 'admin.products', 'admin.products', 'products.view'],
+            ['Categories', 'admin.taxonomy', 'admin.taxonomy', 'categories.view'],
+            ['Inventory', 'admin.inventory', 'admin.inventory', 'inventory.view'],
+        ],
+        'Configuration' => [
+            ['Auction rulesets', 'admin.rulesets.index', 'admin.rulesets.*', 'auction_rulesets.view'],
+            ['Credit packages', 'admin.credit-packages', 'admin.credit-packages', 'credit_packages.view'],
+            ['Referrals', 'admin.referrals', 'admin.referrals', 'referrals.view'],
+            ['Notifications', 'admin.notifications', 'admin.notifications', 'notifications.inspect'],
+            ['Settings', 'admin.settings', 'admin.settings', 'settings.view'],
+        ],
+    ];
+@endphp
 
-    @can('wallets.inspect')
-        <x-nav-link href="{{ route('admin.wallets.index') }}" wire:navigate
-                    :active="request()->routeIs('admin.wallets.*')">Wallets</x-nav-link>
-    @endcan
+<nav class="mb-6 space-y-2 border-b border-slate-200 pb-3" aria-label="Administration">
+    @foreach ($groups as $heading => $links)
+        @php
+            $visible = array_values(array_filter(
+                $links,
+                fn (array $link): bool => auth()->user()?->can($link[3]) ?? false,
+            ));
+        @endphp
 
-    @can('products.view')
-        <x-nav-link href="{{ route('admin.products') }}" wire:navigate
-                    :active="request()->routeIs('admin.products')">Products</x-nav-link>
-    @endcan
+        @if ($visible !== [])
+            <div class="flex flex-wrap items-center gap-1">
+                <span class="mr-1 w-24 shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                    {{ $heading }}
+                </span>
 
-    @can('categories.view')
-        <x-nav-link href="{{ route('admin.taxonomy') }}" wire:navigate
-                    :active="request()->routeIs('admin.taxonomy')">Categories</x-nav-link>
-    @endcan
-
-    @can('inventory.view')
-        <x-nav-link href="{{ route('admin.inventory') }}" wire:navigate
-                    :active="request()->routeIs('admin.inventory')">Inventory</x-nav-link>
-    @endcan
-
-    @can('credit_packages.view')
-        <x-nav-link href="{{ route('admin.credit-packages') }}" wire:navigate
-                    :active="request()->routeIs('admin.credit-packages')">Credit packages</x-nav-link>
-    @endcan
-
-    @can('credit_purchases.view')
-        <x-nav-link href="{{ route('admin.credit-purchases') }}" wire:navigate
-                    :active="request()->routeIs('admin.credit-purchases')">Purchases</x-nav-link>
-    @endcan
-
-    @can('payment_events.view')
-        <x-nav-link href="{{ route('admin.payment-events') }}" wire:navigate
-                    :active="request()->routeIs('admin.payment-events')">Payment events</x-nav-link>
-    @endcan
-
-    @can('deliveries.view')
-        <x-nav-link href="{{ route('admin.fulfilment') }}" wire:navigate
-                    :active="request()->routeIs('admin.fulfilment')">Fulfilment</x-nav-link>
-    @endcan
-
-    @can('referrals.view')
-        <x-nav-link href="{{ route('admin.referrals') }}" wire:navigate
-                    :active="request()->routeIs('admin.referrals')">Referrals</x-nav-link>
-    @endcan
-
-    @can('refunds.view')
-        <x-nav-link href="{{ route('admin.refunds') }}" wire:navigate
-                    :active="request()->routeIs('admin.refunds')">Refunds</x-nav-link>
-    @endcan
-
-    @can('notifications.inspect')
-        <x-nav-link href="{{ route('admin.notifications') }}" wire:navigate
-                    :active="request()->routeIs('admin.notifications')">Notifications</x-nav-link>
-    @endcan
-
-    @can('settings.view')
-        <x-nav-link href="{{ route('admin.settings') }}" wire:navigate
-                    :active="request()->routeIs('admin.settings')">Settings</x-nav-link>
-    @endcan
+                @foreach ($visible as [$label, $routeName, $pattern, $permission])
+                    <x-nav-link href="{{ route($routeName) }}" wire:navigate
+                                :active="request()->routeIs($pattern)">{{ $label }}</x-nav-link>
+                @endforeach
+            </div>
+        @endif
+    @endforeach
 </nav>

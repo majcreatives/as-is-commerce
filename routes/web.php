@@ -14,10 +14,17 @@ use App\Livewire\Admin\Auctions\AuctionManager;
 use App\Livewire\Admin\Catalog\InventoryManager;
 use App\Livewire\Admin\Catalog\ProductManager;
 use App\Livewire\Admin\Catalog\TaxonomyManager;
+use App\Livewire\Admin\Customers\CustomerDetail;
+use App\Livewire\Admin\Customers\CustomerIndex;
 use App\Livewire\Admin\Delivery\FulfilmentQueue;
 use App\Livewire\Admin\Notifications\NotificationIndex;
+use App\Livewire\Admin\Operations\AuditLog;
+use App\Livewire\Admin\Operations\ExceptionCentrePage;
+use App\Livewire\Admin\Operations\GlobalSearch;
+use App\Livewire\Admin\Operations\OperationsDashboard;
 use App\Livewire\Admin\Orders\OrderDetail as AdminOrderDetail;
 use App\Livewire\Admin\Orders\OrderManager;
+use App\Livewire\Admin\Payments\OrderPaymentIndex;
 use App\Livewire\Admin\Payments\PackageManager;
 use App\Livewire\Admin\Payments\PurchaseIndex;
 use App\Livewire\Admin\Payments\WebhookEventIndex;
@@ -175,7 +182,46 @@ Route::middleware(['auth', 'role:admin|super_admin'])
     ->prefix('admin')
     ->name('admin.')
     ->group(function (): void {
-        Route::view('/', 'pages.admin.dashboard')->name('dashboard');
+        // The operational picture, counted from the tables that own each
+        // fact. Read and route: every figure links to the screen that owns
+        // the records, where the actions live behind their own permissions.
+        Route::get('/', OperationsDashboard::class)
+            ->middleware('can:admin.dashboard.view')
+            ->name('dashboard');
+
+        // Everything that needs a person, in one list. Read-only: an
+        // exception disappears when the situation stops being true, never
+        // because somebody dismissed it.
+        Route::get('/exceptions', ExceptionCentrePage::class)
+            ->middleware('can:exceptions.view')
+            ->name('exceptions');
+
+        // One box for whatever reference support is holding.
+        Route::get('/search', GlobalSearch::class)
+            ->middleware('can:admin.dashboard.view')
+            ->name('search');
+
+        // Who a customer is, for somebody on a call. Read-only.
+        Route::get('/customers', CustomerIndex::class)
+            ->middleware('can:customers.view')
+            ->name('customers.index');
+
+        Route::get('/customers/{user}', CustomerDetail::class)
+            ->middleware('can:customers.view')
+            ->name('customers.show');
+
+        // What was asked of the payment provider and what came back. There is
+        // no control here that marks anything paid, because no such code path
+        // exists.
+        Route::get('/payments', OrderPaymentIndex::class)
+            ->middleware('can:order_payments.view')
+            ->name('payments');
+
+        // The activity log that already exists, exposed rather than rebuilt.
+        // Append-only, and there is nothing here that could change that.
+        Route::get('/audit', AuditLog::class)
+            ->middleware('can:audit.view')
+            ->name('audit');
 
         // Individual capabilities are gated by permission, not by role, so a
         // narrower administrative role can be introduced later without

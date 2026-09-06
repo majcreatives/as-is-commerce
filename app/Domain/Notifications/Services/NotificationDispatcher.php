@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domain\Notifications\Services;
 
 use App\Enums\NotificationType;
+use App\Jobs\SendNotificationEmail;
 use App\Mail\PlatformNotificationMail;
 use App\Models\Notification;
 use App\Models\User;
@@ -162,14 +163,29 @@ class NotificationDispatcher
     /**
      * Try to email it, and write down what happened either way.
      *
-     * Sent inline rather than queued, deliberately. Queued mail would need a
-     * running worker for a customer to hear anything, which would make
-     * correctness depend on infrastructure this stage is not introducing.
-     * Moving this onto the queue is a one-line change once a worker exists,
-     * and nothing else has to move with it.
+     * TWO MODES, AND THE DEFAULT IS THE OLD ONE. Inline unless
+     * `notifications.queue_mail` says otherwise, because queued mail needs a
+     * running worker for anybody to hear anything and the initial production
+     * target offers cron rather than persistent processes. A deployment
+     * without a worker therefore behaves exactly as before rather than going
+     * quiet.
+     *
+     * Where a worker does exist, switching it on takes the SMTP round trips
+     * out of `auctions:tick` -- which closes auctions and emails their
+     * winners, on a schedule of every minute.
+     *
+     * NEITHER MODE PUTS EMAIL IN FRONT OF ANYTHING THAT MATTERS. The in-app
+     * notification is already written and committed by the time this runs, and
+     * a failure is recorded on that row rather than raised.
      */
     private function attemptEmail(User $recipient, Notification $notification): void
     {
+        if (config('notifications.queue_mail') === true) {
+            $this->queueEmail($recipient, $notification);
+
+            return;
+        }
+
         try {
             Mail::to($recipient->email)->send(new PlatformNotificationMail($notification));
 
@@ -192,6 +208,41 @@ class NotificationDispatcher
                 'exception' => $e::class,
                 // The message, not the payload: an exception from a mail
                 // transport can carry the whole rendered email.
+                'reason' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Hand the email to the queue, and say so on the row.
+     *
+     * `queued` is an honest third state beside `sent` and `failed`: the
+     * message has not left yet, and claiming either would be wrong. The worker
+     * replaces it with the outcome.
+     *
+     * Dispatch itself is guarded. A queue that refuses the job -- an
+     * unreachable driver, a full table -- must not take down the business
+     * event that is already committed, so it is recorded as a failure and the
+     * caller never hears about it.
+     */
+    private function queueEmail(User $recipient, Notification $notification): void
+    {
+        try {
+            $notification->mail_status = 'queued';
+            $notification->save();
+
+            SendNotificationEmail::dispatch($notification->id, (string) $recipient->email);
+        } catch (Throwable $e) {
+            $notification->mail_status = 'failed';
+            $notification->mail_failure_reason = mb_substr($e->getMessage(), 0, 500);
+            $notification->save();
+
+            Log::warning('Notification email could not be queued', [
+                'operation' => 'notification.mail_queue_failed',
+                'notification_id' => $notification->id,
+                'event_type' => $notification->event_type,
+                'user_id' => $recipient->id,
+                'exception' => $e::class,
                 'reason' => $e->getMessage(),
             ]);
         }

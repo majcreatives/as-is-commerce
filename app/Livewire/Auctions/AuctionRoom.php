@@ -10,16 +10,14 @@ use App\Domain\Auction\Services\AuctionClock;
 use App\Domain\Auction\Services\BidValidator;
 use App\Domain\Auction\Services\BuyNowPricer;
 use App\Domain\Auction\Services\HighestBidResolver;
-use App\Domain\Auction\ValueObjects\BuyNowQuote;
+use App\Domain\Credit\Services\CreditLedgerService;
 use App\Domain\Orders\Actions\StartBuyNowCheckout;
 use App\Domain\Orders\Actions\StartSettlementCheckout;
 use App\Domain\Orders\Exceptions\InvalidCheckout;
 use App\Domain\Shared\Idempotency\ConcurrentOperationInProgress;
 use App\Models\Auction;
-use App\Models\Bid;
 use DomainException;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
 use Livewire\Attributes\Layout;
@@ -56,6 +54,38 @@ use Livewire\Component;
 class AuctionRoom extends Component
 {
     public Auction $auction;
+
+    /**
+     * How often the page re-reads the server, in seconds.
+     *
+     * A DISPLAY CADENCE, NEVER A BUSINESS RULE. None of these values can
+     * change an outcome. An auction ends when its stored `ends_at` says so and
+     * the sweep notices; a bid is validated against a locked auction row, not
+     * against whatever the page last drew. Polling slowly means seeing a
+     * change late -- it never means the change happened late.
+     *
+     * Three cadences because one number cannot fit both cases. An auction
+     * three days from closing changes almost never, and polling it every five
+     * seconds is 17,280 round trips per viewer per day for a number that did
+     * not move. An auction inside its closing window changes constantly, and
+     * that is exactly when a bidder needs an accurate figure in front of them.
+     *
+     * So the tail keeps the original five seconds unchanged, and everything
+     * further out backs off.
+     */
+    public const POLL_CLOSING_SECONDS = 5;
+
+    public const POLL_LIVE_SECONDS = 15;
+
+    public const POLL_ENDED_SECONDS = 30;
+
+    /**
+     * How close to the end counts as "closing" for polling purposes.
+     *
+     * Applied alongside the auction's own closing window, so an auction whose
+     * ruleset sets no window still tightens up before it ends.
+     */
+    public const POLL_TIGHTEN_WITHIN_SECONDS = 120;
 
     /**
      * Held as a string so an empty field stays empty rather than becoming
@@ -173,30 +203,6 @@ class AuctionRoom extends Component
     }
 
     /**
-     * Seconds left, worked out here rather than in the browser.
-     */
-    public function secondsRemaining(AuctionClock $clock): ?int
-    {
-        return $clock->secondsRemaining($this->auction);
-    }
-
-    /**
-     * The smallest bid that would be valid right now.
-     *
-     * Null when this auction sets no floor at all, which is a real answer and
-     * not a missing one: an unset rule is not a rule of one credit.
-     */
-    public function smallestValidBid(BidValidator $validator): ?int
-    {
-        return $validator->smallestValidBid($this->auction);
-    }
-
-    public function buyNowQuote(BuyNowPricer $pricer): BuyNowQuote
-    {
-        return $pricer->quote($this->auction, auth()->user());
-    }
-
-    /**
      * Open a checkout to buy this product outright.
      *
      * Creates an order at a price the server computes and freezes, then sends
@@ -246,106 +252,138 @@ class AuctionRoom extends Component
     }
 
     /**
-     * Whether the signed-in customer holds the standing highest bid.
+     * Everything the page displays, read once.
      *
-     * From the auction's own projection, which is what a page is for. Nothing
-     * is decided from it: who actually wins is resolved from the bid records
-     * when the auction closes.
-     */
-    public function viewerIsLeading(): bool
-    {
-        if (! auth()->check()) {
-            return false;
-        }
-
-        return $this->auction->highestBid?->user_id === auth()->id();
-    }
-
-    /**
-     * Whether this customer has bid and been overtaken.
+     * WHY THIS IS ONE METHOD. Each of these facts used to be a public method
+     * the template called wherever it needed the answer, and Blade called
+     * several of them more than once -- `viewerCommittedCredits()` three
+     * times, `myBids()` in four branches. Every call was another query, on a
+     * page that polls every five seconds for every viewer watching the
+     * auction. Reading each fact once and handing the answers to the template
+     * is the whole optimization.
      *
-     * The page says so, and says what it would now take -- and nothing about
-     * who overtook them. A bidder never learns another bidder's identity.
-     */
-    public function viewerIsOutbid(): bool
-    {
-        if (! auth()->check() || ! $this->auction->status->acceptsBids()) {
-            return false;
-        }
-
-        return ! $this->viewerIsLeading() && $this->viewerCommittedCredits() > 0;
-    }
-
-    /**
-     * Credits this customer has consumed on this auction.
+     * NOTHING IS CACHED BETWEEN REQUESTS. These are read fresh on every poll,
+     * from the same authoritative queries as before. What changed is how many
+     * times one render asks, not how long an answer is trusted.
      *
-     * The same figure the Buy Now discount is computed from, and the reason
-     * that discount exists. Summed from the bid records: these are historical
-     * facts, each chained to the transaction that paid for it.
+     * @return array<string, mixed>
      */
-    public function viewerCommittedCredits(): int
+    private function viewFor(HighestBidResolver $bids, AuctionClock $clock, BuyNowPricer $pricer, BidValidator $validator, CreditLedgerService $credits): array
     {
-        if (! auth()->check()) {
-            return 0;
-        }
+        $auction = $this->auction;
+        $viewer = auth()->user();
 
-        return (int) $this->auction->bids()->where('user_id', auth()->id())->sum('amount_credits');
-    }
+        // The authoritative reading, not the cached projection: this is the
+        // number the page is about, and everything below is measured against
+        // it rather than against a second, weaker read.
+        $highestBid = $bids->highestBid($auction);
 
-    /**
-     * This bidder's own bids on this auction.
-     *
-     * @return Collection<int, Bid>
-     */
-    public function myBids(): Collection
-    {
-        if (! auth()->check()) {
-            return collect();
-        }
+        // This viewer's own bids, fetched once. The three places that used to
+        // sum them separately now read `committedCredits` from this same
+        // collection -- identical figure, no extra query.
+        $myBids = $viewer === null
+            ? collect()
+            : $auction->bids()->where('user_id', $viewer->id)->orderByDesc('sequence')->get();
 
-        return $this->auction->bids()
-            ->where('user_id', auth()->id())
-            ->orderByDesc('sequence')
-            ->get();
-    }
+        $committedCredits = (int) $myBids->sum('amount_credits');
 
-    /**
-     * Whether the signed-in user bid on this auction and did not win.
-     *
-     * Asked plainly so the page can say so plainly. A losing bidder is owed a
-     * clear answer, not an absence of one -- and their credits stay consumed,
-     * which the page also says rather than leaving them to wonder.
-     */
-    public function viewerLost(): bool
-    {
-        if (! auth()->check() || ! $this->auction->hasEnded()) {
-            return false;
-        }
+        // From the authoritative bid rather than `$auction->highestBid`, which
+        // would lazy-load the projection: a second query for a less
+        // authoritative answer to a question already answered above.
+        $isLeading = $viewer !== null && $highestBid?->user_id === $viewer->id;
 
-        if ($this->auction->winner_user_id === auth()->id()) {
-            return false;
-        }
-
-        return $this->auction->bids()->where('user_id', auth()->id())->exists();
-    }
-
-    public function render(HighestBidResolver $bids, AuctionClock $clock): View
-    {
-        $this->auction->refresh();
-
-        return view('livewire.auctions.auction-room', [
+        return [
             // The winner's checkout, opened when the auction closed. Shown so
             // they can reach it from here rather than hunting for it while a
             // deadline runs.
-            'settlementOrder' => $this->auction->settlementOrder()
-                ->where('user_id', auth()->id())
-                ->first(),
-            // The authoritative reading, not the cached projection: this is
-            // the number the page is about.
-            'highestBid' => $bids->highestBid($this->auction),
-            'history' => $bids->history($this->auction, 25),
-            'secondsRemaining' => $clock->secondsRemaining($this->auction),
-            'latestPossibleEnd' => $clock->latestPossibleEnd($this->auction),
-        ])->title($this->auction->product->name);
+            'settlementOrder' => $viewer === null
+                ? null
+                : $auction->settlementOrder()->where('user_id', $viewer->id)->first(),
+
+            'highestBid' => $highestBid,
+            'history' => $bids->history($auction, 25),
+
+            // Worked out on the server. A client that reports time remaining
+            // is reporting an opinion.
+            'secondsRemaining' => $clock->secondsRemaining($auction),
+            'latestPossibleEnd' => $clock->latestPossibleEnd($auction),
+
+            'myBids' => $myBids,
+            'committedCredits' => $committedCredits,
+            'viewerIsLeading' => $isLeading,
+
+            // Bid and been overtaken. The page says so, and says what it would
+            // now take -- and nothing about who overtook them.
+            'viewerIsOutbid' => $viewer !== null
+                && $auction->status->acceptsBids()
+                && ! $isLeading
+                && $committedCredits > 0,
+
+            // Bid and did not win. A losing bidder is owed a straight answer,
+            // and their credits stay consumed -- which the page also says.
+            'viewerLost' => $viewer !== null
+                && $auction->hasEnded()
+                && $auction->winner_user_id !== $viewer->id
+                && $myBids->isNotEmpty(),
+
+            // The smallest bid that would be valid right now. Null when this
+            // auction sets no floor at all, which is a real answer and not a
+            // missing one: an unset rule is not a rule of one credit.
+            'smallestValidBid' => $validator->smallestValidBid($auction),
+
+            'buyNowQuote' => $pricer->quote($auction, $viewer),
+
+            'spendableBalance' => $viewer === null
+                ? 0
+                : $credits->walletFor($viewer)->spendableBalance(),
+
+            'pollSeconds' => $this->pollSeconds($clock),
+        ];
+    }
+
+    /**
+     * How often this page should ask again.
+     *
+     * Worked out on the server, from the clock, like everything else the
+     * browser is handed. Nothing about correctness depends on the answer: it
+     * decides how soon a change is *seen*, never whether it happened.
+     */
+    private function pollSeconds(AuctionClock $clock): int
+    {
+        if (! $this->auction->status->acceptsBids()) {
+            // Ended, or not yet open. Still worth asking -- a settlement
+            // checkout or a status change should appear without a reload --
+            // but there is no bidding to keep up with.
+            return self::POLL_ENDED_SECONDS;
+        }
+
+        $remaining = $clock->secondsRemaining($this->auction);
+
+        if ($remaining === null) {
+            return self::POLL_LIVE_SECONDS;
+        }
+
+        if ($clock->isInClosingWindow($this->auction) || $remaining <= self::POLL_TIGHTEN_WITHIN_SECONDS) {
+            return self::POLL_CLOSING_SECONDS;
+        }
+
+        return self::POLL_LIVE_SECONDS;
+    }
+
+    public function render(
+        HighestBidResolver $bids,
+        AuctionClock $clock,
+        BuyNowPricer $pricer,
+        BidValidator $validator,
+        CreditLedgerService $credits,
+    ): View {
+        // No `refresh()` here. Livewire re-reads this model from the database
+        // when it hydrates the component, so refreshing again was a second
+        // query for a row that had just been fetched. The actions that change
+        // the auction refresh it themselves, where it actually matters.
+        return view(
+            'livewire.auctions.auction-room',
+            $this->viewFor($bids, $clock, $pricer, $validator, $credits),
+        )->title($this->auction->product->name);
     }
 }

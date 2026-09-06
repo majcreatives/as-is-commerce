@@ -8,7 +8,10 @@
      and the settlement amount are money, in GHS. The highest bid is a count of
      credits and is never written with a currency symbol. --}}
 
-<div wire:poll.5s>
+{{-- The interval is the server's, not the browser's, and it decides nothing:
+     an auction ends when its stored end time says so. Tight inside the closing
+     window, looser when the auction is days away, loosest once it has ended. --}}
+<div wire:poll.{{ $pollSeconds }}s>
     <div class="mb-6 flex flex-wrap items-center gap-2">
         <x-badge :classes="$auction->status->badgeClasses()">{{ $auction->status->label() }}</x-badge>
 
@@ -89,25 +92,27 @@
                     @auth
                         @can('bids.place')
                             @php
-                                $smallest = $this->smallestValidBid(app(App\Domain\Auction\Services\BidValidator::class));
-                                $balance = app(App\Domain\Credit\Services\CreditLedgerService::class)
-                                    ->walletFor(auth()->user())->spendableBalance();
+                                // Both read once by the component. Blade asks
+                                // for nothing the server has not already
+                                // worked out for this render.
+                                $smallest = $smallestValidBid;
+                                $balance = $spendableBalance;
                             @endphp
 
                             {{-- Where the bidder stands, before anything else.
                                  No other bidder is named: only the amount to
                                  beat, which is all anybody needs. --}}
-                            @if ($this->viewerIsLeading())
+                            @if ($viewerIsLeading)
                                 <x-alert variant="success" class="mb-4" role="status">
                                     You hold the highest bid right now.
                                 </x-alert>
-                            @elseif ($this->viewerIsOutbid())
+                            @elseif ($viewerIsOutbid)
                                 <x-alert variant="warning" class="mb-4" role="status">
                                     <strong>You have been outbid.</strong>
                                     The highest bid is now
                                     <x-credits :amount="$auction->highest_bid_credits ?? 0" />@if ($smallest),
                                         and the smallest valid bid is <x-credits :amount="$smallest" />@endif.
-                                    The <x-credits :amount="$this->viewerCommittedCredits()" /> you have
+                                    The <x-credits :amount="$committedCredits" /> you have
                                     already committed stay consumed either way.
                                 </x-alert>
                             @endif
@@ -223,11 +228,11 @@
                         already committed stay consumed.
                     </p>
 
-                    @if ($this->viewerLost())
+                    @if ($viewerLost)
                         <x-alert variant="info" class="mt-4">
                             You bid on this auction and it was bought outright before it closed.
                             The
-                            <strong>{{ number_format($this->myBids()->sum('amount_credits')) }}
+                            <strong>{{ number_format($committedCredits) }}
                             credits</strong> you committed remain consumed, as bid credits always
                             are.
                         </x-alert>
@@ -283,7 +288,7 @@
                                 </x-button>
                             @endif
                         @endcan
-                    @elseif ($this->viewerLost())
+                    @elseif ($viewerLost)
                         {{-- A losing bidder is owed a straight answer, and the truth
                              about their credits. There is deliberately no refund
                              control here, because there is no refund. --}}
@@ -293,14 +298,14 @@
                                 The winning bid was
                                 {{ number_format($auction->winningBid?->amount_credits ?? 0) }}
                                 credits. The
-                                <strong>{{ number_format($this->myBids()->sum('amount_credits')) }}
+                                <strong>{{ number_format($committedCredits) }}
                                 credits</strong> you committed remain consumed — bid credits are
                                 spent when the bid is accepted and are not returned.
                             </p>
                         </x-alert>
                     @endif
                 </x-card>
-            @elseif ($auction->hasEnded() && $this->viewerLost())
+            @elseif ($auction->hasEnded() && $viewerLost)
                 <x-card title="This auction ended">
                     <p class="text-sm text-slate-700">
                         {{ $auction->closure_reason?->label() ?? $auction->status->label() }}.
@@ -308,7 +313,7 @@
                     </p>
                     <p class="mt-2 text-sm text-slate-600">
                         The
-                        <strong>{{ number_format($this->myBids()->sum('amount_credits')) }}
+                        <strong>{{ number_format($committedCredits) }}
                         credits</strong> you committed remain consumed.
                     </p>
                 </x-card>
@@ -356,7 +361,7 @@
 
         {{-- --------------------------------------------------------- Sidebar --}}
         <div class="space-y-6">
-            @php($quote = $this->buyNowQuote(app(App\Domain\Auction\Services\BuyNowPricer::class)))
+            @php($quote = $buyNowQuote)
 
             <x-card title="Buy it outright" subtitle="Buying now ends this auction immediately.">
                 <dl class="space-y-3 text-sm">
@@ -462,7 +467,7 @@
                 </x-card>
 
                 <x-card title="Your bids on this auction">
-                    @php($mine = $this->myBids())
+                    @php($mine = $myBids)
 
                     @if ($mine->isEmpty())
                         <p class="text-sm text-slate-500">You have not bid on this auction.</p>

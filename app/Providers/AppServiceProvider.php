@@ -15,6 +15,7 @@ use App\Domain\Shared\Phone\GhanaPhoneNumberNormalizer;
 use App\Domain\Shared\Phone\PhoneNumberNormalizer;
 use App\Domain\User\Contracts\OtpChannel;
 use App\Domain\User\Support\UnconfiguredOtpChannel;
+use App\Listeners\AuctionBroadcastSubscriber;
 use App\Listeners\NotificationSubscriber;
 use App\Listeners\ReferralSubscriber;
 use App\Models\User;
@@ -86,6 +87,14 @@ class AppServiceProvider extends ServiceProvider
         // subscriber, so the orders domain knows nothing about referrals and
         // removing the programme would mean deleting one file.
         Event::subscribe(ReferralSubscriber::class);
+
+        // The real-time transport listens to the same auction events and
+        // reduces each to a public payload. A third subscriber rather than a
+        // flag on the events themselves: broadcasting must never be able to
+        // throw into a committed bid, and this one is guarded exactly as the
+        // notification subscriber is. Deleting it would remove the live
+        // updates and change no business rule.
+        Event::subscribe(AuctionBroadcastSubscriber::class);
 
         // Surfaces lazy loading and mass-assignment mistakes during
         // development, where they are cheap to fix. Left off in production so

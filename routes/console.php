@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Support\ScheduleLocks;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -9,6 +10,43 @@ use Illuminate\Support\Facades\Schedule;
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
+
+/*
+|--------------------------------------------------------------------------
+| Why every overlap lock below carries an explicit expiry
+|--------------------------------------------------------------------------
+|
+| `withoutOverlapping()` defaults to a 1,440-minute (24-hour) mutex, and
+| releases it early only through POSIX signal handlers that Laravel installs
+| behind `extension_loaded('pcntl')`. Two facts make that default dangerous
+| for this application:
+|
+|   1. Development is native Windows, where `pcntl` does not exist and never
+|      will. The signal-release path is therefore dead code here.
+|   2. Every sweep below uses `runInBackground()`, which releases the mutex by
+|      appending `schedule:finish "<mutex>"` to the spawned command. A process
+|      killed before that runs -- a closed terminal, a crash, an OOM kill, a
+|      hosting process reaper -- leaves the lock behind.
+|
+| The mutex lives in the cache store, which is `database` here, so a stale
+| lock survives restarts and deployments. With the default expiry, one badly
+| timed interruption stops auctions starting, closing, choosing winners,
+| opening settlement checkouts and forfeiting -- silently, for a day.
+|
+| So each lock states its own expiry, chosen from what the command actually
+| does rather than from a single blanket number.
+|
+| THE TRADE-OFF, STATED PLAINLY. Expiring a lock early costs a duplicated
+| sweep. That is safe by construction: every step re-reads its row under
+| `SELECT ... FOR UPDATE` and returns unchanged if another run got there
+| first, which is what `it closes an auction once when several sweeps run
+| together` already proves. Expiring it late costs an outage. Given an
+| asymmetry that severe, these values err short.
+|
+| None of this changes what a sweep does -- only how long a dead one can
+| block the next.
+|
+*/
 
 /*
 |--------------------------------------------------------------------------
@@ -30,9 +68,20 @@ Artisan::command('inspire', function () {
 |
 */
 
+/*
+ * Five minutes, and this is the lock that matters most.
+ *
+ * The pass is bounded at 200 auctions and does database work plus, on the
+ * closures it produces, an inline email. Five minutes is five times the
+ * schedule interval and far beyond any healthy run, so a legitimate sweep is
+ * never cut short. It is also the shortest window in which a stale lock
+ * repairs itself, and a stale lock here is the worst outcome on the platform:
+ * no auction starts, closes, gains a winner, receives a settlement checkout
+ * or forfeits until it clears.
+ */
 Schedule::command('auctions:tick')
     ->everyMinute()
-    ->withoutOverlapping()
+    ->withoutOverlapping(ScheduleLocks::SWEEP_MINUTES)
     ->runInBackground();
 
 /*
@@ -52,9 +101,17 @@ Schedule::command('auctions:tick')
 |
 */
 
+/*
+ * Five minutes, for the same reasons.
+ *
+ * Bounded at 200 orders and purely database work -- no provider call, no
+ * mail -- so a healthy run finishes in seconds. A stale lock here leaves
+ * abandoned checkouts holding stock nobody can buy, which is less severe than
+ * a stalled auction clock but still takes products off sale.
+ */
 Schedule::command('orders:expire-checkouts')
     ->everyMinute()
-    ->withoutOverlapping()
+    ->withoutOverlapping(ScheduleLocks::SWEEP_MINUTES)
     ->runInBackground();
 
 /*
@@ -79,7 +136,24 @@ Schedule::command('orders:expire-checkouts')
 |
 */
 
+/*
+ * Thirty minutes, and deliberately not five.
+ *
+ * This is the one command where code inspection argues for a longer value
+ * than the others. It makes provider calls: up to 100 verifications, then a
+ * report pass that asks again, each with `paystack.timeout` (15 seconds by
+ * default) to spend. A provider outage could therefore keep one run busy for
+ * far longer than its own fifteen-minute schedule, and a five-minute lock
+ * would let several pile up against a host that is already failing.
+ *
+ * Thirty minutes is twice the schedule and comfortably beyond a healthy run,
+ * while still self-healing within the hour. That is affordable here in a way
+ * it would not be above: this command reports and confirms, it repairs
+ * nothing, and a stale lock delays a customer learning their refund landed --
+ * it does not stop commerce. Stage 10 already accepts that a missed run
+ * delays a confirmation and never changes an outcome.
+ */
 Schedule::command('refunds:reconcile')
     ->everyFifteenMinutes()
-    ->withoutOverlapping()
+    ->withoutOverlapping(ScheduleLocks::RECONCILE_MINUTES)
     ->runInBackground();

@@ -3,7 +3,6 @@
 declare(strict_types=1);
 
 use App\Domain\Auction\Actions\CloseAuction;
-use App\Domain\Catalog\Services\InventoryService;
 use App\Domain\Orders\Actions\FulfillOrderPayment;
 use App\Domain\Orders\Actions\InitializeOrderPayment;
 use App\Domain\Orders\Exceptions\InvalidOrderTransition;
@@ -52,17 +51,6 @@ beforeEach(function (): void {
      */
     $this->fulfil = fn (): FulfillOrderPayment => app(FulfillOrderPayment::class);
 });
-
-/**
- * A plain catalog product with stock, ready to be bought.
- */
-function stockedProduct(int $priceMinor = 550_000, int $stock = 1): Product
-{
-    $product = Product::factory()->active()->pricedAt($priceMinor)->create();
-    app(InventoryService::class)->initialStock($product, $stock);
-
-    return $product->fresh();
-}
 
 // ------------------------------------------------------- Initialization
 

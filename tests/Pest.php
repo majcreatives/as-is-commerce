@@ -622,3 +622,39 @@ function qualifyingPurchase(User $buyer): Order
 
     return $order->fresh();
 }
+
+/**
+ * A product that can actually be bought.
+ *
+ * A product factory alone produces something the checkout refuses: being
+ * listed and being purchasable are different questions, and available stock
+ * answers the second. Shared rather than declared in one test file, because a
+ * function defined in a test file exists only once that file has loaded.
+ */
+function stockedProduct(int $priceMinor = 550_000, int $stock = 1): Product
+{
+    $product = Product::factory()->active()->pricedAt($priceMinor)->create();
+
+    app(InventoryService::class)->initialStock($product, $stock);
+
+    return $product->fresh();
+}
+
+/**
+ * A member of staff holding exactly the named permissions and nothing else.
+ *
+ * Deliberately given no role. `syncPermissions` replaces only a user's direct
+ * permissions, so an administrator stripped that way still holds everything
+ * through the role -- and a test built on one would assert nothing.
+ *
+ * @param  list<string>  $permissions
+ */
+function staffWith(array $permissions): User
+{
+    seedPermissions();
+
+    $user = User::factory()->create();
+    $user->syncPermissions($permissions);
+
+    return $user->fresh();
+}

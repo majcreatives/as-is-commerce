@@ -5,11 +5,16 @@ This file records the rules that are not obvious from the code.
 
 ## Current stage
 
-**A customer marketplace over a finished engine.** Auctions run themselves,
-customers are told what happened, money that could not be delivered against
-can be given back, everything else is packed and delivered by hand, and the
-whole of it is now presented as a shop somebody can actually use, with a
-narrow referral programme on top that pays in ordinary credits. Foundation (auth, roles,
+**A customer marketplace over a finished engine, now operable by a person.**
+Auctions run themselves, customers are told what happened, money that could not
+be delivered against can be given back, everything else is packed and delivered
+by hand, and the whole of it is presented as a shop somebody can actually use,
+with a narrow referral programme on top that pays in ordinary credits. Over all
+of it sits an operations layer: one dashboard counting what is true from the
+records, one exception list holding everything that needs human judgement, one
+search box, a support view of a customer, and the activity log made visible.
+Every one of those screens reads and routes; the actions stay where the records
+live. Foundation (auth, roles,
 shell), the credit and cash ledgers, Paystack credit purchases, the product
 catalog with an auditable inventory ledger, the auction rules engine, the
 auction engine, and checkout: `orders`, `order_items`, `order_payments`,
@@ -25,7 +30,7 @@ payment verified with Paystack.
 
 What must not be built ahead of its stage: disputes and chargebacks, physical
 returns and reverse logistics, courier and driver integration, automated
-tracking, shipping pricing, a tax engine, referrals, gamification, automated
+tracking, shipping pricing, a tax engine, gamification, automated
 compensation, and real-time delivery (Redis, Reverb, WebSockets).
 
 **A paid order that could not be completed is recorded with
@@ -295,9 +300,13 @@ thereafter. There is a test asserting exactly that.
 
 Laravel 13 · PHP 8.3+ · MySQL 8 · Livewire 4 · Tailwind v4 · Vite · Pest
 
-Redis, Horizon and Reverb are deliberately not installed. They arrive with the
-auction engine. Do not add them earlier, and do not add packages that duplicate
-something the framework already provides.
+Redis, Horizon and Reverb are deliberately not installed, and the Stage 15A
+assessment established that they cannot be assumed: Hostinger states Redis is
+unavailable on the Web and Cloud plans this deploys to, and those plans run
+cron tasks rather than persistent daemons. Adding any of them makes a VPS a
+requirement rather than a choice, which is an architectural decision and not a
+package install. Do not add packages that duplicate something the framework
+already provides.
 
 ## Non-negotiable rules
 
@@ -1174,6 +1183,232 @@ the people they outbid. No contact details on the staff screen.
 Both need a threshold nobody has decided, and seeding one would make the
 decision by default — the same reason `minimum_bid_credits` is null. Do not add
 either until the business chooses the value.
+
+## The live auction transport
+
+Polling is the transport. It is not a placeholder.
+
+`AuctionRoom` polls, the server computes every figure on it, and the browser
+holds no auction state of its own. That is what makes the page recover from a
+dropped connection, a slept tab or a restarted server without any reconnection
+logic: the next poll is a fresh authoritative read, and there is no missed-event
+gap to reconcile because nothing is pushed.
+
+### The cadence is the server's, and it decides nothing
+
+`AuctionRoom::POLL_*` set how often the page asks: five seconds inside the
+closing window or the last two minutes, fifteen while an auction is live but
+further out, thirty once it has ended. Computed server-side from `AuctionClock`.
+
+They are display cadences, not business rules. An auction ends when its stored
+`ends_at` says so and the sweep notices; a bid is validated against a locked
+auction row, never against what the page last drew. Polling slowly means seeing
+a change late — it never means the change happened late.
+
+Never derive an outcome, a deadline or a validity check from a poll interval.
+
+### One render reads each fact once
+
+`AuctionRoom::viewFor()` reads everything the template needs and hands it over
+as data. The template calls no component method and resolves no service.
+
+That shape is the optimization. Before it, Blade called
+`viewerCommittedCredits()` three times and `myBids()` in four branches, and each
+call was another query — on a page that polls for every viewer watching. If you
+add a figure to this page, add it to `viewFor()`; a query issued twice per render
+is issued twice per viewer per interval, and there is a test that fails when one
+is.
+
+Nothing there is cached between requests. Each poll re-reads from the same
+authoritative queries as before.
+
+### What must stay true if real-time is ever added
+
+Redis and Reverb would be transport. They would never be authority.
+
+- **Consume domain events; do not join the decision.** `BidAccepted`,
+  `AuctionClosed`, `AuctionSoldViaBuyNow` and `AuctionForfeited` already exist
+  and already dispatch after commit. A broadcast layer subscribes to them.
+  There is deliberately **no** `AuctionExtended` event: an extension is carried
+  on `BidAccepted` as `extendedBySeconds`, because it happens as part of
+  accepting a bid and inventing a second event for it would be decoration.
+- **Do not modify `PlaceBid`, `CloseAuction`, `CompleteBuyNow`,
+  `HighestBidResolver` or the inventory and credit services to prepare for it.**
+  If broadcasting requires changing any of them, the design is wrong.
+- **Build payloads explicitly.** Never serialize a model onto a channel.
+  `BidAccepted` carries a `Bid`, which relates to a `User`; a default
+  serialization would put bidder identity on a public channel in one line.
+- **Keep polling as the floor.** A broadcast outage must be a slower page, not
+  a stopped marketplace.
+- **Order by `sequence`.** It is already monotonic per auction and allocated
+  under the auction row lock, so a client holding sequence *N* can discard
+  anything at or below it — which is what makes a duplicated or out-of-order
+  delivery harmless.
+- **Render state; never accumulate it.** A client that appends broadcast bids
+  to a list breaks on redelivery. One that replaces its state from a payload
+  does not.
+
+## Queued work
+
+Nothing financial is ever queued. Bids, credit consumption, Buy Now
+acquisition, inventory movement, payment verification, order transitions,
+auction closure, settlement, refunds and delivery transitions all stay
+synchronous and transactional. There is no job for any of them and there must
+not be.
+
+`SendNotificationEmail` is the only job in the application. It carries a message
+about something that has already committed, and it can fail without any of that
+becoming untrue.
+
+It is **off by default**, behind `notifications.queue_mail`. Queued mail needs a
+running worker for anybody to hear anything, and the production target runs cron
+rather than daemons — so a deployment without a worker must keep sending inline
+rather than going quiet. Turning it on is a deliberate act taken once a worker
+cron exists.
+
+If you add a job, it may only ever carry communication or presentation work. A
+job that decides something is a bug.
+
+## Scheduled sweeps and their overlap locks
+
+Every scheduled command carries an **explicit** overlap expiry, from
+`App\Support\ScheduleLocks`. Never call `withoutOverlapping()` bare.
+
+`withoutOverlapping()` defaults to a 24-hour mutex and releases it early only
+through POSIX signals, guarded by `extension_loaded('pcntl')`. Development is
+native Windows, where pcntl does not exist, and every sweep uses
+`runInBackground()` — which releases the lock by appending `schedule:finish` to
+the spawned command, and therefore releases nothing if that process is killed.
+The lock lives in the cache store, which is `database`, so it survives
+restarts.
+
+With the default, one interrupted sweep stops auctions starting, closing,
+choosing winners, opening settlement checkouts and forfeiting — silently, for a
+day. That was a real defect, found in the Stage 15 infrastructure audit.
+
+```
+SWEEP_MINUTES     = 5    auctions:tick, orders:expire-checkouts
+RECONCILE_MINUTES = 30   refunds:reconcile
+```
+
+The values come from what each command does, not from one blanket number. The
+five-minute sweeps are bounded at 200 records and touch no provider.
+`refunds:reconcile` waits on Paystack — up to 100 verifications plus a report
+pass, each with `paystack.timeout` to spend — so a five-minute lock would pile
+runs onto a host that is already failing.
+
+**The asymmetry that sets them.** Expiring a lock early costs one duplicated
+sweep, which is safe by construction: every step re-reads its row under
+`SELECT … FOR UPDATE` and returns unchanged if another run got there first.
+Expiring it late costs an outage. So these err short.
+
+## Production is cron, not a daemon
+
+The deployment target is Hostinger hPanel, which offers scheduled cron tasks
+and not long-running processes. Nothing in this application may require a
+persistent worker, a daemon or a supervisor to be **correct** — only to be
+faster. The scheduler is one `php artisan schedule:run` cron entry, and
+auctions close late rather than wrongly if it is delayed.
+
+Redis is unavailable on Hostinger Web and Cloud plans. Cache, sessions, queue
+and the scheduler mutex are therefore MySQL, and must stay that way unless the
+platform moves to a VPS.
+
+## Operations and administration
+
+The admin area is a **control surface over the domain, never a second
+implementation of it**. Every action calls the service that already owns the
+rule: `InventoryService`, `AuctionLifecycle`, `CreditLedgerService`,
+`RefundLifecycle`, `DeliveryLifecycle`, `RewardReferral`. No admin screen
+writes a balance, sets a status, or decides an outcome of its own.
+
+### The read-only screens are read-only in the strongest sense
+
+`OperationsDashboard`, `ExceptionCentrePage`, `GlobalSearch`, `CustomerDetail`,
+`CustomerIndex`, `OrderPaymentIndex` and `AuditLog` expose no public method
+beyond `mount()`, `render()` and their own filter hooks. Tests assert exactly
+that. If you want to add an action to one of them, the action already exists on
+the screen that owns the record — link to it.
+
+### Metrics are counted, never cached
+
+`OperationsMetrics` counts from the table that owns each fact at render time.
+There is no metrics table, no rollup and no cached counter. A counter that can
+drift is worse than no counter.
+
+`collected()` sums **successful payment attempts**, not order statuses. A
+verified payment is a historical fact; an order's status moves when it is
+refunded or cancelled. Summing statuses would quietly subtract every refund
+from a figure labelled "collected" while `refunded()` reported the same money
+again — netting the two under a label that claims not to. Keep them separate.
+
+### The exception centre detects and reports
+
+It never repairs, and it has **no dismiss and no acknowledge**. An exception
+disappears when the situation it describes stops being true. Adding a way to
+mark one handled without handling it would defeat the only purpose the screen
+has, and there is a test asserting no such method exists.
+
+It reuses `RefundReconciler` and `ReferralReconciler` rather than
+reimplementing what "wrong" means. If you add a category, ask the service that
+already knows.
+
+Provider checks are **opt-in**: reconciling against Paystack is a network call
+per refund, so the default render is local and there is a test asserting it
+sends nothing. Never make an operations screen call a provider on every load —
+it is most needed on the day that would take it down.
+
+`ExceptionCentre::grouped()` memoizes per instance so one render sweeps the
+tables once. `all()` and `counts()` both build on it.
+
+### Search is bounded in the query object, not only on the screen
+
+`OperationsSearch` caps the term at `MAX_LENGTH` and each kind at `PER_TYPE`,
+and enforces the two-character minimum inside `search()` itself. A caller that
+forgot to check must not be able to turn a lookup into an export.
+
+Phone numbers are normalized to E.164 before matching, or the one search
+support needs most silently returns nothing.
+
+### The audit log is exposed, not rebuilt
+
+Filtering only. No edit, no delete, no bulk action — an audit trail an
+administrator can tidy is not an audit trail. Read diffs from
+`attribute_changes` and deliberate context from `properties`; they are separate
+columns in v5.
+
+### Never add these
+
+- **A "mark as paid" control**, permission or code path. What is actually
+  wanted is a way to re-run verification against the provider.
+- **Bulk actions** over orders, auction winners, credit balances, refunds,
+  financial records or audit records.
+- **Automatic repair** of anything a reconciler reports.
+- **Any credential on a screen** — card details, secret keys, webhook secrets,
+  OTP material, password hashes, remember tokens. Tests assert the support and
+  payments screens render none of them.
+
+### Trust nothing from the browser
+
+Not a hidden field, not a Livewire property, not a URL parameter, not a
+client-side total or status. Every figure on every admin screen is read
+server-side from the records.
+
+### Permissions
+
+`admin.dashboard.view`, `exceptions.view`, `customers.view`, `audit.view`.
+Every admin route carries a role check **and** a `can:` check, and each
+component authorizes again in `mount()`. No customer holds any of them.
+
+### Operational filters
+
+`OrderManager` filters by delivery status — `none` means no delivery record
+exists, which is deliberately distinct from one at Pending — and by placement
+date, with boundaries computed in the display timezone and compared in UTC.
+
+`AuctionManager` filters by the clock (`ENDING_SOON_HOURS`, a display threshold
+and not a business rule) and by settlement state. Never filter "ending soon" by
+status: an auction past its end time stays marked Live until the sweep notices.
 
 ## Product price, credits and bids are separate
 

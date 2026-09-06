@@ -38,6 +38,13 @@ units (pesewas). Never as floating point.
 > Delivery is deliberately manual: no courier API, no driver app, no shipping
 > pricing engine.
 >
+> All of it is now operable by a person. One dashboard counts what is true from
+> the records themselves, one exception list holds everything needing human
+> judgement, one search box finds whatever reference support is holding, and the
+> activity log the platform has always written is finally visible. Every one of
+> those screens reads and routes: the actions stay where the records live,
+> behind the permissions that govern them.
+>
 > What is deliberately absent: disputes and chargebacks, physical returns and
 > reverse logistics, courier and driver integration, automated tracking, a tax
 > engine, and real-time delivery (Redis, Reverb, WebSockets). Nothing refunds
@@ -1693,6 +1700,138 @@ that would send them attach to the existing `auctions:tick`.
 
 ---
 
+## Operations and administration
+
+Everything above runs by itself. This is the layer that lets a person see what
+it did, find the thing somebody is asking about, and notice what needs a
+decision — without becoming a second place the business rules live.
+
+```
+/admin              What is true right now, counted from the records
+/admin/exceptions   Everything that needs a person
+/admin/search       One box for whatever reference support is holding
+/admin/customers    One customer, assembled for somebody on a call
+/admin/payments     What was asked of the provider, and what came back
+/admin/audit        Who did what
+```
+
+### The admin interface is a control surface, never a second implementation
+
+Every action an administrator can take calls the domain service that already
+owns it: `InventoryService`, `AuctionLifecycle`, `CreditLedgerService`,
+`RefundLifecycle`, `DeliveryLifecycle`, `RewardReferral`. Nothing on an admin
+screen writes a balance, sets a status, or decides an outcome of its own.
+
+The new screens go further and take **no** action at all. The dashboard, the
+exception centre, admin search, the customer view, the payments list and the
+audit log are read-only in the strongest sense: `CustomerDetail`,
+`OperationsDashboard` and `ExceptionCentrePage` expose no public method beyond
+`mount()` and `render()`, and there are tests asserting exactly that. Each row
+links to the screen that owns the record, where the action lives behind the
+permission that governs it.
+
+### Every figure is counted, never cached
+
+`OperationsMetrics` counts from the table that owns each fact, at the moment
+the page renders. There is no metrics table, no rollup job and no cached
+counter, because an operations screen exists for the moments when somebody
+needs to know what is actually true — and a counter that can drift is worse
+than no counter.
+
+**Collected and refunded are two figures and are never netted.** Collected is
+summed from the payment attempts that *succeeded*, not from order statuses: a
+verified payment is a historical fact that never moves, while an order's status
+changes as it is refunded or cancelled. Counting statuses would quietly
+subtract every refund from a figure labelled "collected" while `refunded()`
+reported the same money again.
+
+### The exception centre detects and reports
+
+One list for the things that need human judgement, which were previously spread
+across six screens and two console commands:
+
+| Category | What it notices |
+| --- | --- |
+| Payments | Paid orders nothing could be delivered against |
+| Refunds | Refunds the provider refused, and records that disagree |
+| Auctions | A winner with no settlement checkout; a settlement deadline the sweep has not acted on |
+| Delivery | Packages that failed, and deliveries with nowhere to go |
+| Referrals | Qualified referrals never rewarded |
+| Inventory | Stock projections that cannot be true |
+
+It reuses `RefundReconciler` and `ReferralReconciler` rather than
+reimplementing what they already know.
+
+**There is no dismiss and no acknowledge.** An exception disappears when the
+situation it describes stops being true, and not before — marking one as
+handled without handling it would defeat the only purpose the screen has. There
+is a test asserting no `dismiss`, `acknowledge`, `resolve` or `repair` method
+exists on either the screen or the query.
+
+**Provider checks are opt-in.** Reconciling a refund against Paystack is a
+network call per refund, so the page loads locally and offers a button. A
+screen that quietly made fifty API calls on every render would be unusable on
+the day it mattered, and there is a test asserting the default render sends
+nothing.
+
+### Search is bounded in every direction
+
+`OperationsSearch` caps the term at 64 characters and returns at most ten of
+each kind. The minimum length is enforced in the query object rather than only
+on the screen, so a caller that forgot to check cannot turn a lookup into an
+export. Phone numbers are normalized to E.164 before matching, because a number
+typed the way a customer says it out loud would otherwise find nothing.
+
+Each group of results is rendered only for an administrator holding the
+permission that governs that kind of record, and every link goes to a page that
+checks its own.
+
+### The audit log is exposed, not rebuilt
+
+A window onto the `spatie/laravel-activitylog` records the platform has been
+writing since the settings stage. Filtering only: no edit, no delete, no bulk
+action. An audit trail an administrator can tidy is not an audit trail.
+
+Model-event diffs land in `attribute_changes`; `properties` holds what an
+action attached deliberately with `withProperties()`. Both are shown, because
+the interesting detail is sometimes in one and sometimes in the other.
+
+### Operational filters
+
+Two questions operations asks daily that a status filter could not answer:
+
+- **Orders** now filter by delivery status — including `none`, which means no
+  delivery record exists and is deliberately distinct from one sitting at
+  Pending — and by the date an order was placed. Dates are read in the display
+  timezone and converted to UTC, because a date means a day where the
+  administrator is reading, not a day in UTC.
+- **Auctions** now filter to those ending within six hours, and to winners who
+  owe money or are already late. The ending-soon window is a display threshold
+  for a filter, not a business rule: nothing about how an auction runs or who
+  wins depends on it.
+
+### What was deliberately not added
+
+- **No "mark as paid".** There is no method, no permission and no code path.
+  If you find yourself wanting one, what you actually want is a way to re-run
+  verification against the provider.
+- **No bulk actions** over orders, auction winners, credit balances, refunds,
+  financial records or audit records.
+- **No automatic repair.** The exception centre reports; a person decides, and
+  fixes it with a compensating entry.
+- **No credential is ever displayed** — not a card number, a secret key, a
+  webhook secret, an OTP, a password hash or a remember token. There are tests
+  asserting the support screen and the payments list render none of them.
+
+### Permissions
+
+Four new capabilities, gated per route and again inside each component:
+`admin.dashboard.view`, `exceptions.view`, `customers.view`, `audit.view`.
+None is held by a customer, and every new route carries both a role check and a
+permission check.
+
+---
+
 ## Prices, credits and bids
 
 Three separate things, with no arithmetic relationship in any code that exists
@@ -1810,22 +1949,29 @@ invoked from thin controllers and Livewire components.
 
 ```
 app/
-├── Console/Commands/     Administrative commands
+├── Console/Commands/     Scheduled sweeps and administrative commands
 ├── Domain/
-│   ├── Auction/          Ruleset lifecycle, invariants, immutable rules
+│   ├── Auction/          Rulesets, the engine, bids, closing, settlement
 │   ├── Cash/             Real-money ledger
 │   ├── Catalog/          Products, inventory ledger, stock movements
-│   ├── Payments/         Gateway boundary, Paystack adapter, purchase flow
 │   ├── Credit/           Credit ledger, lots, allocation, reconciliation
+│   ├── Delivery/         Manual fulfilment lifecycle and address snapshots
+│   ├── Marketplace/      Customer-facing discovery and availability queries
+│   ├── Notifications/    Domain events → in-app and email, informational only
+│   ├── Operations/       Read-only metrics, exception detection, admin search
+│   ├── Orders/           Checkout, pricing, order lifecycle, payment fulfilment
+│   ├── Payments/         Gateway boundary, Paystack adapter, purchase flow
+│   ├── Referrals/        Attribution, qualification, credit rewards
+│   ├── Refunds/          Refund lifecycle, eligibility, provider reconciliation
 │   ├── Settings/         Typed, cached application settings
 │   ├── Shared/Idempotency/  At-most-once execution of financial operations
 │   ├── Shared/Ledger/    Guards shared by both ledgers
 │   ├── Shared/Money/     Exact integer money
 │   ├── Shared/Phone/     Phone normalization (E.164), swappable per country
 │   └── User/             Registration, OTP contract, user exceptions
-├── Enums/                UserStatus and future domain enums
+├── Enums/                Every domain enum, with behaviour on the cases
 ├── Http/                 Controllers and middleware
-├── Livewire/             Interactive components (auth, profile)
+├── Livewire/             Interactive components, customer and admin
 ├── Models/
 ├── Providers/
 └── Rules/                Reusable validation rules
@@ -1848,6 +1994,176 @@ app/
 The backend operates entirely in UTC (`APP_TIMEZONE=UTC`). Ghana local time is
 applied in the presentation layer only. Business timestamps — and later, every
 auction and ledger timestamp — are persisted in UTC without exception.
+
+---
+
+## Deployment
+
+Production is **Hostinger Premium Web Hosting / hPanel**. The Windows machine
+is only where this is written; nothing about the architecture assumes it.
+
+The whole application runs on PHP, MySQL and cron. That is deliberate, and it
+is what makes it deployable on ordinary shared hosting without a VPS.
+
+### Plan requirements
+
+| Need | Why | Availability |
+| --- | --- | --- |
+| PHP 8.3+ | `composer.json` declares `^8.3`, and no PHP 8.4/8.5-only syntax is used | hPanel offers 8.2–8.5, default 8.3 |
+| MySQL 8 | `SELECT … FOR UPDATE`, CHECK constraints and append-only triggers depend on it | included |
+| SSH | `composer install`, `artisan migrate`, `artisan key:generate` | Premium and above — **not** the entry Web plan |
+| Composer | dependency install | pre-installed on Premium/Business/Cloud |
+| Cron | the auction clock | hPanel scheduled tasks, UTC |
+| HTTPS | webhooks, cookies, generated URLs | free SSL in hPanel |
+
+### Deploying
+
+1. **Upload** the application above the web root — everything except `public/`
+   must be unreachable over HTTP.
+2. **Point the document root at `public/`.** If the plan forces `public_html`,
+   deploy the application to a sibling directory and let `public_html` hold the
+   contents of `public/`, with `index.php` requiring the bootstrap one level
+   up. Never move `.env` into the web root.
+3. **`composer install --no-dev --optimize-autoloader`** over SSH.
+4. **Create `.env`** from `.env.example` and fill it in over SSH or the file
+   manager. Never commit it and never paste secrets into a support ticket. Run
+   `php artisan key:generate` if `APP_KEY` is empty.
+5. **Migrate**: `php artisan migrate --force`. The flag is required because the
+   environment is production; it skips no check. **Never** run `migrate:fresh`
+   against production.
+6. **Seed reference data once**: `RoleSeeder`, `PermissionSeeder`,
+   `SettingsSeeder`, `CreditPackageSeeder`. All are idempotent.
+7. **Create the first administrator**: `php artisan app:create-admin
+   --role=super_admin`. Accounts are never seeded and no password is committed.
+8. **`php artisan storage:link`.**
+9. **Cache for production**: `config:cache`, `route:cache`, `view:cache`.
+   Re-run all three after any deployment touching config, routes or views — a
+   stale config cache is the commonest cause of a deployment that appears to
+   ignore `.env`.
+
+### Assets are built locally, never on the server
+
+Node is not required in production. Run `npm run build` on a developer machine
+and deploy the generated `public/build/` with the application. Hostinger's own
+guidance for shared and cloud plans is to build with Vite and upload the static
+output, which is exactly this flow.
+
+### Writable directories
+
+`storage/` and `bootstrap/cache/` must be writable by the web user — including
+`storage/framework/{cache,sessions,views}`, `storage/logs` and
+`storage/app/public`. Nothing else needs write access.
+
+### The scheduler is one cron entry
+
+Auctions do not progress without it. Everything the platform does on a clock —
+opening scheduled auctions, closing them, resolving winners, opening settlement
+checkouts, forfeiting lapsed ones, releasing abandoned checkouts, confirming
+refunds — runs from this single line:
+
+```
+* * * * * cd /home/<user>/domains/<domain>/ && /usr/bin/php artisan schedule:run >> /dev/null 2>&1
+```
+
+hPanel cron runs on **UTC**, matching `APP_TIMEZONE=UTC`, so there is no offset
+arithmetic anywhere. Confirm the PHP binary path in hPanel; it is usually
+version-specific.
+
+> **Deployment verification item.** Hostinger documents the interval picker but
+> states no minimum. If the plan cannot schedule every minute, auctions still
+> close **correctly** — they close **late**, by up to the cron interval, because
+> the winner is resolved from the bid records when the sweep finally runs and
+> those records do not change while it is late. Confirm the real minimum before
+> advertising a closing time more precise than it.
+
+Overlap is bounded rather than trusted — see *Scheduled sweeps and their overlap
+locks* in `CLAUDE.md`. A sweep killed mid-run blocks the next for five minutes,
+not for a day.
+
+### Queue
+
+The queue driver is `database`, and **nothing is queued by default**. Every
+financial and inventory operation is synchronous and transactional, so the
+application is fully correct with no worker running at all.
+
+One optional exception exists: notification email, behind
+`NOTIFICATIONS_QUEUE_MAIL`. It is **off by default** on purpose — queued mail
+needs a worker for anybody to hear anything, and shared hosting runs cron rather
+than daemons, so switching it on without one would stop email silently.
+
+To enable it, add a second cron entry running a finite worker rather than a
+daemon:
+
+```
+* * * * * cd /home/<user>/domains/<domain>/ && /usr/bin/php artisan queue:work --queue=notifications --stop-when-empty --max-time=55 >> /dev/null 2>&1
+```
+
+It drains and exits within the minute, so nothing persists between ticks.
+Supervisor is not available on hPanel and is not required.
+
+### Paystack
+
+Set `PAYSTACK_SECRET_KEY`, `PAYSTACK_PUBLIC_KEY`, `PAYSTACK_BASE_URL`,
+`PAYSTACK_CURRENCY` and `PAYSTACK_TIMEOUT` in `.env` only. The secret key is
+server-only — it authenticates API calls and verifies webhook signatures — and
+must never reach a browser, a repository or a support ticket.
+
+In the Paystack dashboard set the webhook URL to:
+
+```
+https://<domain>/webhooks/paystack
+```
+
+It is public and unauthenticated by design, because Paystack cannot log in. It
+is protected by an HMAC SHA512 signature over the raw body, verified before
+anything is stored or acted on, and it is the one route exempted from CSRF in
+`bootstrap/app.php`.
+
+Customers return through `/credits/callback` and `/checkout/callback`. Neither
+grants anything: a returning browser proves only that a browser arrived, so both
+re-verify server-to-server before saying a word.
+
+Use test keys until the platform is genuinely live, and never use production
+credentials in development.
+
+### HTTPS
+
+Production must be HTTPS. Paystack will not deliver webhooks over plain HTTP,
+`SESSION_SECURE_COOKIE` should be `true`, and `APP_URL` must use `https://` or
+generated URLs and payment callbacks will carry the wrong scheme. Enable the
+free hPanel certificate and force redirection.
+
+If TLS terminates at a proxy, configure trusted proxies so Laravel sees the
+original scheme; otherwise it generates `http://` URLs behind an `https://`
+front door.
+
+### Production configuration checklist
+
+| Key | Value | Why |
+| --- | --- | --- |
+| `APP_ENV` | `production` | |
+| `APP_DEBUG` | `false` | a stack trace on an error page is a disclosure |
+| `APP_URL` | `https://<domain>` | callbacks and generated URLs |
+| `APP_KEY` | generated, never committed | |
+| `APP_TIMEZONE` | `UTC` | storage is UTC; Ghana time is presentation only |
+| `LOG_LEVEL` | `warning` or above | `debug` fills a shared-hosting disk |
+| `DB_*` | the hPanel MySQL database | |
+| `SESSION_DRIVER`, `CACHE_STORE`, `QUEUE_CONNECTION` | `database` | no Redis on Web/Cloud plans |
+| `SESSION_SECURE_COOKIE` | `true` | |
+| `MAIL_MAILER` | a real transport | `log` writes mail to a file and sends nothing |
+| `NOTIFICATIONS_QUEUE_MAIL` | `false` unless a worker cron exists | |
+
+### Future VPS upgrade
+
+Redis and Reverb can be introduced later without changing auction authority.
+MySQL and the domain services decide bids, winners, credits, inventory,
+payments, settlement, refunds and delivery today and would continue to; a
+broadcast layer would consume the domain events that already exist and
+transport what the server had already decided. Polling remains the fallback, so
+a real-time outage would be a slower page rather than a stopped marketplace.
+
+Nothing in this application needs redesigning for that. It is a hosting
+decision, not an architectural one.
 
 ---
 

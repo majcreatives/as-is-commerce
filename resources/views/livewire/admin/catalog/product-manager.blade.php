@@ -106,7 +106,10 @@
     @endif
 
     <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+        {{-- A placeholder is not a label: it disappears the moment somebody
+             types, and a screen reader may never announce it. --}}
         <x-input type="search" wire:model.live.debounce.300ms="search"
+                 aria-label="Search products by name or SKU"
                  placeholder="Search by name or SKU" class="max-w-md" />
 
         <select wire:model.live="status"

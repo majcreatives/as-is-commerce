@@ -56,7 +56,9 @@
 
         @if ($visible !== [])
             <div class="flex flex-wrap items-center gap-1">
-                <span class="mr-1 w-24 shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                {{-- Full width on a phone, where a 6rem label column would
+                     leave the links about fourteen rem to wrap inside. --}}
+                <span class="mr-1 w-full shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-400 sm:w-24">
                     {{ $heading }}
                 </span>
 

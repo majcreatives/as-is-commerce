@@ -10,7 +10,10 @@
     @endif
 
     <div class="mb-4">
+        {{-- A placeholder is not a label: it disappears the moment somebody
+             types, and a screen reader may never announce it. --}}
         <x-input type="search" wire:model.live.debounce.300ms="search"
+                 aria-label="Search inventory by product name or SKU"
                  placeholder="Search by name or SKU" class="max-w-md" />
     </div>
 

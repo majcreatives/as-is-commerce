@@ -6,7 +6,10 @@
         description="Every credit package purchase and whether its credits were posted. Read-only — administrative credit changes go through wallet adjustments." />
 
     <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+        {{-- A placeholder is not a label: it disappears the moment somebody
+             types, and a screen reader may never announce it. --}}
         <x-input type="search" wire:model.live.debounce.300ms="search"
+                 aria-label="Search purchases by reference, phone, email or name"
                  placeholder="Search by reference, phone, email or name" class="max-w-md" />
 
         <select wire:model.live="status"

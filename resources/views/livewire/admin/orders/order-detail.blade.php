@@ -587,6 +587,10 @@
             @endcan
 
             <x-card title="History" :padded="false">
+                {{-- Four columns including a timestamp: wrapped so it scrolls
+                     inside its card on a phone rather than pushing the page
+                     sideways. The two tables above do the same. --}}
+                <div class="overflow-x-auto">
                 <table class="min-w-full divide-y divide-slate-200 text-sm">
                     <thead class="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
                         <tr>
@@ -614,6 +618,7 @@
                         @endforeach
                     </tbody>
                 </table>
+                </div>
             </x-card>
         </div>
 

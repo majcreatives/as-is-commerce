@@ -4,17 +4,45 @@
     // when the page you are on lives behind a closed menu.
     $inAccount = request()->routeIs('dashboard', 'wallet', 'orders.*', 'addresses.*', 'referrals.*', 'profile.*', 'credits.history');
 
-    // Everything about managing an account, in the order somebody looks for it:
-    // what is happening, what it costs, what was bought, where it goes, then
-    // the settings nobody visits twice.
-    $accountLinks = [
-        ['Dashboard', 'dashboard', 'dashboard'],
-        ['Wallet', 'wallet', 'wallet'],
-        ['Credit history', 'credits.history', 'credits.history'],
-        ['Orders', 'orders.index', 'orders.*'],
-        ['Addresses', 'addresses.index', 'addresses.*'],
-        ['Invite friends', 'referrals.index', 'referrals.*'],
-        ['Profile', 'profile.edit', 'profile.*'],
+    // The account menu, grouped the way somebody looks for things: what is
+    // happening, what it cost, where it goes, then who else to tell. Each
+    // group is separated by a rule in the panel, which is what stops eight
+    // links reading as one undifferentiated list.
+    //
+    // Icon paths are Heroicons outline, inlined rather than pulled from a
+    // package: eight paths do not justify a dependency, and they are constants
+    // in this file so nothing user-supplied is ever rendered as raw markup.
+    $accountGroups = [
+        [
+            ['Dashboard', 'dashboard', 'dashboard', [
+                'M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25A2.25 2.25 0 0 1 13.5 18v-2.25Z',
+            ]],
+            ['Orders', 'orders.index', 'orders.*', [
+                'M15.75 10.5V6a3.75 3.75 0 1 0-7.5 0v4.5m11.356-1.993 1.263 12A1.125 1.125 0 0 1 19.75 22H4.25a1.125 1.125 0 0 1-1.12-1.243l1.264-12A1.125 1.125 0 0 1 5.513 7.5h12.974c.576 0 1.059.435 1.119 1.007Z',
+            ]],
+        ],
+        [
+            ['Wallet', 'wallet', 'wallet', [
+                'M21 12a2.25 2.25 0 0 0-2.25-2.25H15a3 3 0 1 1-6 0H5.25A2.25 2.25 0 0 0 3 12m18 0v6a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 18v-6m18 0V9a2.25 2.25 0 0 0-2.25-2.25H5.25A2.25 2.25 0 0 0 3 9v3',
+            ]],
+            ['Credit history', 'credits.history', 'credits.history', [
+                'M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z',
+            ]],
+        ],
+        [
+            ['Addresses', 'addresses.index', 'addresses.*', [
+                'M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z',
+                'M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z',
+            ]],
+            ['Profile', 'profile.edit', 'profile.*', [
+                'M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z',
+            ]],
+        ],
+        [
+            ['Invite friends', 'referrals.index', 'referrals.*', [
+                'M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0ZM3 19.235v-.11a6.375 6.375 0 0 1 12.75 0v.109A12.318 12.318 0 0 1 9.374 21c-2.331 0-4.512-.645-6.374-1.766Z',
+            ]],
+        ],
     ];
 @endphp
 
@@ -86,11 +114,18 @@
                             aria-haspopup="true"
                             aria-controls="account-menu"
                             @class([
-                                'inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition',
+                                'inline-flex items-center gap-2 rounded-full py-1 pl-1 pr-2.5 text-sm font-medium transition',
                                 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600',
                                 'bg-brand-50 text-brand-800' => $inAccount,
                                 'text-slate-600 hover:bg-slate-100 hover:text-slate-900' => ! $inAccount,
                             ])>
+                        {{-- Initials rather than an avatar: there is no upload,
+                             and a grey silhouette says less than two letters. --}}
+                        <span class="flex size-7 shrink-0 items-center justify-center rounded-full bg-brand-700 text-xs font-bold text-white"
+                              aria-hidden="true">
+                            {{ Str::of(auth()->user()->name)->explode(' ')->filter()->take(2)->map(fn ($p) => Str::upper(Str::substr($p, 0, 1)))->implode('') }}
+                        </span>
+
                         {{-- The first name only. A header is not the place for
                              somebody's full legal name. --}}
                         {{ Str::before(auth()->user()->name, ' ') ?: 'Account' }}
@@ -108,24 +143,62 @@
                          x-transition:leave="transition ease-in duration-75"
                          x-transition:leave-start="opacity-100 scale-100"
                          x-transition:leave-end="opacity-0 scale-95"
-                         class="absolute right-0 z-50 mt-2 w-56 origin-top-right rounded-xl border border-slate-200 bg-white py-1.5 shadow-lg"
+                         class="absolute right-0 z-50 mt-2 w-72 origin-top-right rounded-xl border border-slate-200 bg-white shadow-lg ring-1 ring-black/5"
                          role="menu" aria-label="Your account">
 
-                        @foreach ($accountLinks as [$label, $routeName, $pattern])
-                            <a href="{{ route($routeName) }}" role="menuitem"
-                               @class([
-                                   'block px-4 py-2 text-sm transition',
-                                   'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-600',
-                                   'bg-brand-50 font-semibold text-brand-800' => request()->routeIs($pattern),
-                                   'text-slate-700 hover:bg-slate-100 hover:text-slate-900' => ! request()->routeIs($pattern),
-                               ])>{{ $label }}</a>
+                        {{-- Who is signed in, said once and plainly. Phone is
+                             the primary identity on this platform and email is
+                             optional, so the second line falls back rather than
+                             leaving a gap under the name. --}}
+                        <div class="border-b border-slate-100 px-4 py-3">
+                            <p class="truncate text-sm font-semibold text-slate-900">
+                                {{ auth()->user()->name }}
+                            </p>
+                            <p class="truncate text-sm text-slate-500">
+                                {{ auth()->user()->email ?: auth()->user()->phone }}
+                            </p>
+                        </div>
+
+                        @foreach ($accountGroups as $group)
+                            <div @class(['py-1.5', 'border-b border-slate-100' => ! $loop->last])>
+                                @foreach ($group as [$label, $routeName, $pattern, $iconPaths])
+                                    @php($isActive = request()->routeIs($pattern))
+
+                                    <a href="{{ route($routeName) }}" role="menuitem"
+                                       @class([
+                                           'flex items-center gap-3 px-4 py-2 text-sm transition',
+                                           'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-600',
+                                           'bg-brand-50 font-semibold text-brand-800' => $isActive,
+                                           'text-slate-700 hover:bg-slate-50 hover:text-slate-900' => ! $isActive,
+                                       ])>
+                                        <svg @class([
+                                                'size-5 shrink-0',
+                                                'text-brand-700' => $isActive,
+                                                'text-slate-400' => ! $isActive,
+                                             ])
+                                             fill="none" stroke="currentColor" stroke-width="1.5"
+                                             viewBox="0 0 24 24" aria-hidden="true">
+                                            @foreach ($iconPaths as $d)
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="{{ $d }}" />
+                                            @endforeach
+                                        </svg>
+
+                                        {{ $label }}
+                                    </a>
+                                @endforeach
+                            </div>
                         @endforeach
 
-                        <form method="POST" action="{{ route('logout') }}"
-                              class="mt-1.5 border-t border-slate-100 px-2 pt-1.5">
+                        <form method="POST" action="{{ route('logout') }}" class="border-t border-slate-100 py-1.5">
                             @csrf
                             <button type="submit" role="menuitem"
-                                    class="block w-full rounded-md px-2 py-2 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-600">
+                                    class="flex w-full items-center gap-3 px-4 py-2 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50 hover:text-slate-900 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-600">
+                                <svg class="size-5 shrink-0 text-slate-400" fill="none" stroke="currentColor"
+                                     stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true">
+                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                          d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15M12 9l-3 3m0 0 3 3m-3-3h12.75" />
+                                </svg>
+
                                 Log out
                             </button>
                         </form>
@@ -149,7 +222,7 @@
 
     {{-- The drawer stays flat. It is already a vertical list with room to
          breathe, so nesting a menu inside it would add a tap for nothing --
-         the account items are simply grouped under a heading. --}}
+         the account items are simply grouped under the same heading. --}}
     <div id="mobile-nav" x-show="open" x-cloak class="border-t border-slate-200 bg-white md:hidden">
         <x-container class="space-y-1 py-3">
             <x-nav-link href="{{ route('home') }}" class="block" :active="request()->routeIs('home')">Home</x-nav-link>
@@ -174,17 +247,30 @@
                     <x-nav-link href="{{ route('admin.dashboard') }}" class="block" :active="request()->routeIs('admin.*')">Admin</x-nav-link>
                 @endrole
 
-                <p class="px-3 pb-1 pt-4 text-xs font-semibold uppercase tracking-wide text-slate-400">
-                    Your account
-                </p>
+                {{-- The same identity block the desktop menu opens with, so a
+                     phone shows who is signed in without a trip to Profile. --}}
+                <div class="mt-4 border-t border-slate-100 px-3 pb-1 pt-3">
+                    <p class="truncate text-sm font-semibold text-slate-900">{{ auth()->user()->name }}</p>
+                    <p class="truncate text-sm text-slate-500">
+                        {{ auth()->user()->email ?: auth()->user()->phone }}
+                    </p>
+                </div>
 
-                <x-nav-link href="{{ route('dashboard') }}" class="block" :active="request()->routeIs('dashboard')">Dashboard</x-nav-link>
-                <x-nav-link href="{{ route('wallet') }}" class="block" :active="request()->routeIs('wallet')">Wallet</x-nav-link>
-                <x-nav-link href="{{ route('credits.history') }}" class="block" :active="request()->routeIs('credits.history')">Credit history</x-nav-link>
-                <x-nav-link href="{{ route('orders.index') }}" class="block" :active="request()->routeIs('orders.*')">Orders</x-nav-link>
-                <x-nav-link href="{{ route('addresses.index') }}" class="block" :active="request()->routeIs('addresses.*')">Addresses</x-nav-link>
-                <x-nav-link href="{{ route('referrals.index') }}" class="block" :active="request()->routeIs('referrals.*')">Invite friends</x-nav-link>
-                <x-nav-link href="{{ route('profile.edit') }}" class="block" :active="request()->routeIs('profile.*')">Profile</x-nav-link>
+                @foreach ($accountGroups as $group)
+                    @foreach ($group as [$label, $routeName, $pattern, $iconPaths])
+                        <x-nav-link href="{{ route($routeName) }}" class="flex items-center gap-3"
+                                    :active="request()->routeIs($pattern)">
+                            <svg class="size-5 shrink-0 text-slate-400" fill="none" stroke="currentColor"
+                                 stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true">
+                                @foreach ($iconPaths as $d)
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="{{ $d }}" />
+                                @endforeach
+                            </svg>
+
+                            {{ $label }}
+                        </x-nav-link>
+                    @endforeach
+                @endforeach
 
                 <form method="POST" action="{{ route('logout') }}" class="pt-2">
                     @csrf

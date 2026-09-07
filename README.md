@@ -2113,6 +2113,14 @@ Set `PAYSTACK_SECRET_KEY`, `PAYSTACK_PUBLIC_KEY`, `PAYSTACK_BASE_URL`,
 server-only — it authenticates API calls and verifies webhook signatures — and
 must never reach a browser, a repository or a support ticket.
 
+**Test and live keys must never be mixed.** A live secret with a test public
+key produces payments the browser cannot complete; the reverse produces
+confirmations that verify against nothing. Both keys come from the same
+Paystack dashboard mode, and switching mode means changing both. There is no
+runtime guard against a mismatched pair: Paystack rejects the call, the payment
+is refused, and nothing is granted — which is safe but unhelpful, so check the
+pair when switching.
+
 In the Paystack dashboard set the webhook URL to:
 
 ```
@@ -2120,16 +2128,77 @@ https://<domain>/webhooks/paystack
 ```
 
 It is public and unauthenticated by design, because Paystack cannot log in. It
-is protected by an HMAC SHA512 signature over the raw body, verified before
-anything is stored or acted on, and it is the one route exempted from CSRF in
-`bootstrap/app.php`.
+is protected by an HMAC SHA512 signature over the raw body, compared with
+`hash_equals` and verified before anything is stored or acted on, and it is the
+one route exempted from CSRF in `bootstrap/app.php`.
 
-Customers return through `/credits/callback` and `/checkout/callback`. Neither
-grants anything: a returning browser proves only that a browser arrived, so both
-re-verify server-to-server before saying a word.
+Customers return through `/credits/callback` and `/checkout/callback`. Both
+require authentication and both scope the reference to a payment the signed-in
+user owns — a reference is not a capability. Neither grants anything: a
+returning browser proves only that a browser arrived, so both re-verify
+server-to-server before saying a word.
 
 Use test keys until the platform is genuinely live, and never use production
 credentials in development.
+
+### What happens when a payment goes wrong
+
+Every one of these is a deliberate, tested outcome rather than an accident.
+None of them refunds anything automatically — returning money is a decision a
+person makes, through the refund workflow.
+
+| Situation | What the platform does |
+| --- | --- |
+| Provider unreachable, or answers with something unreadable | Nothing is recorded. The payment stays open and the next webhook delivery retries. |
+| Provider says the charge did not succeed | Refused. No credits, no stock, no order transition. |
+| Amount, currency or reference does not match the attempt | Refused as tampering or a bug, never accepted as "close enough". |
+| The same event arrives twice, or a webhook races the browser callback | Exactly one fulfilment. The idempotency claim serializes them; the second is told the first is in flight. |
+| Payment succeeds after the checkout expired or was cancelled | The payment is **kept** and marked successful. The order keeps its terminal status — it is never resurrected to Paid — fulfilment is blocked, and it goes to the admin exception queue. |
+| Payment succeeds but another transaction already took the unit | The order is **Paid**, fulfilment is blocked with a reason, and it goes to the exception queue. The sale is not silently cancelled and no refund is invented. |
+| Something fails midway through fulfilment | The whole transaction unwinds: no payment marked successful, no stock moved, no order paid, no delivery opened. The payment stays retryable. |
+
+The last row is the one worth internalising: a failure never leaves a
+successful payment recorded against stock that did not move. Either all of it
+happened or none of it did.
+
+### Refunds and recovery
+
+Refunds are bounded by what was actually taken: a new refund may not exceed the
+payment minus refunds already succeeded **and** refunds still in flight.
+Counting only the succeeded ones would let two attempts for 70% coexist and
+both settle.
+
+Nothing reaches succeeded on the platform's say-so. Paystack settles refunds
+asynchronously, so an accepted request is `Processing` and only the provider's
+own terminal status — fetched server-to-server by `refunds:reconcile` — makes
+it a success. A status the code does not recognise is treated as still in
+flight, never as money returned.
+
+Reconciliation detects and reports. It never repairs financial state.
+
+### Production smoke tests
+
+After deploying, before announcing anything, verify against the live account:
+
+1. **Credit purchase.** Buy the smallest package with a real instrument.
+   Confirm credits appear, `credit_transactions` has exactly one row for it,
+   and `/admin/credit-purchases` shows it fulfilled.
+2. **Webhook delivery.** Check Paystack's dashboard shows a 200 for that
+   charge, and `/admin/payment-events` has stored it. A signature failure
+   shows as a rejected event rather than a silent success.
+3. **Duplicate safety.** Replay the same event from the Paystack dashboard.
+   Credits must not increase, and the event must be recognised as a repeat.
+4. **Buy Now.** Buy a real product outright. Confirm the order reaches Paid,
+   one inventory sale is recorded, and a delivery is opened.
+5. **Auction settlement.** Close an auction with a winner, pay the settlement,
+   and confirm the settlement amount charged is the auction's frozen figure —
+   not the Buy Now price and not anything derived from credits.
+6. **Callback isolation.** Sign in as a second customer and open the first
+   customer's callback URL. It must show nothing.
+7. **Exception queue.** Confirm `/admin/exceptions` is reachable and empty.
+
+Do steps 1–3 with the smallest amounts the account allows. They move real
+money.
 
 ### HTTPS
 

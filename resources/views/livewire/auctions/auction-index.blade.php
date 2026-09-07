@@ -68,7 +68,13 @@
         <div class="lg:col-span-3">
             <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
                 <p class="text-sm text-slate-600" aria-live="polite">
-                    {{ $auctions->total() }} {{ Str::plural('auction', $auctions->total()) }}
+                    {{-- The count, and a word while it is being recounted. --}}
+                    <span wire:loading.remove wire:target="search,filter,category,condition,sort">
+                        {{ $auctions->total() }} {{ Str::plural('auction', $auctions->total()) }}
+                    </span>
+
+                    <span wire:loading wire:target="search,filter,category,condition,sort"
+                          class="text-slate-500" role="status">Searching&hellip;</span>
                 </p>
 
                 <div class="w-full sm:w-56">

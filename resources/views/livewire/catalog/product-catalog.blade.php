@@ -67,8 +67,16 @@
         <div class="lg:col-span-3">
             <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <p class="text-sm text-slate-600">
-                    {{ $products->total() }}
-                    {{ Str::plural('product', $products->total()) }}
+                    {{-- The count, and a word while it is being recounted.
+                         Filters are live, so without this the page sits
+                         silently between a keystroke and its results. --}}
+                    <span wire:loading.remove wire:target="search,category,brand,condition,availableOnly,sort">
+                        {{ $products->total() }}
+                        {{ Str::plural('product', $products->total()) }}
+                    </span>
+
+                    <span wire:loading wire:target="search,category,brand,condition,availableOnly,sort"
+                          class="text-slate-500" role="status">Searching&hellip;</span>
                 </p>
 
                 <div class="flex items-center gap-2">

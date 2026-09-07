@@ -7,11 +7,15 @@ use App\Domain\Catalog\Services\InventoryService;
 use App\Domain\Orders\Actions\FulfillOrderPayment;
 use App\Domain\Orders\Exceptions\InvalidCheckout;
 use App\Domain\Orders\Services\OrderLifecycle;
+use App\Domain\Shared\Idempotency\ConcurrentOperationInProgress;
 use App\Enums\AuctionClosureReason;
 use App\Enums\AuctionStatus;
+use App\Enums\IdempotencyStatus;
 use App\Enums\InventoryTransactionType;
 use App\Enums\OrderPaymentStatus;
 use App\Enums\OrderStatus;
+use App\Models\Delivery;
+use App\Models\IdempotencyKey;
 use App\Models\InventoryTransaction;
 use App\Models\Order;
 use App\Models\Product;
@@ -336,4 +340,58 @@ it('consumes no credits through any of these races', function (): void {
 
     // Paying in cedis moves no credits, in either direction.
     expect(creditWalletFor($bidder)->fresh()->balance)->toBe($before)->toBe(800);
+});
+
+/*
+ * Race A and B in their genuinely concurrent form.
+ *
+ * The tests above deliver the same successful payment twice back to back,
+ * which proves the second call finds the order already paid. That is the
+ * common case, but it is not the dangerous one: the dangerous one is two
+ * deliveries arriving close enough that neither has committed when the other
+ * starts, which is exactly what a webhook retry landing beside a returning
+ * browser looks like.
+ *
+ * The idempotency claim is what separates them. While one holds the key the
+ * other is refused outright rather than proceeding alongside it -- and being
+ * refused is the correct answer, because the first is about to do the work.
+ *
+ * The credit purchase path already proves this for itself. The order path
+ * carries more with it -- a stock movement, an order transition, a delivery --
+ * so it is worth proving separately.
+ */
+it('refuses a second order fulfilment while the first is still in flight', function (): void {
+    $product = Product::factory()->active()->create();
+    app(InventoryService::class)->initialStock($product, 1);
+
+    $order = buyNowCheckout(bidder(), $product->fresh());
+    $payment = initializePayment($order);
+
+    fakePaystackVerify([
+        'reference' => $payment->provider_reference,
+        'status' => 'success',
+        'amount' => $payment->amount_minor,
+        'currency' => $payment->currency,
+    ]);
+
+    // Another delivery of this same payment is mid-flight: it claimed the key
+    // and has not finished.
+    IdempotencyKey::create([
+        'operation' => FulfillOrderPayment::OPERATION,
+        'idempotency_key' => $payment->idempotency_key,
+        'user_id' => $order->user_id,
+        'status' => IdempotencyStatus::Pending,
+    ]);
+
+    expect(fn (): array => app(FulfillOrderPayment::class)->handle($payment->fresh()))
+        ->toThrow(ConcurrentOperationInProgress::class);
+
+    // Nothing moved. The unit is still held rather than sold, the order is
+    // still awaiting payment, and no delivery was opened for work nobody has
+    // been paid for yet.
+    expect(InventoryTransaction::where('type', InventoryTransactionType::Sale)->count())->toBe(0)
+        ->and($product->fresh()->stock_on_hand)->toBe(1)
+        ->and($product->fresh()->stock_reserved)->toBe(1)
+        ->and(Order::findOrFail($order->id)->status)->toBe(OrderStatus::PendingPayment)
+        ->and(Delivery::count())->toBe(0);
 });

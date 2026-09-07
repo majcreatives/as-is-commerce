@@ -233,6 +233,22 @@ class PaystackGateway implements PaymentGateway
     // ------------------------------------------------------------ Internals
 
     /**
+     * Take the secret out of anything on its way to a log or an exception.
+     *
+     * Defence in depth on an error path only. Nothing here participates in
+     * deciding whether a payment succeeded -- it changes what a failure says,
+     * never what a failure means.
+     */
+    private function redactSecret(string $text): string
+    {
+        if ($this->secretKey === null || $this->secretKey === '') {
+            return $text;
+        }
+
+        return str_replace($this->secretKey, '[redacted]', $text);
+    }
+
+    /**
      * @param  array<string, mixed>  $payload
      * @return array<string, mixed>
      */
@@ -286,7 +302,16 @@ class PaystackGateway implements PaymentGateway
         }
 
         if ($response->failed() || ($body['status'] ?? false) !== true) {
-            $message = is_string($body['message'] ?? null) ? $body['message'] : 'unknown error';
+            // Redacted before it goes anywhere. The provider's message is
+            // repeated into a log line and into an exception a customer may
+            // see, and a gateway misconfigured to echo the key back -- or any
+            // future provider that does -- would otherwise put the secret in
+            // both. Paystack is not known to do this; the point is that the
+            // secret's safety should not depend on a third party's error
+            // wording.
+            $message = $this->redactSecret(
+                is_string($body['message'] ?? null) ? $body['message'] : 'unknown error'
+            );
 
             Log::warning('Paystack rejected a request', [
                 'path' => $path,

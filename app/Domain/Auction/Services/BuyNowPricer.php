@@ -7,6 +7,8 @@ namespace App\Domain\Auction\Services;
 use App\Domain\Auction\Actions\CompleteBuyNow;
 use App\Domain\Auction\ValueObjects\BuyNowQuote;
 use App\Domain\Shared\Money\Money;
+use App\Domain\StoreWallet\Services\ConsumedCreditValuation;
+use App\Domain\StoreWallet\ValueObjects\CreditValuation;
 use App\Models\Auction;
 use App\Models\User;
 
@@ -14,15 +16,24 @@ use App\Models\User;
  * What one user would pay to buy an auction's product outright.
  *
  * THE ONE SANCTIONED CONVERSION. Each credit that user has already consumed
- * bidding on *this* auction takes a fixed amount off the Buy Now price -- one
- * cedi per credit, at the rate frozen in the auction's snapshot. That rate is
- * historical: changing the ruleset tomorrow does not change what a running
- * auction offers.
+ * bidding on *this* auction is valued at what that exact credit actually cost
+ * -- its lot's own acquisition price, frozen when the lot was created -- and
+ * that value comes off the Buy Now price. Credits bought at GH0.10 reduce the
+ * price by GH0.10 per credit; promotional credits reduce it by nothing.
+ *
+ * NEVER A SYSTEM-WIDE RATE. There is no global "how much is a credit worth"
+ * figure. Two lots bought on different days at different prices are worth
+ * different amounts, and blending them into one rate would over- or under-value
+ * someone's credits the moment they bought at anything but the average. The
+ * valuation here is the same one the Store Wallet uses when an auction is won
+ * by somebody else, so the two paths can never disagree about what a credit
+ * was worth.
  *
  * WHICH CREDITS QUALIFY, and equally which do not:
  *
  *   count        credits consumed by accepted bids by this user on this
- *                auction, summed from the bid records
+ *                auction, summed from the bid records, walked back through
+ *                the credit transactions to the exact lots they came from
  *
  *   do not       unused credits sitting in the wallet
  *   count        credits bought but never bid
@@ -46,6 +57,7 @@ class BuyNowPricer
 {
     public function __construct(
         private readonly HighestBidResolver $bids,
+        private readonly ConsumedCreditValuation $valuation,
     ) {}
 
     /**
@@ -53,14 +65,13 @@ class BuyNowPricer
      */
     public function quote(Auction $auction, ?User $user = null): BuyNowQuote
     {
-        $rules = $auction->rules();
         $listPrice = $auction->product->buyNowPrice();
 
-        $eligible = $user === null
-            ? 0
-            : $this->eligibleCredits($auction, $user);
+        $valuation = $user === null
+            ? CreditValuation::empty($listPrice->currency)
+            : $this->valuationFor($auction, $user);
 
-        $discount = $rules->buyNowDiscountFor($eligible);
+        $discount = $valuation->total;
 
         // A discount can never exceed the price. Capping rather than allowing
         // a negative payable: buying something cannot pay the buyer, and a
@@ -73,12 +84,32 @@ class BuyNowPricer
 
         return new BuyNowQuote(
             listPrice: $listPrice,
-            eligibleCredits: $eligible,
+            eligibleCredits: $valuation->totalCredits,
             discount: $discount,
             payable: $listPrice->minus($discount),
             available: $available,
             unavailableReason: $reason,
         );
+    }
+
+    /**
+     * The cash value of this user's consumed credits on this auction.
+     *
+     * The same valuation the Store Wallet issues when somebody else wins, so a
+     * credit's worth never differs between the two paths.
+     *
+     * When the buy-now credit discount is switched off, the credits are still
+     * valueless here -- the switch says the consumed credits' value does not
+     * come off the price, and an empty valuation honours that without the
+     * customer's spend disappearing from the calculation.
+     */
+    public function valuationFor(Auction $auction, User $user): CreditValuation
+    {
+        if (! $auction->rules()->buyNowCreditDiscountEnabled) {
+            return CreditValuation::empty($auction->currency ?? 'GHS');
+        }
+
+        return $this->valuation->forAuction($auction, $user->id, $auction->currency ?? 'GHS');
     }
 
     /**

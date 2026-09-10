@@ -28,14 +28,26 @@ use JsonSerializable;
  * THE TWO PATHS OWE DIFFERENT THINGS:
  *
  *   Buy Now      subtotal is the product's own Buy Now price, and the
- *                discount is the cedis earned by credits this buyer already
- *                consumed bidding on this auction -- one cedi per credit, at
- *                the rate frozen into the auction.
+ *                discount is the actual cash value of the credits this buyer
+ *                already consumed bidding on this auction -- each credit
+ *                valued at what its own lot was bought for, never at a
+ *                system-wide rate.
  *
  *   Auction win  subtotal is the auction's own settlement amount, a low GHS
  *                figure chosen per auction. There is no discount: a winner's
  *                consumed credits bought them the win, and do not also reduce
  *                what they settle.
+ *
+ * THE STORE WALLET PORTION. A fixed-price catalogue purchase may commit Store
+ * Wallet value toward the bill. That value is taken out of the wallet at
+ * checkout (when the order is written, not when it is paid), is frozen here,
+ * and the remainder -- `payable` -- is what the provider is actually asked to
+ * verify against:
+ *
+ *     payable = total - storeWalletApplied,  payable > 0
+ *
+ * An order is never fully covered by Store Wallet: the part that must still be
+ * paid is what makes a verified provider payment possible at all.
  *
  * WHAT IS NOT HERE. No credit is converted into money except through the Buy
  * Now discount, and no credit is charged: the credits were consumed when the
@@ -47,8 +59,11 @@ final readonly class CheckoutPricing implements JsonSerializable
     /**
      * Incremented if the serialized shape changes, so a stored snapshot can
      * be recognised -- or refused -- after a schema evolution.
+     *
+     * Version 2 replaces the flat "pesewas per credit" rate with the per-lot
+     * valuation breakdown, and adds the Store Wallet portion (`payable`).
      */
-    public const SNAPSHOT_VERSION = 1;
+    public const SNAPSHOT_VERSION = 2;
 
     public function __construct(
         public OrderSource $source,
@@ -59,10 +74,18 @@ final readonly class CheckoutPricing implements JsonSerializable
         public Money $delivery,
         public Money $tax,
         public Money $total,
+        /** Value committed from a Store Wallet toward this order. Zero unless it had one. */
+        public Money $storeWalletApplied,
+        /** Total less the Store Wallet portion: what the provider verifies. */
+        public Money $payable,
         /** Credits that earned the discount. A count, not money. */
         public int $discountCredits = 0,
-        /** Pesewas per credit, as frozen into the auction. */
-        public int $discountRateMinorPerCredit = 0,
+        /**
+         * The per-lot valuation the discount was derived from, for evidence.
+         *
+         * @var array<string, mixed>|null
+         */
+        public ?array $valuation = null,
         /** The rate tax was computed at, in basis points. */
         public int $taxBps = 0,
         /** The winning bid's credit amount, on a settlement order. */
@@ -116,11 +139,17 @@ final readonly class CheckoutPricing implements JsonSerializable
             'tax_minor' => $this->tax->minor,
             'total_minor' => $this->total->minor,
 
-            // How the discount was arrived at: a count of credits and the rate
-            // they were worth. Both frozen, so the arithmetic can be checked
-            // years later against neither of them having moved.
+            // How the discount was arrived at: a count of credits and the
+            // per-lot valuation that priced them. Both frozen, so the
+            // arithmetic can be checked years later against neither of them
+            // having moved.
             'discount_credits' => $this->discountCredits,
-            'discount_rate_minor_per_credit' => $this->discountRateMinorPerCredit,
+            'valuation' => $this->valuation,
+
+            // The Store Wallet portion and the remainder left for the
+            // provider to verify. The two must add up to the total.
+            'store_wallet_applied_minor' => $this->storeWalletApplied->minor,
+            'payable_minor' => $this->payable->minor,
 
             'tax_bps' => $this->taxBps,
             'winning_bid_credits' => $this->winningBidCredits,
@@ -143,15 +172,22 @@ final readonly class CheckoutPricing implements JsonSerializable
         $currency = (string) ($data['currency'] ?? 'GHS');
         $money = fn (string $key): Money => Money::fromMinor((int) ($data[$key] ?? 0), $currency);
 
+        $total = $money('total_minor');
+        $applied = $money('store_wallet_applied_minor');
+
         return new self(
             source: OrderSource::from((string) $data['source']),
             subtotal: $money('subtotal_minor'),
             discount: $money('discount_minor'),
             delivery: $money('delivery_minor'),
             tax: $money('tax_minor'),
-            total: $money('total_minor'),
+            total: $total,
             discountCredits: (int) ($data['discount_credits'] ?? 0),
-            discountRateMinorPerCredit: (int) ($data['discount_rate_minor_per_credit'] ?? 0),
+            valuation: isset($data['valuation']) && is_array($data['valuation'])
+                ? $data['valuation']
+                : null,
+            storeWalletApplied: $applied,
+            payable: $money('payable_minor'),
             taxBps: (int) ($data['tax_bps'] ?? 0),
             winningBidCredits: isset($data['winning_bid_credits'])
                 ? (int) $data['winning_bid_credits']
@@ -209,6 +245,38 @@ final readonly class CheckoutPricing implements JsonSerializable
 
         if ($this->discountCredits < 0) {
             throw InvalidCheckout::because('A credit count cannot be negative.');
+        }
+
+        // The Store Wallet portion is part of the bill, never more than it,
+        // and the payable is what is left for the provider to verify. The
+        // identity is asserted so a caller cannot freeze an order whose two
+        // figures do not add up to the total it says it owes.
+        if ($this->storeWalletApplied->isNegative()) {
+            throw InvalidCheckout::because('Store Wallet applied cannot be negative.');
+        }
+
+        if ($this->storeWalletApplied->currency !== $this->total->currency) {
+            throw InvalidCheckout::because('Store Wallet applied must be in the order currency.');
+        }
+
+        $expectedPayable = $this->total->minus($this->storeWalletApplied);
+
+        if (! $this->payable->equals($expectedPayable)) {
+            throw InvalidCheckout::because(
+                "The payable {$this->payable->format()} does not equal the total less the "
+                ."Store Wallet portion ({$expectedPayable->format()})."
+            );
+        }
+
+        // The stage boundary stated as a claim: a fully-covered order would
+        // have no provider-chargeable remainder, and this application has no
+        // path yet that marks an order paid without the provider verifying
+        // something.
+        if (! $this->payable->isPositive()) {
+            throw InvalidCheckout::because(
+                'A checkout payable must be greater than zero: an order can never be fully '
+                .'covered by Store Wallet.'
+            );
         }
 
         // The rule that keeps the two paths apart. A winner's consumed credits

@@ -461,7 +461,9 @@ it('gives no buy now discount for unspent referral credits', function (): void {
 
 /*
  * And once they are spent on bids they behave exactly like any other credit:
- * consumed permanently, and earning the ordinary discount on that auction.
+ * consumed permanently. They earn nothing on that auction, because the lot
+ * valuation values a referral credit exactly as it was bought -- and these
+ * were bought at zero.
  */
 it('treats spent referral credits like any other bid credits', function (): void {
     [$referrer, $joiner] = referralPair();
@@ -476,7 +478,9 @@ it('treats spent referral credits like any other bid credits', function (): void
     $quote = app(BuyNowPricer::class)->quote($auction->fresh(), $referrer->fresh());
 
     expect($quote->eligibleCredits)->toBe(50)
-        ->and($quote->discount->minor)->toBe(5_000)
+        // Referral credits cost nothing, so they carry no cash value -- the
+        // discount stays zero, exactly as a promotional credit would.
+        ->and($quote->discount->isZero())->toBeTrue()
         // And they are gone, like every other bid credit.
         ->and(creditWalletFor($referrer)->fresh()->balance)->toBe(0);
 });

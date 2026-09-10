@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\Auction\Actions;
 
+use App\Domain\Auction\Contracts\AuctionLossCompensation;
 use App\Domain\Auction\Exceptions\BuyNowUnavailable;
 use App\Domain\Auction\Services\AuctionLifecycle;
 use App\Domain\Auction\Services\BuyNowPricer;
@@ -66,6 +67,7 @@ final class CompleteBuyNow
         private readonly IdempotencyGuard $idempotency,
         private readonly AuctionLifecycle $lifecycle,
         private readonly BuyNowPricer $pricer,
+        private readonly AuctionLossCompensation $compensation,
     ) {}
 
     /**
@@ -173,6 +175,11 @@ final class CompleteBuyNow
                         : '.'),
                 $buyer,
             );
+
+            // Every other bidder lost to the purchase. Their consumed
+            // credits' value goes back as Store Wallet credit; the buyer's own
+            // already came off the price they paid, so they are excluded.
+            $this->compensation->compensateLosers($ended, $buyer->id);
 
             Log::info('Auction ended by a completed Buy Now', [
                 'operation' => 'auction.buy_now.completed',

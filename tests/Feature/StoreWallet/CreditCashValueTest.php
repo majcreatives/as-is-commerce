@@ -9,6 +9,7 @@ use App\Domain\StoreWallet\Services\ConsumedCreditValuation;
 use App\Domain\StoreWallet\Services\StoreWalletLedgerService;
 use App\Enums\CreditTransactionType;
 use App\Enums\StoreWalletTransactionType;
+use App\Models\Auction;
 use App\Models\Product;
 use App\Models\StoreWalletCreditSource;
 use App\Models\StoreWalletTransaction;
@@ -113,8 +114,8 @@ it('gives referral credits no cash value', function (): void {
 it('values each lot at its own rate rather than at a blended one', function (): void {
     $auction = liveAuction();
 
-    $loser = customerWithPurchasedCredits(100, 1_000);   // lot A: GH 0.10
-    grantPurchasedCredits($loser, 500, 4_000);           // lot B: GH 0.08
+    $loser = customerWithPurchasedCredits(20, 200);    // lot A: GH 0.10
+    grantPurchasedCredits($loser, 10, 80);             // lot B: GH 0.08
     grantCredits($loser, 15, CreditTransactionType::ReferralCredit);
 
     $winner = bidder(1_000);
@@ -354,7 +355,7 @@ it('records which lots produced an issuance and what each contributed', function
     $issuance = StoreWalletTransaction::ofType(StoreWalletTransactionType::AuctionLossCompensation)
         ->firstOrFail();
 
-    expect($issuance->reference_type)->toBe(App\Models\Auction::class)
+    expect($issuance->reference_type)->toBe(Auction::class)
         ->and($issuance->reference_id)->toBe($auction->id)
         ->and($issuance->amount_minor)->toBe(300)
         ->and($issuance->balance_after_minor)->toBe(300);

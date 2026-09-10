@@ -63,6 +63,8 @@ use Spatie\Activitylog\Support\LogOptions;
  * @property int $tax_minor
  * @property int $total_minor
  * @property int $discount_credits
+ * @property int $store_wallet_applied_minor
+ * @property int $payable_minor
  * @property array<string, mixed> $pricing_snapshot
  * @property bool $holds_reservation
  * @property Carbon|null $payment_due_at
@@ -107,6 +109,8 @@ class Order extends Model
             'tax_minor' => 'integer',
             'total_minor' => 'integer',
             'discount_credits' => 'integer',
+            'store_wallet_applied_minor' => 'integer',
+            'payable_minor' => 'integer',
             'payment_due_at' => 'datetime',
             'placed_at' => 'datetime',
             'paid_at' => 'datetime',
@@ -153,6 +157,27 @@ class Order extends Model
     public function total(): Money
     {
         return Money::fromMinor($this->total_minor, $this->currency);
+    }
+
+    /**
+     * The value this order committed from a Store Wallet at checkout.
+     *
+     * Zero unless this was a fixed-price catalogue purchase. It is part of the
+     * total and is not something the provider was asked for -- which is exactly
+     * how an order is never fully covered.
+     */
+    public function storeWalletApplied(): Money
+    {
+        return Money::fromMinor($this->store_wallet_applied_minor, $this->currency);
+    }
+
+    /**
+     * What a provider is asked to verify: the total less the Store Wallet
+     * portion. Frozen at checkout, and strictly positive.
+     */
+    public function payable(): Money
+    {
+        return Money::fromMinor($this->payable_minor, $this->currency);
     }
 
     /**

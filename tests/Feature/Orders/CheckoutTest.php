@@ -44,10 +44,10 @@ it('prices a plain catalog purchase at the product price', function (): void {
 /*
  * The worked example from the brief, as a real order.
  */
-it('takes one cedi off per consumed bid credit', function (): void {
+it('prices the worked example from the lots the buyer consumed', function (): void {
     $product = Product::factory()->active()->pricedAt(550_000)->create();
     $auction = liveAuction(product: $product);
-    $buyer = bidder(1_000);
+    $buyer = customerWithPurchasedCredits(150, 15_000);
 
     placeBid($auction, $buyer, 150);
 
@@ -77,7 +77,7 @@ it('offers no discount for credits spent on another auction', function (): void 
 it('offers no discount for unused credits in the wallet', function (): void {
     $product = Product::factory()->active()->pricedAt(550_000)->create();
     $auction = liveAuction(product: $product);
-    $buyer = bidder(5_000);
+    $buyer = customerWithPurchasedCredits(5_000, 500_000);
 
     placeBid($auction, $buyer, 10);
 
@@ -368,16 +368,22 @@ it('takes its deadline from the auction frozen rules', function (): void {
 it('freezes the derivation, not just the total', function (): void {
     $product = Product::factory()->active()->pricedAt(550_000)->create();
     $auction = liveAuction(product: $product);
-    $buyer = bidder(1_000);
+    $buyer = customerWithPurchasedCredits(150, 15_000); // GH 1.00 lot rate
     placeBid($auction, $buyer, 150);
 
     $pricing = buyNowCheckout($buyer, $product, $auction)->pricing();
 
     expect($pricing->subtotal->minor)->toBe(550_000)
         ->and($pricing->discountCredits)->toBe(150)
-        // The rate is frozen too, so the arithmetic can be rechecked years
-        // later against neither figure having moved.
-        ->and($pricing->discountRateMinorPerCredit)->toBe(100)
+        ->and($pricing->discount->minor)->toBe(15_000)
+        // The per-lot valuation that produced the discount is frozen too, so
+        // the arithmetic can be rechecked years later against neither a lot
+        // nor a rate having moved.
+        ->and($pricing->valuation['total_minor'])->toBe(15_000)
+        ->and($pricing->valuation['lots'])->toHaveCount(1)
+        // A Store Wallet is never applied on the auction path: what the
+        // provider verifies is the whole reduced total.
+        ->and($pricing->payable->minor)->toBe(535_000)
         ->and($pricing->total->minor)->toBe(535_000);
 });
 

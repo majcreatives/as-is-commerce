@@ -103,19 +103,11 @@
                         <span class="block text-sm font-medium text-slate-700">Credit discount on Buy Now</span>
                         <span class="block text-xs text-slate-500">
                             Credits a customer already consumed bidding on this auction reduce the Buy Now
-                            price. The credits stay consumed &mdash; this lowers a separate purchase price
-                            rather than refunding them.
+                            price, valued at what those credits actually cost. The credits stay consumed
+                            &mdash; this lowers a separate purchase price rather than refunding them.
                         </span>
                     </span>
                 </label>
-
-                <x-field label="Discount per consumed credit" name="buy_now_credit_discount_per_credit"
-                         :error="$errors->first('buy_now_credit_discount_per_credit')"
-                         hint="In cedis. 1.00 means one consumed bid credit takes GH&#8373;1 off the Buy Now price.">
-                    <x-input id="buy_now_credit_discount_per_credit" inputmode="decimal" placeholder="1.00"
-                             wire:model="buy_now_credit_discount_per_credit"
-                             :error="$errors->has('buy_now_credit_discount_per_credit')" required />
-                </x-field>
             </div>
         </x-card>
 

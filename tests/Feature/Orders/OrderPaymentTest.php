@@ -348,7 +348,7 @@ it('does not make the standing highest bidder the winner', function (): void {
 it('honours the discount frozen at checkout, not one recomputed at payment', function (): void {
     $product = Product::factory()->active()->pricedAt(550_000)->create();
     $auction = liveAuction(product: $product);
-    $buyer = bidder(2_000);
+    $buyer = customerWithPurchasedCredits(2_000, 200_000);
 
     placeBid($auction, $buyer, 150);
     $order = buyNowCheckout($buyer, $product, $auction);

@@ -46,9 +46,9 @@ class AuctionRulesetSeeder extends Seeder
             'minimum_bid_increment_credits' => null,
             'allow_bid_increase' => null,
 
-            // One second between bids from the same user on the same auction.
+            // Three seconds between bids from the same user on the same auction.
             // Anti-spam rather than a business rule, so a value is safe here.
-            'minimum_bid_interval_ms' => 1000,
+            'minimum_bid_interval_ms' => 3000,
 
             // Five minutes.
             'base_duration_seconds' => 300,
@@ -68,11 +68,10 @@ class AuctionRulesetSeeder extends Seeder
             // Buy Now is available and ends the auction when it succeeds.
             'buy_now_enabled' => true,
 
-            // One consumed bid credit gives GH1 off the Buy Now price. Stored
-            // as 100 pesewas per credit: the conversion is explicit and
-            // versioned rather than assumed in code.
+            // Consumed bid credits take their actual purchased cash value off
+            // the Buy Now price -- each lot valued at the price it was bought
+            // at, not at a system-wide rate per credit.
             'buy_now_credit_discount_enabled' => true,
-            'buy_now_credit_discount_minor_per_credit' => 100,
 
             'delivery_fee_minor' => 0,
             'currency' => 'GHS',

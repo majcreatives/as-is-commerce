@@ -93,13 +93,14 @@ it('shows no purchase control when nothing can be bought', function (): void {
 it('shows a bidder their own discount, from the domain', function (): void {
     $product = Product::factory()->active()->pricedAt(550_000)->create();
     $auction = liveAuction(product: $product);
-    $bidder = bidder(1_000);
+    $bidder = customerWithPurchasedCredits(1_000, 100_000);
 
     placeBid($auction, $bidder, 150);
 
     $quote = app(BuyNowPricer::class)->quote($auction->fresh(), $bidder);
 
-    // GH₵1 per consumed credit, at the auction's own frozen rate.
+    // The discount is valued from the lot the credits were bought at: here
+    // GH₵1.00 each, so 150 consumed credits reduce the price by GH₵150.
     expect($quote->eligibleCredits)->toBe(150)
         ->and($quote->discount->minor)->toBe(15_000)
         ->and($quote->payable->minor)->toBe(535_000);

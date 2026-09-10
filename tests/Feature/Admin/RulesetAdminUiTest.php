@@ -44,16 +44,13 @@ it('converts entered amounts into minor units without a float', function (): voi
     Livewire::actingAs($this->admin)
         ->test(RulesetForm::class)
         ->set('name', 'Priced')
-        ->set('buy_now_credit_discount_per_credit', '1.00')
         ->set('delivery_fee', '0.29')
         ->call('save')
         ->assertHasNoErrors();
 
     $ruleset = AuctionRuleset::firstWhere('name', 'Priced');
 
-    // One credit gives GH 1 off Buy Now, stored as 100 pesewas.
-    expect($ruleset?->buy_now_credit_discount_minor_per_credit)->toBe(100)
-        ->and($ruleset?->delivery_fee_minor)->toBe(29);
+    expect($ruleset?->delivery_fee_minor)->toBe(29);
 });
 
 /*
@@ -124,13 +121,21 @@ it('rejects a zero base duration', function (): void {
         ->assertHasErrors('base_duration_seconds');
 });
 
-it('rejects a price containing a currency symbol', function (): void {
+it('no longer offers a per-credit discount rate field', function (): void {
+    // The rate was removed with the lot valuation. The form must not hand an
+    // administrator a control for a figure the correction deleted.
     Livewire::actingAs($this->admin)
         ->test(RulesetForm::class)
-        ->set('name', 'Invalid')
-        ->set('buy_now_credit_discount_per_credit', 'GHS 1')
+        ->set('name', 'No Rate')
+        ->set('buy_now_credit_discount_enabled', true)
         ->call('save')
-        ->assertHasErrors('buy_now_credit_discount_per_credit');
+        ->assertHasNoErrors();
+
+    $ruleset = AuctionRuleset::firstWhere('name', 'No Rate');
+
+    expect($ruleset?->buy_now_credit_discount_enabled)->toBeTrue()
+        ->and(array_keys($ruleset->toRules()->toArray()))
+        ->not->toContain('buy_now_credit_discount_minor_per_credit');
 });
 
 it('reports a contradictory configuration as an invariant error', function (): void {

@@ -190,6 +190,8 @@ final class FulfillCreditPurchase
                     'provider_reference' => $locked->provider_reference,
                 ],
                 idempotencyKey: $locked->idempotency_key.':credits',
+                acquisitionAmountMinor: $locked->amount_minor,
+                acquisitionCurrency: $locked->currency,
             );
 
             // Only now, with the credits actually posted.

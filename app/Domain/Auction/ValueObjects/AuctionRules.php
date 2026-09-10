@@ -41,11 +41,13 @@ final readonly class AuctionRules implements JsonSerializable
      * Incremented when the serialized shape changes, so a historical snapshot
      * can still be recognised -- or refused -- after a schema evolution.
      *
-     * Version 2 corrects the model from Last Bidder Standing to highest valid
-     * credit bid. No version 1 snapshot exists anywhere: no auction has ever
-     * been created, because the auction engine does not exist yet.
+     * Version 2 corrected the model from Last Bidder Standing to highest valid
+     * credit bid. No version 1 snapshot exists anywhere. Version 3 values the
+     * Buy Now credit discount from each credit lot's own acquisition economics
+     * rather than from a system-wide rate per credit; the rate column is gone,
+     * and a version 2 snapshot is refused rather than reinterpreted.
      */
-    public const SNAPSHOT_VERSION = 2;
+    public const SNAPSHOT_VERSION = 3;
 
     /**
      * How the winner is determined, stated rather than implied.
@@ -82,7 +84,6 @@ final readonly class AuctionRules implements JsonSerializable
         // ---- Buy Now ------------------------------------------------------
         public bool $buyNowEnabled,
         public bool $buyNowCreditDiscountEnabled,
-        public int $buyNowCreditDiscountMinorPerCredit,
 
         // ---- Post-win obligations -----------------------------------------
         //
@@ -150,34 +151,6 @@ final readonly class AuctionRules implements JsonSerializable
         return $floors === [] ? null : max($floors);
     }
 
-    // ------------------------------------------------------------- Buy Now
-
-    /**
-     * The GHS a given number of consumed bid credits takes off Buy Now.
-     *
-     * Integer arithmetic on minor units: one credit maps to a fixed number of
-     * pesewas, so the discount is exact however many credits are involved.
-     *
-     * This is the only place credits relate to money anywhere in the system,
-     * and it applies solely to the Buy Now path. It does not give the credits
-     * back -- they stay consumed -- it reduces a separate purchase price.
-     *
-     * The future Buy Now engine calls this with credits it has established
-     * were actually consumed by that user on that auction. Deciding which
-     * credits qualify is that engine's job, not this object's.
-     */
-    public function buyNowDiscountFor(int $consumedBidCredits): Money
-    {
-        if (! $this->buyNowCreditDiscountEnabled || $consumedBidCredits <= 0) {
-            return Money::zero($this->currency());
-        }
-
-        return Money::fromMinor(
-            $consumedBidCredits * $this->buyNowCreditDiscountMinorPerCredit,
-            $this->currency(),
-        );
-    }
-
     // -------------------------------------------------------------- Timing
 
     /**
@@ -239,7 +212,6 @@ final readonly class AuctionRules implements JsonSerializable
 
             'buy_now_enabled' => $this->buyNowEnabled,
             'buy_now_credit_discount_enabled' => $this->buyNowCreditDiscountEnabled,
-            'buy_now_credit_discount_minor_per_credit' => $this->buyNowCreditDiscountMinorPerCredit,
 
             'checkout_deadline_minutes' => $this->checkoutDeadlineMinutes,
             'forfeit_policy' => $this->forfeitPolicy->value,
@@ -285,7 +257,6 @@ final readonly class AuctionRules implements JsonSerializable
 
             buyNowEnabled: (bool) $data['buy_now_enabled'],
             buyNowCreditDiscountEnabled: (bool) $data['buy_now_credit_discount_enabled'],
-            buyNowCreditDiscountMinorPerCredit: (int) $data['buy_now_credit_discount_minor_per_credit'],
 
             checkoutDeadlineMinutes: (int) $data['checkout_deadline_minutes'],
             forfeitPolicy: ForfeitPolicy::from((string) $data['forfeit_policy']),
@@ -348,12 +319,6 @@ final readonly class AuctionRules implements JsonSerializable
             throw InvalidAuctionRules::because('Checkout deadline must be greater than zero.');
         }
 
-        if ($this->buyNowCreditDiscountMinorPerCredit < 1) {
-            throw InvalidAuctionRules::because(
-                'The Buy Now credit discount rate must be greater than zero when a rate is stored.'
-            );
-        }
-
         if ($this->taxBps < 0) {
             throw InvalidAuctionRules::because('Tax cannot be negative.');
         }
@@ -392,8 +357,9 @@ final readonly class AuctionRules implements JsonSerializable
             );
         }
 
-        // A discount rate with the discount switched off is harmless, but a
-        // rate of zero with it switched on would silently give nothing.
+        // A discount switch pointed at a Buy Now that cannot happen is a
+        // contradiction. The discount's *value* is computed from the lot
+        // records by the pricer, so nothing about the rate is decided here.
         if ($this->buyNowCreditDiscountEnabled && ! $this->buyNowEnabled) {
             throw InvalidAuctionRules::because(
                 'A Buy Now credit discount cannot be enabled while Buy Now itself is disabled.'

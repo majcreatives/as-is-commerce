@@ -45,7 +45,6 @@ use Spatie\Activitylog\Support\LogOptions;
  * @property ForfeitPolicy $forfeit_policy
  * @property bool $buy_now_enabled
  * @property bool $buy_now_credit_discount_enabled
- * @property int $buy_now_credit_discount_minor_per_credit
  * @property int $delivery_fee_minor
  * @property string $currency
  * @property int $tax_bps
@@ -95,7 +94,6 @@ class AuctionRuleset extends Model
         'forfeit_policy',
         'buy_now_enabled',
         'buy_now_credit_discount_enabled',
-        'buy_now_credit_discount_minor_per_credit',
         'delivery_fee_minor',
         'currency',
         'tax_bps',
@@ -116,7 +114,6 @@ class AuctionRuleset extends Model
             'version' => 'integer',
             'minimum_bid_credits' => 'integer',
             'minimum_bid_increment_credits' => 'integer',
-            'buy_now_credit_discount_minor_per_credit' => 'integer',
             'minimum_bid_interval_ms' => 'integer',
             'base_duration_seconds' => 'integer',
             'closing_window_seconds' => 'integer',
@@ -184,7 +181,6 @@ class AuctionRuleset extends Model
 
             buyNowEnabled: $this->buy_now_enabled,
             buyNowCreditDiscountEnabled: $this->buy_now_credit_discount_enabled,
-            buyNowCreditDiscountMinorPerCredit: $this->buy_now_credit_discount_minor_per_credit,
 
             checkoutDeadlineMinutes: $this->checkout_deadline_minutes,
             forfeitPolicy: $this->forfeit_policy,
@@ -266,7 +262,6 @@ class AuctionRuleset extends Model
                 'forfeit_policy',
                 'buy_now_enabled',
                 'buy_now_credit_discount_enabled',
-                'buy_now_credit_discount_minor_per_credit',
                 'delivery_fee_minor',
                 'currency',
                 'tax_bps',

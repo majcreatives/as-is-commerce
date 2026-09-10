@@ -46,7 +46,6 @@ it('does not change an existing snapshot when the ruleset is later edited', func
         'minimum_bid_credits' => 10,
         'minimum_bid_increment_credits' => 5,
         'base_duration_seconds' => 300,
-        'buy_now_credit_discount_minor_per_credit' => 100,
     ]);
 
     // An auction is created: it takes its snapshot here.
@@ -58,7 +57,6 @@ it('does not change an existing snapshot when the ruleset is later edited', func
         'minimum_bid_credits' => 999,
         'minimum_bid_increment_credits' => 250,
         'base_duration_seconds' => 7_200,
-        'buy_now_credit_discount_minor_per_credit' => 500,
         'tax_bps' => 2_000,
     ]);
     $ruleset->refresh();
@@ -70,7 +68,6 @@ it('does not change an existing snapshot when the ruleset is later edited', func
     expect($snapshot->minimumBidCredits)->toBe(10)
         ->and($snapshot->minimumBidIncrementCredits)->toBe(5)
         ->and($snapshot->baseDurationSeconds)->toBe(300)
-        ->and($snapshot->buyNowCreditDiscountMinorPerCredit)->toBe(100)
         ->and($snapshot->taxBps)->toBe(0);
 
     // And neither has its serialized form, which is what gets persisted.
@@ -81,20 +78,27 @@ it('does not change an existing snapshot when the ruleset is later edited', func
 });
 
 /*
- * The discount rate is versioned with the rest. If the business ever changes
- * what a credit is worth against Buy Now, auctions already running keep the
- * rate they were created with.
+ * What a credit is worth against Buy Now is no longer a ruleset figure: the
+ * Stage 16.5 correction values consumed credits from each lot's own
+ * acquisition economics, and that valuation is frozen on the *order's* pricing
+ * snapshot at checkout, not on the auction's rules. A rules snapshot carries
+ * only the switch, never a rate -- so there is nothing here for an edit to
+ * change retroactively.
  */
-it('freezes the Buy Now discount rate into the snapshot', function (): void {
-    $ruleset = AuctionRuleset::factory()->create(['buy_now_credit_discount_minor_per_credit' => 100]);
+it('freezes the Buy Now discount switch but no rate into the snapshot', function (): void {
+    $ruleset = AuctionRuleset::factory()->create(['buy_now_credit_discount_enabled' => true]);
 
     $snapshot = $ruleset->toRules();
-    expect($snapshot->buyNowDiscountFor(150)->toDecimalString())->toBe('150.00');
+    $keys = array_keys($snapshot->toArray());
 
-    $ruleset->update(['buy_now_credit_discount_minor_per_credit' => 50]);
+    expect($snapshot->buyNowCreditDiscountEnabled)->toBeTrue()
+        ->and($keys)->not->toContain('buy_now_credit_discount_minor_per_credit')
+        ->and($keys)->not->toContain('discount_rate');
 
-    // The snapshot still gives GH 1 per credit, not 50 pesewas.
-    expect($snapshot->buyNowDiscountFor(150)->toDecimalString())->toBe('150.00');
+    $ruleset->update(['buy_now_credit_discount_enabled' => false]);
+
+    // The snapshot still carries the value it was created with.
+    expect($snapshot->buyNowCreditDiscountEnabled)->toBeTrue();
 });
 
 it('does not change an existing snapshot when the ruleset is archived', function (): void {

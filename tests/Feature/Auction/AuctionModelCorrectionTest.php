@@ -6,6 +6,7 @@ use App\Domain\Auction\Actions\UpdateRuleset;
 use App\Domain\Auction\Exceptions\InvalidAuctionRules;
 use App\Domain\Auction\Exceptions\RulesetNotEditable;
 use App\Domain\Auction\RulesetResolver;
+use App\Domain\Auction\Services\BuyNowPricer;
 use App\Domain\Auction\ValueObjects\AuctionRules;
 use App\Domain\Shared\Money\Money;
 use App\Models\AuctionRuleset;
@@ -66,7 +67,6 @@ it('carries the corrected bid rule columns', function (string $column): void {
     'allow_bid_increase',
     'buy_now_enabled',
     'buy_now_credit_discount_enabled',
-    'buy_now_credit_discount_minor_per_credit',
 ]);
 
 // ------------------------------------------------------- The seeded default
@@ -109,14 +109,16 @@ it('seeds extensions switched off rather than with chosen numbers', function ():
         ->and($rules->maximumPossibleDurationSeconds())->toBe($rules->baseDurationSeconds);
 });
 
-it('seeds Buy Now available with a one-cedi-per-credit discount', function (): void {
+it('seeds Buy Now available with the discount switch, and no rate of its own', function (): void {
     app(AuctionRulesetSeeder::class)->run();
 
     $rules = AuctionRuleset::firstWhere('name', AuctionRulesetSeeder::DEFAULT_NAME)->toRules();
 
     expect($rules->buyNowEnabled)->toBeTrue()
         ->and($rules->buyNowCreditDiscountEnabled)->toBeTrue()
-        ->and($rules->buyNowDiscountFor(1)->toDecimalString())->toBe('1.00');
+        // The value is computed from the lot records at checkout, so the
+        // ruleset must not be able to express a per-credit rate.
+        ->and(array_keys($rules->toArray()))->not->toContain('buy_now_credit_discount_minor_per_credit');
 });
 
 // ------------------------------------------------- Variable bid amounts
@@ -162,7 +164,7 @@ it('keeps a product price independent of every auction rule', function (): void 
     $product = Product::factory()->pricedAt(550_000)->create();
     $ruleset = AuctionRuleset::factory()->withBidRules(minimum: 150)->create();
 
-    $ruleset->update(['minimum_bid_credits' => 999, 'buy_now_credit_discount_minor_per_credit' => 500]);
+    $ruleset->update(['minimum_bid_credits' => 999, 'tax_bps' => 500]);
 
     expect($product->fresh()->buy_now_price_minor)->toBe(550_000);
 });
@@ -187,7 +189,7 @@ it('keeps credit package prices unrelated to auction rules', function (): void {
     $package = CreditPackage::factory()->priced(500, 4_500)->create();
     $ruleset = AuctionRuleset::factory()->create();
 
-    $ruleset->update(['buy_now_credit_discount_minor_per_credit' => 250]);
+    $ruleset->update(['tax_bps' => 250]);
 
     expect($package->fresh()->price_minor)->toBe(4_500);
 });
@@ -195,13 +197,16 @@ it('keeps credit package prices unrelated to auction rules', function (): void {
 /*
  * The one sanctioned conversion, and the shape of it: consumed bid credits
  * reduce a Buy Now price. It does not give the credits back, and it does not
- * set the product's price -- it computes a discount against it.
+ * set the product's price -- it computes a discount against it. The value now
+ * comes from the lots the bids drew from, never from a rate on the ruleset.
  */
 it('converts consumed credits to a discount without touching the product price', function (): void {
-    $product = Product::factory()->pricedAt(550_000)->create();
-    $rules = AuctionRuleset::factory()->create()->toRules();
+    $product = Product::factory()->active()->pricedAt(550_000)->create();
+    $auction = liveAuction(product: $product);
+    $user = customerWithPurchasedCredits(150, 15_000); // GH 1.00 per credit
+    placeBid($auction, $user, 150);
 
-    $discount = $rules->buyNowDiscountFor(150);
+    $discount = app(BuyNowPricer::class)->quote($auction->fresh(), $user)->discount;
     $payable = $product->buyNowPrice()->minus($discount);
 
     expect($discount->toDecimalString())->toBe('150.00')
@@ -287,5 +292,7 @@ it('stores money as integer minor units throughout the rules', function (): void
     ])->toRules();
 
     expect($rules->deliveryFee->minor)->toBe(2_550)->toBeInt()
-        ->and($rules->buyNowCreditDiscountMinorPerCredit)->toBe(100)->toBeInt();
+        // The one figure that used to be an integer rate is gone with the lot
+        // valuation; everything that remains money is an integer minor count.
+        ->and($rules->taxBps)->toBeInt();
 });

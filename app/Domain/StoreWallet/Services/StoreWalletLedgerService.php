@@ -57,10 +57,16 @@ class StoreWalletLedgerService
      */
     public function walletFor(User $user, string $currency = 'GHS'): StoreWallet
     {
-        return StoreWallet::firstOrCreate(
+        $wallet = StoreWallet::firstOrCreate(
             ['user_id' => $user->id],
             ['currency' => strtoupper($currency)],
         );
+
+        // Eloquent does not copy a DB-supplied default back into the model it
+        // just created, so a fresh zero-balance wallet would read as null.
+        $wallet->balance_minor ??= 0;
+
+        return $wallet;
     }
 
     /**

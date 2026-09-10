@@ -33,6 +33,8 @@ use Illuminate\Support\Carbon;
  * @property CreditLotSource $source_type
  * @property int $original_amount
  * @property int $remaining_amount
+ * @property int|null $acquisition_amount_minor
+ * @property string|null $acquisition_currency
  * @property Carbon|null $expires_at
  * @property Carbon|null $exhausted_at
  */
@@ -53,6 +55,7 @@ class CreditLot extends Model
             'source_type' => CreditLotSource::class,
             'original_amount' => 'integer',
             'remaining_amount' => 'integer',
+            'acquisition_amount_minor' => 'integer',
             'expires_at' => 'datetime',
             'exhausted_at' => 'datetime',
         ];

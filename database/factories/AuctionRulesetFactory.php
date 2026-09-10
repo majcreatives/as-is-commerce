@@ -38,7 +38,7 @@ class AuctionRulesetFactory extends Factory
             'minimum_bid_credits' => null,
             'minimum_bid_increment_credits' => null,
             'allow_bid_increase' => null,
-            'minimum_bid_interval_ms' => 1000,
+            'minimum_bid_interval_ms' => 3000,
 
             'base_duration_seconds' => 300,
             'closing_window_seconds' => 10,
@@ -51,8 +51,6 @@ class AuctionRulesetFactory extends Factory
 
             'buy_now_enabled' => true,
             'buy_now_credit_discount_enabled' => true,
-            // 100 pesewas per credit: one credit gives GH1 off Buy Now.
-            'buy_now_credit_discount_minor_per_credit' => 100,
 
             'delivery_fee_minor' => 0,
             'currency' => 'GHS',
@@ -106,9 +104,9 @@ class AuctionRulesetFactory extends Factory
     /**
      * No minimum interval between one bidder's successive bids.
      *
-     * The default carries a one-second throttle, which is realistic but makes
-     * any test that places two bids from the same person in quick succession
-     * fail for a reason it was not testing.
+     * The default carries a three-second throttle, which is realistic but
+     * makes any test that places two bids from the same person in quick
+     * succession fail for a reason it was not testing.
      */
     public function withoutThrottle(): static
     {

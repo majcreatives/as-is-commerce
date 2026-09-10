@@ -16,14 +16,17 @@ use App\Domain\Referrals\Actions\AttributeReferral;
 use App\Domain\Referrals\Services\ReferralCodes;
 use App\Domain\Refunds\Actions\RequestRefund;
 use App\Domain\Shared\Money\Money;
+use App\Domain\StoreWallet\Services\StoreWalletLedgerService;
 use App\Enums\CreditTransactionType;
 use App\Enums\DeliveryStatus;
 use App\Enums\NotificationType;
 use App\Enums\RefundReason;
+use App\Enums\StoreWalletTransactionType;
 use App\Models\Address;
 use App\Models\Auction;
 use App\Models\AuctionRuleset;
 use App\Models\Bid;
+use App\Models\CreditPurchase;
 use App\Models\CreditTransaction;
 use App\Models\CreditWallet;
 use App\Models\Delivery;
@@ -293,6 +296,99 @@ function placeBid(Auction $auction, User $user, int $amountCredits, ?string $key
 function buyNowCheckout(User $buyer, Product $product, ?Auction $auction = null): Order
 {
     return app(StartBuyNowCheckout::class)->handle($buyer, $product->fresh(), $auction?->fresh());
+}
+
+/**
+ * A customer who really paid for their credits, with a purchase record to
+ * prove it.
+ *
+ * The Store Wallet and the corrected Buy Now discount both value consumed
+ * credits at the price the exact lot was bought at, so tests of either need
+ * the lot's acquisition economics to be real -- granted the way production
+ * grants them, from a recorded purchase.
+ */
+function customerWithPurchasedCredits(int $credits, int $amountMinor): User
+{
+    $user = userWithRole('customer');
+
+    grantPurchasedCredits($user, $credits, $amountMinor);
+
+    return $user;
+}
+
+/**
+ * Grant credits that cost the customer something, via a real purchase record.
+ *
+ * Mirrors `FulfillCreditPurchase`: the lot carries the purchase's frozen
+ * figures, so the valuation chain -- lot -> consumption -> transaction -> bid
+ * -- has genuine acquisition economics to read.
+ */
+function grantPurchasedCredits(
+    User $user,
+    int $credits,
+    int $amountMinor,
+    string $currency = 'GHS',
+): CreditTransaction {
+    $purchase = CreditPurchase::factory()->fulfilled()->create([
+        'user_id' => $user->id,
+        'credit_package_id' => null,
+        'credit_amount' => $credits,
+        'amount_minor' => $amountMinor,
+        'currency' => $currency,
+    ]);
+
+    return app(CreditLedgerService::class)->addCredits(
+        wallet: creditWalletFor($user),
+        type: CreditTransactionType::Purchase,
+        amount: $credits,
+        reference: $purchase,
+        acquisitionAmountMinor: $amountMinor,
+        acquisitionCurrency: $currency,
+    );
+}
+
+/**
+ * A user's Store Wallet balance as an exact Money value.
+ */
+function storeWalletBalance(User $user, string $currency = 'GHS'): Money
+{
+    return app(StoreWalletLedgerService::class)->balanceFor($user, $currency);
+}
+
+/**
+ * Put Store Wallet value into a user's wallet, through the ledger.
+ *
+ * The checkout-participation tests need a balance to spend, and the only
+ * sanctioned way to create one is the ledger -- the same path an auction loss
+ * uses. Each call funds with its own idempotency key, so repeated funding in
+ * one test accumulates as separate rows.
+ */
+function fundStoreWallet(User $user, int $amountMinor, string $currency = 'GHS'): void
+{
+    app(StoreWalletLedgerService::class)->credit(
+        wallet: app(StoreWalletLedgerService::class)->walletFor($user, $currency),
+        type: StoreWalletTransactionType::AuctionLossCompensation,
+        amount: Money::fromMinor($amountMinor, $currency),
+        description: 'Test funding.',
+        actor: $user,
+        idempotencyKey: 'test-fund:'.$user->id.':'.Str::uuid()->toString(),
+    );
+}
+
+/**
+ * Buy out an auction end to end: checkout, verified payment, termination.
+ *
+ * The whole point of this stage is that a Buy Now ends the auction only after
+ * a server-confirmed payment, so a helper building that state goes through the
+ * real path rather than flipping the auction's columns.
+ */
+function completeBuyNow(Auction $auction, User $buyer): Order
+{
+    $order = buyNowCheckout($buyer, $auction->product, $auction);
+
+    payOrder($order);
+
+    return $order;
 }
 
 /**

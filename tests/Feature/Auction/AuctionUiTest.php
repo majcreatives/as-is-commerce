@@ -118,7 +118,7 @@ it('never calls the highest bid an auction price', function (): void {
 it('shows the Buy Now price after the bidder own credit discount', function (): void {
     $product = Product::factory()->active()->pricedAt(550_000)->create();
     $auction = liveAuction(product: $product);
-    $user = bidder(1_000);
+    $user = customerWithPurchasedCredits(150, 15_000);
     placeBid($auction, $user, 150);
 
     Livewire::actingAs($user)

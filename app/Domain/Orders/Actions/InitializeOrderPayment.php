@@ -20,8 +20,9 @@ use Illuminate\Support\Str;
  *
  * THE AMOUNT COMES FROM THE ORDER, WHICH WAS FROZEN AT CHECKOUT. The browser
  * cannot supply, suggest or influence it: this action takes an order and
- * nothing else, and the order's total was computed on the server before this
- * was reachable. There is no parameter through which a price could enter.
+ * nothing else, and the order's payable -- total less any Store Wallet value
+ * committed at checkout -- was computed on the server before this was
+ * reachable. There is no parameter through which a price could enter.
  *
  * The attempt is written before the provider is contacted, and it keeps its
  * own copy of the amount and currency. That copy is what verification later
@@ -136,8 +137,10 @@ final class InitializeOrderPayment
         $payment->provider = PaymentProvider::Paystack;
         $payment->provider_reference = $this->generateReference();
         // Frozen. Verification compares the provider against this, and a
-        // trigger refuses to let it change.
-        $payment->amount_minor = $order->total_minor;
+        // trigger refuses to let it change. The provider verifies the payable,
+        // never the total: any part already covered by Store Wallet value is
+        // committed, not charged.
+        $payment->amount_minor = $order->payable_minor;
         $payment->currency = $order->currency;
         $payment->status = OrderPaymentStatus::Initiated;
         $payment->idempotency_key = Str::uuid()->toString();

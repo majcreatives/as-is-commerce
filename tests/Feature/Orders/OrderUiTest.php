@@ -34,7 +34,7 @@ beforeEach(function (): void {
 it('shows the components separately, not just a total', function (): void {
     $product = Product::factory()->active()->pricedAt(550_000)->create();
     $auction = liveAuction(product: $product);
-    $buyer = bidder(1_000);
+    $buyer = customerWithPurchasedCredits(1_000, 100_000);
     placeBid($auction, $buyer, 150);
 
     $order = buyNowCheckout($buyer, $product, $auction);
@@ -53,7 +53,7 @@ it('shows the components separately, not just a total', function (): void {
 it('shows the credits behind a discount as a count, never as money', function (): void {
     $product = Product::factory()->active()->pricedAt(550_000)->create();
     $auction = liveAuction(product: $product);
-    $buyer = bidder(1_000);
+    $buyer = customerWithPurchasedCredits(1_000, 100_000);
     placeBid($auction, $buyer, 150);
 
     Livewire::actingAs($buyer)

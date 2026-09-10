@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\Auction\Actions;
 
+use App\Domain\Auction\Contracts\AuctionLossCompensation;
 use App\Domain\Auction\Contracts\SettlementHandoff;
 use App\Domain\Auction\Services\AuctionLifecycle;
 use App\Enums\AuctionStatus;
@@ -35,6 +36,7 @@ final class ForfeitAuction
     public function __construct(
         private readonly AuctionLifecycle $lifecycle,
         private readonly SettlementHandoff $settlement,
+        private readonly AuctionLossCompensation $compensation,
     ) {}
 
     public function handle(Auction $auction, ?User $actor = null): Auction
@@ -58,7 +60,15 @@ final class ForfeitAuction
                 'The auction settlement deadline passed without payment.',
             );
 
-            return $this->lifecycle->forfeit($locked, $actor);
+            $forfeited = $this->lifecycle->forfeit($locked, $actor);
+
+            // Nobody ended up with the product. Every bidder -- the forfeited
+            // winner included -- gets the value of their purchased credits
+            // back as Store Wallet credit. The credits themselves stay
+            // consumed, exactly as before.
+            $this->compensation->compensateLosers($forfeited, null);
+
+            return $forfeited;
         });
 
         // After commit, and only when this call did the forfeiting: repeated

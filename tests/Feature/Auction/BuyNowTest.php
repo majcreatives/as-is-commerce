@@ -35,10 +35,13 @@ beforeEach(function (): void {
 /*
  * The worked example from the brief, end to end.
  */
-it('takes one cedi off Buy Now for each consumed bid credit', function (): void {
+it('prices the worked example from the lots the bidder consumed', function (): void {
     $product = Product::factory()->active()->pricedAt(550_000)->create();
     $auction = liveAuction(product: $product);
-    $user = bidder(1_000);
+    // Purchased at GH 1.00 per credit, so the worked example still holds --
+    // each of the 150 consumed credits is worth the price its own lot was
+    // bought at.
+    $user = customerWithPurchasedCredits(150, 15_000);
 
     placeBid($auction, $user, 150);
 
@@ -53,7 +56,7 @@ it('takes one cedi off Buy Now for each consumed bid credit', function (): void 
 it('adds up several bids on the same auction', function (): void {
     $product = Product::factory()->active()->pricedAt(550_000)->create();
     $auction = liveAuction(product: $product);
-    $user = bidder(1_000);
+    $user = customerWithPurchasedCredits(300, 30_000);
 
     placeBid($auction, $user, 100);
     placeBid($auction, $user, 200);
@@ -81,7 +84,7 @@ it('ignores unused credits sitting in the wallet', function (): void {
     $auction = liveAuction(product: $product);
 
     // A large balance, one small bid.
-    $user = bidder(5_000);
+    $user = customerWithPurchasedCredits(5_000, 500_000);
     placeBid($auction, $user, 10);
 
     $quote = $this->pricer->quote($auction->fresh(), $user);
@@ -134,20 +137,25 @@ it('offers no discount when the rules switch it off', function (): void {
 
     $product = Product::factory()->active()->pricedAt(550_000)->create();
     $auction = liveAuction(product: $product, ruleset: $ruleset);
-    $user = bidder(1_000);
+    // Purchased credits, so a discount would be payable if the switch allowed
+    // it. The switch is what this test is proving, not the lot model.
+    $user = customerWithPurchasedCredits(150, 15_000);
 
     placeBid($auction, $user, 150);
 
-    expect($this->pricer->quote($auction->fresh(), $user)->payable->toDecimalString())
-        ->toBe('5500.00');
+    $quote = $this->pricer->quote($auction->fresh(), $user);
+
+    expect($quote->discount->isZero())->toBeTrue()
+        ->and($quote->payable->toDecimalString())->toBe('5500.00');
 });
 
 it('never lets the discount exceed the price', function (): void {
     $product = Product::factory()->active()->pricedAt(5_000)->create();
     $auction = liveAuction(product: $product);
-    $user = bidder(1_000);
+    // 900 credits bought at GH 1.00 each would be GH 900 off a GH 50 product;
+    // the discount stops at the price.
+    $user = customerWithPurchasedCredits(900, 90_000);
 
-    // 900 credits would be GH 900 off a GH 50 product.
     placeBid($auction, $user, 900);
 
     $quote = $this->pricer->quote($auction->fresh(), $user);
@@ -156,33 +164,33 @@ it('never lets the discount exceed the price', function (): void {
         ->and($quote->payable->isNegative())->toBeFalse();
 });
 
-it('uses the discount rate frozen into the auction, not the live one', function (): void {
-    $ruleset = AuctionRuleset::factory()->active()->withoutThrottle()->create([
-        'buy_now_credit_discount_minor_per_credit' => 100,
-    ]);
+it('prices the discount from the lots the bidder consumed, not from any live rate', function (): void {
+    // 150 credits purchased at GH 150 in total: a GH 1.00 lot rate, which is
+    // what the old fixed rate used to promise. It now comes from the lot.
+    $user = customerWithPurchasedCredits(150, 15_000);
 
     $product = Product::factory()->active()->pricedAt(550_000)->create();
-    $auction = liveAuction(product: $product, ruleset: $ruleset);
-    $user = bidder(1_000);
+    $auction = liveAuction(product: $product);
     placeBid($auction, $user, 150);
 
-    $ruleset->update(['buy_now_credit_discount_minor_per_credit' => 500]);
-
-    // Still GH 1 per credit, not GH 5.
+    // The value is read from the frozen lot records, so an auction created
+    // under this ruleset -- which carries no rate at all -- prices the same.
     expect($this->pricer->quote($auction->fresh(), $user)->discount->toDecimalString())
-        ->toBe('150.00');
+        ->toBe('150.00')
+        ->and($this->pricer->quote($auction->fresh(), $user)->payable->toDecimalString())
+        ->toBe('5350.00');
 });
 
 it('leaves the credits consumed after a discount is applied', function (): void {
     $product = Product::factory()->active()->pricedAt(550_000)->create();
     $auction = liveAuction(product: $product);
-    $user = bidder(1_000);
+    $user = customerWithPurchasedCredits(150, 15_000);
 
     placeBid($auction, $user, 150);
     $this->buyNow->handle($auction->fresh(), $user, Money::fromMinor(535_000), 'buy-1');
 
     // A discount is not a refund. The credits stay gone.
-    expect(creditWalletFor($user)->fresh()->balance)->toBe(850);
+    expect(creditWalletFor($user)->fresh()->balance)->toBe(0);
 });
 
 it('leaves the product price untouched', function (): void {
@@ -310,7 +318,7 @@ it('refuses a payment that does not match the quote', function (): void {
 it('prices the purchase from the buyer own bids at the moment of completion', function (): void {
     $product = Product::factory()->active()->pricedAt(550_000)->create();
     $auction = liveAuction(product: $product);
-    $buyer = bidder(1_000);
+    $buyer = customerWithPurchasedCredits(150, 15_000);
 
     placeBid($auction, $buyer, 150);
 

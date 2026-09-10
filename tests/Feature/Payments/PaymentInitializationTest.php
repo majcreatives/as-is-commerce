@@ -60,10 +60,17 @@ it('generates a unique, unguessable reference', function (): void {
     $first = app(InitializeCreditPurchase::class)->handle($this->customer, $this->package)['purchase'];
     $second = app(InitializeCreditPurchase::class)->handle($this->customer, $this->package)['purchase'];
 
-    expect($first->provider_reference)->not->toBe($second->provider_reference)
-        // Long enough not to be guessable, and carrying nothing sensitive.
-        ->and(strlen($first->provider_reference))->toBeGreaterThan(20)
-        ->and($first->provider_reference)->not->toContain((string) $this->customer->id);
+    // Long enough not to be guessable, and laid out so nothing sensitive has a
+    // slot: a fixed prefix, an eight-digit date, an eighteen-character random
+    // body. "Carries nothing sensitive" is a shape, so it is asserted as one
+    // rather than as an absence that coincidence could falsify -- the date
+    // `20260910` legally contains the substring `0910`, and a check that
+    // hunted for it would fail on every September run.
+    expect($first->provider_reference)->toMatch('/^AIC-\d{8}-[A-Z0-9]{18}$/')
+        // And the customer id is not a hyphen-bounded segment of it.
+        ->and(explode('-', $first->provider_reference))
+        ->not->toContain((string) $this->customer->id)
+        ->and($first->provider_reference)->not->toBe($second->provider_reference);
 });
 
 it('records the state transition', function (): void {

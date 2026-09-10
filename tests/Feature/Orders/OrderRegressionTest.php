@@ -47,9 +47,13 @@ beforeEach(function (): void {
 // ------------------------------------------------------------ Schema sweep
 
 /*
- * An order is a GHS obligation. If these tables ever gain a credit balance, a
- * wallet reference or a credit charge, somebody has started paying for things
- * with credits.
+ * An order is a GHS obligation. If these tables ever gain a credit balance or
+ * a credit charge, somebody has started paying for things with credits.
+ *
+ * The Store Wallet is different and is deliberately allowed: it applies a
+ * *money* figure (`store_wallet_applied_minor`, a cedi amount the customer
+ * really paid for) so the provider is asked for only the remainder. It never
+ * grants or occupies a credit.
  */
 it('has no credit column on any order table', function (string $table): void {
     $columns = collect(DB::select("SHOW COLUMNS FROM {$table}"))
@@ -57,11 +61,25 @@ it('has no credit column on any order table', function (string $table): void {
         ->map(fn (string $c): string => strtolower($c))
         ->all();
 
-    foreach (['wallet', 'credit_balance', 'credit_transaction', 'credit_lot'] as $forbidden) {
+    foreach (['credit_balance', 'credit_transaction', 'credit_lot'] as $forbidden) {
         expect(collect($columns)->filter(fn (string $c): bool => str_contains($c, $forbidden))->all())
             ->toBe([], "[{$table}] should have no column containing [{$forbidden}]");
     }
 })->with(['orders', 'order_items', 'order_payments']);
+
+it('records the store wallet participation only on the order, never on items or payments', function (): void {
+    foreach (['order_items', 'order_payments'] as $table) {
+        $columns = collect(DB::select("SHOW COLUMNS FROM {$table}"))->pluck('Field')->all();
+        expect(collect($columns)->filter(fn (string $c): bool =>
+            str_contains($c, 'store_wallet') || str_contains($c, 'payable_minor')
+        )->all())->toBe([]);
+    }
+
+    $columns = collect(DB::select('SHOW COLUMNS FROM orders'))->pluck('Field')->all();
+
+    expect($columns)->toContain('store_wallet_applied_minor')
+        ->and($columns)->toContain('payable_minor');
+});
 
 /*
  * The one credit column that does exist, and what it is for. `discount_credits`
@@ -71,7 +89,7 @@ it('has no credit column on any order table', function (string $table): void {
 it('keeps the discount credit count separate from the discount amount', function (): void {
     $product = Product::factory()->active()->pricedAt(550_000)->create();
     $auction = liveAuction(product: $product);
-    $buyer = bidder(1_000);
+    $buyer = customerWithPurchasedCredits(1_000, 100_000);
 
     placeBid($auction, $buyer, 150);
     $order = buyNowCheckout($buyer, $product, $auction);

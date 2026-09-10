@@ -210,8 +210,8 @@
                             <x-alert variant="warning" class="mt-4">
                                 <strong>Credits used for bids are permanently consumed.</strong>
                                 They are not returned if you are outbid, and they are not returned if you win.
-                                What they do earn is GH₵1 off this product's Buy Now price for each credit —
-                                see below.
+                                What they do earn: each credit takes its actual purchased value off this
+                                product's Buy Now price — see below.
                             </x-alert>
                         @else
                             <x-alert variant="info">Your account is not able to place bids.</x-alert>
@@ -384,7 +384,7 @@
                                 Your credit discount
                                 <span class="block text-xs text-slate-500">
                                     {{ number_format($quote->eligibleCredits) }} credits you have already
-                                    spent bidding on this auction, at GH₵1 each
+                                    spent bidding on this auction, each valued at the price it was bought at
                                 </span>
                             </dt>
                             <dd class="font-semibold tabular-nums text-emerald-700">
@@ -403,8 +403,9 @@
 
                 @if ($auction->rules()->buyNowCreditDiscountEnabled && ! $quote->hasDiscount())
                     <p class="mt-4 text-sm text-slate-500">
-                        Each credit you spend bidding on this auction takes GH₵1 off this price.
-                    </p>
+                                    Credits you spend bidding on this auction take their actual purchased
+                                    value off this price. Credits that cost nothing earn nothing.
+                                </p>
                 @endif
 
                 @if ($quote->available)

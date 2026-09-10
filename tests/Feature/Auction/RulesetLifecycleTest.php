@@ -12,6 +12,7 @@ use App\Domain\Auction\Exceptions\RulesetNotEditable;
 use App\Enums\RulesetStatus;
 use App\Models\AuctionRuleset;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\Schema;
 use Spatie\Activitylog\Models\Activity;
 
 /**
@@ -25,7 +26,7 @@ function rulesetAttributes(array $overrides = []): array
         'minimum_bid_credits' => null,
         'minimum_bid_increment_credits' => null,
         'allow_bid_increase' => null,
-        'minimum_bid_interval_ms' => 1000,
+        'minimum_bid_interval_ms' => 3000,
         'base_duration_seconds' => 300,
         'closing_window_seconds' => 10,
         'extension_seconds' => 10,
@@ -35,7 +36,6 @@ function rulesetAttributes(array $overrides = []): array
         'forfeit_policy' => 'relist',
         'buy_now_enabled' => true,
         'buy_now_credit_discount_enabled' => true,
-        'buy_now_credit_discount_minor_per_credit' => 100,
         'delivery_fee_minor' => 0,
         'currency' => 'GHS',
         'tax_bps' => 0,
@@ -132,9 +132,14 @@ it('is rejected by the database when the base duration is zero', function (): vo
         ->toThrow(QueryException::class);
 });
 
-it('is rejected by the database when the discount rate is zero', function (): void {
-    expect(fn () => AuctionRuleset::factory()->create(['buy_now_credit_discount_minor_per_credit' => 0]))
-        ->toThrow(QueryException::class);
+/*
+ * The per-credit discount rate was removed by the Stage 16.5 correction, so
+ * the schema must not be able to express one -- a column that ghosted back in
+ * would let a "rate" silently override lot-based valuation.
+ */
+it('no longer has a column for a discount rate', function (): void {
+    expect(Schema::hasColumn('auction_rulesets', 'buy_now_credit_discount_minor_per_credit'))
+        ->toBeFalse();
 });
 
 /*

@@ -35,7 +35,7 @@ class RulesetForm extends Component
 
     public string $allow_bid_increase = '';
 
-    public int $minimum_bid_interval_ms = 1000;
+    public int $minimum_bid_interval_ms = 3000;
 
     // Timing
     public int $base_duration_seconds = 300;
@@ -57,10 +57,6 @@ class RulesetForm extends Component
     public bool $buy_now_enabled = true;
 
     public bool $buy_now_credit_discount_enabled = true;
-
-    // Entered in cedis per credit and converted to minor units on save, so
-    // the form never holds a float.
-    public string $buy_now_credit_discount_per_credit = '1.00';
 
     // Pricing. Entered as a decimal string and converted on save.
     public string $delivery_fee = '0.00';
@@ -108,10 +104,6 @@ class RulesetForm extends Component
 
         $this->buy_now_enabled = $ruleset->buy_now_enabled;
         $this->buy_now_credit_discount_enabled = $ruleset->buy_now_credit_discount_enabled;
-        $this->buy_now_credit_discount_per_credit = Money::fromMinor(
-            $ruleset->buy_now_credit_discount_minor_per_credit,
-            $ruleset->currency,
-        )->toDecimalString();
         $this->delivery_fee = $ruleset->deliveryFee()->toDecimalString();
         $this->currency = $ruleset->currency;
         $this->tax_bps = $ruleset->tax_bps;
@@ -146,7 +138,6 @@ class RulesetForm extends Component
             'buy_now_credit_discount_enabled' => ['boolean'],
 
             // Decimal strings, never floats.
-            'buy_now_credit_discount_per_credit' => ['required', 'string', 'regex:/^\d{1,6}(\.\d{1,2})?$/'],
             'delivery_fee' => ['required', 'string', 'regex:/^\d{1,15}(\.\d{1,2})?$/'],
             'currency' => ['required', 'string', 'size:3', 'regex:/^[A-Za-z]{3}$/'],
             'tax_bps' => ['required', 'integer', 'min:0', 'max:10000'],
@@ -159,7 +150,6 @@ class RulesetForm extends Component
     protected function messages(): array
     {
         return [
-            'buy_now_credit_discount_per_credit.regex' => 'Enter an amount such as 1 or 1.00, with no currency symbol.',
             'minimum_bid_credits.regex' => 'Enter a whole number of credits, or leave blank for no minimum.',
             'minimum_bid_increment_credits.regex' => 'Enter a whole number of credits, or leave blank for no minimum.',
             'delivery_fee.regex' => 'Enter an amount such as 0 or 25.00, with no currency symbol.',
@@ -232,10 +222,6 @@ class RulesetForm extends Component
 
             'buy_now_enabled' => $this->buy_now_enabled,
             'buy_now_credit_discount_enabled' => $this->buy_now_credit_discount_enabled,
-            'buy_now_credit_discount_minor_per_credit' => Money::fromDecimalString(
-                $this->buy_now_credit_discount_per_credit,
-                $currency,
-            )->minor,
             'delivery_fee_minor' => Money::fromDecimalString($this->delivery_fee, $currency)->minor,
             'currency' => $currency,
             'tax_bps' => $this->tax_bps,

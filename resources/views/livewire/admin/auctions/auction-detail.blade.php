@@ -259,14 +259,12 @@
                     </div>
 
                     <div class="flex justify-between gap-4">
-                        <dt class="text-slate-600">Credit discount rate</dt>
-                        <dd class="tabular-nums text-slate-900">
-                            @if ($rules->buyNowCreditDiscountEnabled)
-                                <x-money :amount="App\Domain\Shared\Money\Money::fromMinor($rules->buyNowCreditDiscountMinorPerCredit, $auction->currency)" />
-                                per credit
-                            @else
-                                No discount
-                            @endif
+                        <dt class="text-slate-600">Buy Now credit discount</dt>
+                        <dd class="text-slate-900">
+                            {{-- The discount is the actual cash value of this bidder's consumed
+                                 credits -- each credit valued at what its own lot was bought for.
+                                 There is no fixed per-credit rate to show here. --}}
+                            {{ $rules->buyNowCreditDiscountEnabled ? 'At the credits\' actual cost' : 'Not applied' }}
                         </dd>
                     </div>
 

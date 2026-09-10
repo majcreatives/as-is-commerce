@@ -64,7 +64,17 @@ class CreditLedgerService
     /**
      * Add credits to a wallet, creating the lot they live in.
      *
+     * A lot that was paid for carries its acquisition cost, so the Store
+     * Wallet and the Buy Now discount can value its credits at what the
+     * customer actually paid. Only a purchase may do that -- inventing a cost
+     * for credits the platform gave away would create a cash liability out of
+     * a gift.
+     *
      * @param  int  $amount  Positive quantity of credits to add.
+     * @param  int|null  $acquisitionAmountMinor  What these credits cost, in
+     *                                            minor units, when they were
+     *                                            paid for.
+     * @param  string|null  $acquisitionCurrency  Currency of that cost.
      * @param  array<string, mixed>  $metadata
      */
     public function addCredits(
@@ -77,6 +87,8 @@ class CreditLedgerService
         array $metadata = [],
         ?User $actor = null,
         ?string $idempotencyKey = null,
+        ?int $acquisitionAmountMinor = null,
+        ?string $acquisitionCurrency = null,
     ): CreditTransaction {
         if ($amount <= 0) {
             throw InvalidLedgerOperation::because('Credits added must be a positive amount.');
@@ -88,8 +100,33 @@ class CreditLedgerService
             );
         }
 
+        // Acquisition economics are a statement about money actually taken.
+        // Only purchased lots may carry them, and the amount and its currency
+        // arrive together or not at all.
+        if ($acquisitionAmountMinor !== null || $acquisitionCurrency !== null) {
+            if ($type->lotSource() !== CreditLotSource::Purchased) {
+                throw InvalidLedgerOperation::because(
+                    'Acquisition economics may only be recorded for purchased credits, not '
+                    ."for a [{$type->lotSource()->value} source]."
+                );
+            }
+
+            if ($acquisitionAmountMinor === null || $acquisitionCurrency === null) {
+                throw InvalidLedgerOperation::because(
+                    'Acquisition economics must record both the amount and its currency.'
+                );
+            }
+
+            if ($acquisitionAmountMinor < 0) {
+                throw InvalidLedgerOperation::because(
+                    'Acquisition economics may not be negative.'
+                );
+            }
+        }
+
         return DB::transaction(function () use (
-            $wallet, $type, $amount, $expiresAt, $reference, $description, $metadata, $actor, $idempotencyKey
+            $wallet, $type, $amount, $expiresAt, $reference, $description, $metadata, $actor, $idempotencyKey,
+            $acquisitionAmountMinor, $acquisitionCurrency
         ): CreditTransaction {
             $locked = $this->lockWallet($wallet);
 
@@ -114,6 +151,8 @@ class CreditLedgerService
                 'original_amount' => $amount,
                 'remaining_amount' => $amount,
                 'expires_at' => $expiresAt,
+                'acquisition_amount_minor' => $acquisitionAmountMinor,
+                'acquisition_currency' => $acquisitionCurrency,
             ]);
 
             $this->setBalance($locked, $balanceAfter);

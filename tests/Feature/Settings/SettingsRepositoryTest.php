@@ -134,8 +134,15 @@ it('serves repeated reads from one query', function (): void {
     $this->settings->getString('currency_symbol');
     $this->settings->getString('display_timezone');
 
-    // One query builds the snapshot; the rest are served from it.
-    expect(DB::getQueryLog())->toHaveCount(1);
+    // One query builds the snapshot; the rest are served from it. Counted
+    // against the settings table itself, so the test stays true whichever
+    // cache driver tests happen to run on -- the thing it is proving is that
+    // four reads do not translate into four lookups of the settings table.
+    $settingsReads = collect(DB::getQueryLog())
+        ->filter(fn (array $q): bool => str_contains($q['query'], 'from `settings`'))
+        ->count();
+
+    expect($settingsReads)->toBe(1);
 
     DB::disableQueryLog();
 });

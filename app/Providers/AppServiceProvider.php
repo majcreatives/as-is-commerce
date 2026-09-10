@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Domain\Auction\Contracts\AuctionLossCompensation;
 use App\Domain\Auction\Contracts\SettlementHandoff;
 use App\Domain\Delivery\Services\OrderFulfilmentHandoff;
 use App\Domain\Orders\Contracts\FulfilmentHandoff;
@@ -13,6 +14,7 @@ use App\Domain\Payments\Paystack\PaystackGateway;
 use App\Domain\Settings\SettingsRepository;
 use App\Domain\Shared\Phone\GhanaPhoneNumberNormalizer;
 use App\Domain\Shared\Phone\PhoneNumberNormalizer;
+use App\Domain\StoreWallet\Services\AuctionLossCompensator;
 use App\Domain\User\Contracts\OtpChannel;
 use App\Domain\User\Support\UnconfiguredOtpChannel;
 use App\Listeners\AuctionBroadcastSubscriber;
@@ -49,6 +51,13 @@ class AppServiceProvider extends ServiceProvider
         // to the delivery domain through an interface, so orders never has to
         // know that deliveries exist.
         $this->app->bind(FulfilmentHandoff::class, OrderFulfilmentHandoff::class);
+
+        // How an ending auction gives its losing bidders their consumed
+        // credits' value back. An interface for the same reason as
+        // SettlementHandoff: the Store Wallet domain reads bids to value what
+        // was consumed, and a direct call back would couple the two in both
+        // directions.
+        $this->app->bind(AuctionLossCompensation::class, AuctionLossCompensator::class);
 
         // No SMS provider is integrated. The default binding throws rather
         // than pretending a code was delivered.

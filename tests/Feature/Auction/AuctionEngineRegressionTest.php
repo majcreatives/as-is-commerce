@@ -259,11 +259,12 @@ it('leaves the inventory rules untouched', function (): void {
 it('leaves the ruleset snapshot rules untouched', function (): void {
     $auction = liveAuction();
 
-    // Still version 2 of the corrected rules shape, inside the auction's own
-    // snapshot envelope.
+    // Still version 3 of the corrected rules shape, inside the auction's own
+    // snapshot envelope. Version 3 dropped the flat per-credit rate in favour
+    // of lot-based valuation; the engine refuses every other version.
     expect($auction->rules_snapshot['rules']['snapshot_version'])
         ->toBe(AuctionRules::SNAPSHOT_VERSION)
-        ->toBe(2);
+        ->toBe(3);
 });
 
 it('still refuses a version 1 rules snapshot', function (): void {

@@ -240,20 +240,29 @@ spendable credits, which the wallet decides.
 `buy_now_enabled` says whether the product can be bought outright while its
 auction runs. When that purchase succeeds the auction ends at once.
 
-`buy_now_credit_discount_enabled` and
-`buy_now_credit_discount_minor_per_credit` express the one place in the whole
-system where credits relate to money:
+`buy_now_credit_discount_enabled` says whether the purchase honours the value
+of the credits a buyer consumed bidding on that auction — the one place in the
+whole system where credits relate to money:
 
-> **One consumed bid credit gives GH₵1 off the Buy Now price.**
+> **One consumed bid credit is worth off the Buy Now price exactly what that
+> credit was bought for.**
 
-Stored as `100` — pesewas per credit — so the rate is an explicit integer,
-versioned with everything else, rather than a conversion assumed in code.
+What a credit is worth is never a stored rate; it is read from the lot the
+credit came from, per lot:
+
+```
+value per lot = floor(credits × lot.acquisition_amount_minor / lot.original_amount)
+```
+
+one multiplication and one integer division, truncated once, never on floats.
+A credit from a GH₵45 / 500-credit package is worth 9 pesewas; a promotional
+or referral credit is worth nothing.
 
 ```
 Product Buy Now price     GH₵5,500
-Credits consumed bidding      150
-Discount                  GH₵  150
-Payable                   GH₵5,350
+Credits consumed bidding      150    from a GH₵45 / 500 credit package
+Discount                  GH₵ 13.50
+Payable                   GH₵5,486.50
 ```
 
 The credits stay consumed. This reduces a separate purchase price; it does not
@@ -313,7 +322,7 @@ Auction ruleset  (mutable, versioned configuration)
        │
        │  toRules()   ← taken once, when an auction is created
        ▼
-AuctionRules     (immutable value object, snapshot version 2)
+AuctionRules     (immutable value object, snapshot version 3)
        │
        │  toArray() → JSON, stored on the auction row
        ▼
@@ -330,15 +339,18 @@ outcomes involved, that is not recoverable.
 So an auction takes a **complete copy** of its rules at creation, as an
 immutable `AuctionRules` value object serialized into its own row. Editing,
 archiving or even deleting the ruleset afterwards has no effect on it,
-including the Buy Now discount rate. Tests assert exactly that.
+including whether the credit discount applies. Tests assert exactly that.
 
 Every snapshot records `winner_rule` explicitly, so the engine reads its
 winner rule from the auction's own frozen configuration rather than inferring
 it from whatever the code happens to do that week.
 
-Snapshot version 2 is the corrected model. A version 1 snapshot is refused
-rather than reinterpreted — its fields do not mean what version 2 would read
-them as. None exist: no auction has ever been created.
+Snapshot version 3 is the current model: the flat-rate Buy Now discount is
+gone, and the value of consumed credits is derived from the lots they came
+from. A version 2 snapshot (the flat-rate shape) is migrated to version 3, and
+a version 1 snapshot is refused rather than reinterpreted — its fields do not
+mean what version 3 would read them as. None exist: no auction has ever been
+created.
 
 ### Ruleset lifecycle
 
@@ -1027,12 +1039,14 @@ order_transitions  append-only lifecycle history
 | | Buy Now | Auction win |
 | --- | --- | --- |
 | Subtotal | the product's own Buy Now price | the auction's own settlement amount |
-| Discount | GH₵1 per credit consumed bidding on that auction | **none** |
+| Discount | the cash value of the credits consumed bidding on that auction | **none** |
 | Ends the auction | yes, once paid | no — it already closed |
 
-A winner's consumed credits bought them the win; they do not also reduce what
-winning costs. A CHECK constraint refuses a settlement order carrying a
-discount at all.
+The Buy Now discount is valued lot by lot — each consumed credit is worth what
+it was bought for, and free credits are worth nothing — while a winner's
+consumed credits bought them the win and do not also reduce what winning
+costs. A CHECK constraint refuses a settlement order carrying a discount at
+all.
 
 ```
 Product Buy Now price      GH₵5,500.00   what buying it outright costs
@@ -1054,6 +1068,20 @@ Asserted in `CheckoutPricing` and again by a database CHECK constraint.
 Delivery is never folded into a product price and a discount is never folded
 into a delivery charge, so a customer disputing a total can be shown which
 part they are disputing.
+
+### Store Wallet spend is a partial payment, never a total
+
+```
+payable = total - store_wallet_applied     (store_wallet_applied > 0)
+```
+
+A catalogue checkout (Buy Now with no auction) can draw on Store Wallet value
+— the money value of purchased credits a losing bidder was given when somebody
+else acquired the product. `CheckoutPricer` computes what applies; the provider
+is charged `payable_minor`, never the total, and a CHECK constraint refuses a
+checkout where Store Wallet covers everything. The application is committed at
+checkout time and released again if the checkout is cancelled, expires, or its
+payment fails. An auction-linked order takes no Store Wallet value at all.
 
 Delivery and tax come from the auction's frozen snapshot when there is one,
 and otherwise from settings an administrator owns. Both are seeded at zero:
@@ -1853,9 +1881,12 @@ product at GH 5,500 has nothing to do with either. The `products` table has no
 column referring to credits, wallets, bids or packages.
 
 > **The one exception, and it is now implemented.** One credit consumed
-> bidding on an auction gives GH₵1 off *that auction's* Buy Now price. Spend
-> 150 credits, pay GH₵5,350 instead of GH₵5,500. `BuyNowPricer` computes it
-> from the bid records, at the rate frozen in the auction's snapshot.
+> bidding on an auction is worth off *that auction's* Buy Now price what that
+> exact credit was bought for — per lot,
+> `floor(credits × lot.acquisition_amount_minor / lot.original_amount)`.
+> 150 credits from a GH₵45 / 500-credit package buy GH₵13.50 off GH₵5,500;
+> promotional and referral credits buy nothing. `BuyNowPricer` computes it
+> from the bid records, walked back through the ledger to the lots.
 >
 > Which credits qualify is narrow on purpose: credits this user consumed on
 > accepted bids **on this auction**. A wallet balance does not count, nor
@@ -1864,7 +1895,9 @@ column referring to credits, wallets, bids or packages.
 > balance because a balance moves with everything else the user does.
 >
 > The credits stay consumed. This is a discount on a separate purchase, not a
-> refund, a withdrawal, or a conversion.
+> refund, a withdrawal, or a conversion. The same lot-based valuation is what
+> a losing bidder is given back as Store Wallet spend when somebody else ends
+> up with the product.
 
 > **A completed Buy Now ends a live auction.** `CompleteBuyNow` locks the
 > auction row, sells the unit the auction was holding in reserve, and records

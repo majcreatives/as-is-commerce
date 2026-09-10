@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\Auction\Actions;
 
+use App\Domain\Auction\Contracts\AuctionLossCompensation;
 use App\Domain\Auction\Contracts\SettlementHandoff;
 use App\Domain\Auction\Services\AuctionLifecycle;
 use App\Models\Auction;
@@ -29,6 +30,7 @@ final class CancelAuction
     public function __construct(
         private readonly AuctionLifecycle $lifecycle,
         private readonly SettlementHandoff $settlement,
+        private readonly AuctionLossCompensation $compensation,
     ) {}
 
     public function handle(Auction $auction, string $reason, ?User $actor = null): Auction
@@ -40,7 +42,14 @@ final class CancelAuction
             // stock that is on its way back to the shelf.
             $this->settlement->closeFor($locked, "The auction was cancelled: {$reason}");
 
-            return $this->lifecycle->cancel($locked, $reason, $actor);
+            $cancelled = $this->lifecycle->cancel($locked, $reason, $actor);
+
+            // Nobody ended up with the product. Every bidder's purchased
+            // credits' value is returned as Store Wallet credit; the credits
+            // themselves stay consumed.
+            $this->compensation->compensateLosers($cancelled, null);
+
+            return $cancelled;
         });
     }
 }

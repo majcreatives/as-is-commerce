@@ -16,7 +16,7 @@ function rules(array $overrides = []): AuctionRules
         'minimumBidCredits' => null,
         'minimumBidIncrementCredits' => null,
         'allowBidIncrease' => null,
-        'minimumBidIntervalMs' => 1000,
+        'minimumBidIntervalMs' => 3000,
         'baseDurationSeconds' => 300,
         'closingWindowSeconds' => 0,
         'extensionSeconds' => 0,
@@ -24,7 +24,6 @@ function rules(array $overrides = []): AuctionRules
         'maxExtensionTotalSeconds' => 0,
         'buyNowEnabled' => true,
         'buyNowCreditDiscountEnabled' => true,
-        'buyNowCreditDiscountMinorPerCredit' => 100,
         'checkoutDeadlineMinutes' => 60,
         'forfeitPolicy' => ForfeitPolicy::Relist,
         'deliveryFee' => Money::zero(),
@@ -154,36 +153,23 @@ it('represents whether Buy Now is available', function (): void {
 });
 
 /*
- * One consumed bid credit takes GH 1 off the Buy Now price. Stored as an
- * explicit rate in minor units rather than assumed in code, so it is versioned
- * with everything else.
+ * The credit discount is now valued from each lot's own acquisition economics
+ * by the pricer -- never from a system-wide rate, which the Stage 16.5
+ * correction removed. A ruleset carrying a rate, or claiming to compute a
+ * discount in credits, would reintroduce the very figure that was deleted.
  */
-it('represents one credit as one cedi of Buy Now discount', function (): void {
-    $rules = rules();
+it('carries no discount rate and no discount arithmetic', function (): void {
+    $keys = array_keys(rules()->toArray());
 
-    expect($rules->buyNowCreditDiscountMinorPerCredit)->toBe(100)
-        ->and($rules->buyNowDiscountFor(1)->toDecimalString())->toBe('1.00')
-        ->and($rules->buyNowDiscountFor(150)->toDecimalString())->toBe('150.00');
+    expect($keys)->not->toContain('buy_now_credit_discount_minor_per_credit')
+        ->and($keys)->not->toContain('discount_rate')
+        ->and($keys)->not->toContain('discount_minor_per_credit');
+
+    foreach ($keys as $key) {
+        expect($key)->not->toContain('per_credit')
+            ->and($key)->not->toContain('discount_rate');
+    }
 });
-
-it('calculates the worked example from the specification', function (): void {
-    // Product at GH 5,500 with 150 credits consumed: GH 150 off, GH 5,350 due.
-    $price = Money::fromDecimalString('5500.00');
-    $discount = rules()->buyNowDiscountFor(150);
-
-    expect($discount->toDecimalString())->toBe('150.00')
-        ->and($price->minus($discount)->toDecimalString())->toBe('5350.00');
-});
-
-it('gives no discount when the discount is switched off', function (): void {
-    $rules = rules(['buyNowCreditDiscountEnabled' => false]);
-
-    expect($rules->buyNowDiscountFor(150)->isZero())->toBeTrue();
-});
-
-it('gives no discount for a non-positive number of credits', function (int $credits): void {
-    expect(rules()->buyNowDiscountFor($credits)->isZero())->toBeTrue();
-})->with([0, -1]);
 
 /*
  * A discount on a Buy Now that cannot happen is a contradiction, not a
@@ -194,11 +180,6 @@ it('refuses a credit discount while Buy Now is disabled', function (): void {
         'buyNowEnabled' => false,
         'buyNowCreditDiscountEnabled' => true,
     ]))->toThrow(InvalidAuctionRules::class);
-});
-
-it('rejects a discount rate of zero', function (): void {
-    expect(fn (): AuctionRules => rules(['buyNowCreditDiscountMinorPerCredit' => 0]))
-        ->toThrow(InvalidAuctionRules::class);
 });
 
 // ---------------------------------------------------------------- Timing
@@ -347,9 +328,13 @@ it('refuses a snapshot written by an incompatible version', function (int $versi
     'a future model' => 999,
 ]);
 
-it('is at snapshot version two', function (): void {
-    expect(AuctionRules::SNAPSHOT_VERSION)->toBe(2)
-        ->and(rules()->toArray()['snapshot_version'])->toBe(2);
+it('is at snapshot version three', function (): void {
+    // Version 3 is the lot-valued shape: the flat per-credit rate was removed,
+    // because what a consumed credit is worth now comes from the lots it was
+    // bought in, never from the ruleset.
+    expect(AuctionRules::SNAPSHOT_VERSION)->toBe(3)
+        ->and(rules()->toArray()['snapshot_version'])->toBe(3)
+        ->and(rules()->toArray())->not->toHaveKey('buy_now_credit_discount_minor_per_credit');
 });
 
 it('cannot be mutated after construction', function (): void {

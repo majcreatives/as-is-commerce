@@ -169,6 +169,10 @@ final class StartSettlementCheckout
         $order->tax_minor = $pricing->tax->minor;
         $order->total_minor = $pricing->total->minor;
         $order->discount_credits = 0;
+        // A settlement carries no Store Wallet portion: the payable is the
+        // total, which is what the provider verifies.
+        $order->store_wallet_applied_minor = $pricing->storeWalletApplied->minor;
+        $order->payable_minor = $pricing->payable->minor;
         $order->pricing_snapshot = $pricing->toArray();
 
         // The auction's own frozen deadline, so the terms the winner was

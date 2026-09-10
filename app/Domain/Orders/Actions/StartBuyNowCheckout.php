@@ -9,6 +9,7 @@ use App\Domain\Orders\Exceptions\InvalidCheckout;
 use App\Domain\Orders\Services\CheckoutPricer;
 use App\Domain\Orders\Services\OrderLifecycle;
 use App\Domain\Orders\ValueObjects\CheckoutPricing;
+use App\Domain\StoreWallet\Services\StoreWalletCheckout;
 use App\Enums\OrderSource;
 use App\Enums\OrderStatus;
 use App\Models\Auction;
@@ -53,6 +54,7 @@ final class StartBuyNowCheckout
         private readonly CheckoutPricer $pricer,
         private readonly OrderLifecycle $orders,
         private readonly AuctionLifecycle $auctions,
+        private readonly StoreWalletCheckout $storeWallet,
     ) {}
 
     /**
@@ -81,6 +83,11 @@ final class StartBuyNowCheckout
                 dueAt: $this->deadlineFor($lockedAuction),
             );
 
+            // Store Wallet value was part of the bill; take it at checkout so
+            // two checkouts cannot both plan to spend it. Idempotent by key.
+            // Only a plain catalogue purchase may carry any.
+            $this->storeWallet->commit($order, $buyer, $pricing->storeWalletApplied);
+
             // Only a purchase standing on its own holds stock. An auction
             // already holds the unit this would buy.
             if ($lockedAuction === null) {
@@ -99,6 +106,10 @@ final class StartBuyNowCheckout
                 'discount_minor' => $pricing->discount->minor,
                 'discount_credits' => $pricing->discountCredits,
                 'total_minor' => $pricing->total->minor,
+                // The Store Wallet portion and what the provider will verify
+                // are separate figures that must add up to the total.
+                'store_wallet_applied_minor' => $pricing->storeWalletApplied->minor,
+                'payable_minor' => $pricing->payable->minor,
                 'payment_due_at' => $order->payment_due_at?->toIso8601String(),
             ]);
 
@@ -210,6 +221,11 @@ final class StartBuyNowCheckout
         $order->tax_minor = $pricing->tax->minor;
         $order->total_minor = $pricing->total->minor;
         $order->discount_credits = $pricing->discountCredits;
+        // The portion of the total already covered by Store Wallet value, and
+        // the remainder the provider will be asked to verify. The two are
+        // loaded from the value object so they always add up to the total.
+        $order->store_wallet_applied_minor = $pricing->storeWalletApplied->minor;
+        $order->payable_minor = $pricing->payable->minor;
         $order->pricing_snapshot = $pricing->toArray();
 
         $order->payment_due_at = $dueAt;

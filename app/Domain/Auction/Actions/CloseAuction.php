@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\Auction\Actions;
 
+use App\Domain\Auction\Contracts\AuctionLossCompensation;
 use App\Domain\Auction\Contracts\SettlementHandoff;
 use App\Domain\Auction\Services\AuctionClock;
 use App\Domain\Auction\Services\AuctionLifecycle;
@@ -56,6 +57,7 @@ final class CloseAuction
         private readonly HighestBidResolver $bids,
         private readonly AuctionClock $clock,
         private readonly SettlementHandoff $settlement,
+        private readonly AuctionLossCompensation $compensation,
     ) {}
 
     /**
@@ -112,6 +114,12 @@ final class CloseAuction
             // auction that closed with a winner and no obligation to pay would
             // be a debt nobody could settle.
             $orderId = $this->settlement->openFor($auction);
+
+            // Everyone else bid and lost; their purchased credits' value goes
+            // back as Store Wallet credit. The winner keeps none -- they won,
+            // and their credits bought them the product. Idempotent by key, so
+            // a second sweep closing the same auction issues nothing twice.
+            $this->compensation->compensateLosers($auction, $winningBid->user_id);
 
             Log::info('Auction closed with a winner', [
                 'operation' => 'auction.close',

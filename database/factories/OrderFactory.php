@@ -54,6 +54,8 @@ class OrderFactory extends Factory
             'tax_minor' => 0,
             'total_minor' => 550_000,
             'discount_credits' => 0,
+            'store_wallet_applied_minor' => 0,
+            'payable_minor' => 550_000,
             'holds_reservation' => false,
             'placed_at' => Carbon::now(),
             'payment_due_at' => Carbon::now()->addMinutes(30),
@@ -81,7 +83,8 @@ class OrderFactory extends Factory
                 tax: $money($order->tax_minor),
                 total: $money($order->total_minor),
                 discountCredits: $order->discount_credits,
-                discountRateMinorPerCredit: $order->discount_credits > 0 ? 100 : 0,
+                storeWalletApplied: $money($order->store_wallet_applied_minor),
+                payable: $money($order->payable_minor),
             ))->toArray();
         })->afterCreating(function (Order $order): void {
             if ($order->items()->exists()) {
@@ -149,6 +152,7 @@ class OrderFactory extends Factory
         return $this->state(fn (): array => [
             'subtotal_minor' => $minor,
             'total_minor' => $minor,
+            'payable_minor' => $minor,
         ]);
     }
 

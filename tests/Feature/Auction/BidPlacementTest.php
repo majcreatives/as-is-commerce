@@ -308,6 +308,24 @@ it('does not apply one bidder throttle to another bidder', function (): void {
     expect(placeBid($auction, bidder(), 200)->amount_credits)->toBe(200);
 });
 
+it('does not let a rejected bid restart the bid interval', function (): void {
+    $ruleset = AuctionRuleset::factory()->active()->create(['minimum_bid_interval_ms' => 60_000]);
+    $auction = liveAuction(ruleset: $ruleset);
+    $user = bidder(1_000);
+
+    placeBid($auction, $user, 100);
+
+    // Rejected for a reason of its own, so not because of the cooldown, and
+    // leaving no row behind: a rejected bid never becomes "the last bid".
+    expect(fn (): Bid => placeBid($auction, $user, 0))
+        ->toThrow(BidRejected::class, 'at least 1 credit');
+
+    // The interval still runs from the one accepted bid, not from the
+    // rejection that happened in between.
+    expect(fn (): Bid => placeBid($auction, $user, 200))
+        ->toThrow(BidRejected::class, 'Bids are limited');
+});
+
 // ------------------------------------------------------- Auction state
 
 it('refuses a bid on a draft auction', function (): void {

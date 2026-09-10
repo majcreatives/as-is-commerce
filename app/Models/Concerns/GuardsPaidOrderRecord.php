@@ -37,6 +37,8 @@ trait GuardsPaidOrderRecord
         'delivery_minor',
         'tax_minor',
         'total_minor',
+        'store_wallet_applied_minor',
+        'payable_minor',
         'currency',
         'pricing_snapshot',
         'source',

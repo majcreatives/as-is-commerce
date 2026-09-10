@@ -133,12 +133,13 @@
                             <dt class="text-slate-600">
                                 Credit discount
                                 {{-- A count of credits and the cedis they earned, side
-                                     by side and clearly different quantities. --}}
+                                     by side and clearly different quantities. The value
+                                     comes from what the credits actually cost, not a
+                                     fixed per-credit rate. --}}
                                 <span class="block text-xs text-slate-500">
                                     {{ number_format($pricing->discountCredits) }} credits you already
-                                    consumed bidding on this auction, at
-                                    <x-money :amount="App\Domain\Shared\Money\Money::fromMinor($pricing->discountRateMinorPerCredit, $order->currency)" />
-                                    each
+                                    consumed bidding on this auction, valued at what those credits
+                                    actually cost
                                 </span>
                             </dt>
                             <dd class="font-semibold tabular-nums text-emerald-700">
@@ -165,10 +166,21 @@
                         </div>
                     @endif
 
+                    @if ($order->store_wallet_applied_minor > 0)
+                        <div class="flex items-baseline justify-between gap-4">
+                            {{-- Store Wallet value is part of the bill, and it is not
+                                 something a provider was asked for. --}}
+                            <dt class="text-slate-600">Applied from your Store Wallet</dt>
+                            <dd class="font-semibold tabular-nums text-emerald-700">
+                                −<x-money :amount="$order->storeWalletApplied()" />
+                            </dd>
+                        </div>
+                    @endif
+
                     <div class="flex items-baseline justify-between gap-4 border-t border-slate-200 pt-3">
                         <dt class="text-base font-semibold text-slate-900">Total to pay</dt>
                         <dd class="text-xl font-bold tabular-nums text-slate-900">
-                            <x-money :amount="$order->total()" />
+                            <x-money :amount="$order->payable()" />
                         </dd>
                     </div>
                 </dl>
@@ -188,7 +200,10 @@
                 @if ($order->isPayable())
                     <p class="text-sm text-slate-600">
                         You will be taken to Paystack to pay
-                        <strong><x-money :amount="$order->total()" /></strong>.
+                        <strong><x-money :amount="$order->payable()" /></strong>.
+                        @if ($order->store_wallet_applied_minor > 0)
+                            The rest of the total came from your Store Wallet.
+                        @endif
                     </p>
 
                     <p class="mt-2 text-xs text-slate-500">

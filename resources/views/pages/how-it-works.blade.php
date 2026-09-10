@@ -120,8 +120,10 @@
                             </p>
                             <p class="mt-2 text-sm text-slate-600">
                                 Each credit you consumed bidding on <em>that</em> auction reduces its
-                                Buy Now price by GH&#8373;1. So 150 credits spent bidding takes
-                                GH&#8373;150 off:
+                                Buy Now price by the value that credit was bought at. Credits that cost
+                                money take exactly what they cost off the price; credits that cost
+                                nothing — promotional ones, for example — earn nothing. If the 150
+                                credits were bought at GH&#8373;1 each, the discount is GH&#8373;150:
                             </p>
                             <dl class="mt-3 space-y-1 text-sm">
                                 <div class="flex justify-between gap-3">

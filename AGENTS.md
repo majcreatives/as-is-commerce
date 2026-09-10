@@ -50,24 +50,38 @@ Buy Now price     GHS a product costs outright.       Never credits.
 ```
 
 There is **no** arithmetic relationship between them in any code that exists
-today. 500 credits costing GH₵45 does not make one credit worth 9 pesewas, and
-a product priced at GH₵5,500 has nothing to do with either. A product has no
-column referring to credits, wallets, bids or packages, and there is a test
-asserting that.
+today -- with exactly one exception, described below. A product priced at
+GH₵5,500 has nothing to do with a credit package, a wallet or a bid. A product
+has no column referring to credits, wallets, bids or packages, and there is a
+test asserting that.
 
-**The one exception, and it is implemented:** a customer who consumed credits
-bidding on an auction gets GH₵1 off that auction's Buy Now price per consumed
-credit. 150 credits spent → GH₵150 off.
+**The one exception, and it is implemented:** consumed bid credits reduce a
+Buy Now price *at what those exact credits were bought for*. No code assumes a
+credit is worth a fixed amount in cedis; the price each credit actually cost
+is looked up, lot by lot, from the purchase records.
 
-`BuyNowPricer::quote()` computes it, from the bid records, at the rate frozen
-in the auction's snapshot (`buy_now_credit_discount_minor_per_credit = 100`).
-Which credits qualify is narrow and must stay so: credits *this user* consumed
-on accepted bids *on this auction*. Never a wallet balance, never credits
-bought and not bid, never credits spent on a different auction.
+```
+150 credits bid, drawn from a GH₵45 / 500-credit package
+Value of one credit   GH₵45 ÷ 500             = 9 pesewas
+Discount              floor(150 × 4_500 / 500) = GH₵13.50
+```
+
+A credit is worth exactly what its lot cost: per lot,
+`floor(credits × lot.acquisition_amount_minor / lot.original_amount)`,
+truncated (never rounded) once, on integers. Credits that cost nothing —
+promotional, referral, adjustment — are worth nothing.
+
+`BuyNowPricer::quote()` computes it from the bid records, walked back through
+the immutable credit transactions and lot consumptions to the exact lots the
+credits came from. Which credits qualify is narrow and must stay so: credits
+*this user* consumed on accepted bids *on this auction*. Never a wallet
+balance, never credits bought and not bid, never credits spent on a different
+auction.
 
 A fourth figure now exists and is separate from all three above: the auction's
 `settlement_amount_minor`, what a normal winner pays. Outside the Buy Now
-discount, no code converts credits to money or money to credits.
+discount and the Store Wallet described below, no code converts credits to
+money or money to credits.
 
 Credits never become cash. Credits spent bidding are gone — for losing and
 winning bidders alike, and the Buy Now discount does not give them back, it
@@ -401,24 +415,34 @@ that raises it. The platform accepts that some auctions are subsidised.
 
 ### The one place credits meet money
 
-One consumed bid credit gives **GH₵1 off the Buy Now price**, stored as
-`buy_now_credit_discount_minor_per_credit = 100` — pesewas per credit, an
-explicit versioned integer rather than a conversion assumed in code.
+One consumed bid credit gives **off the Buy Now price what that exact credit
+was bought for**, per lot: `floor(credits × lot.acquisition_amount_minor /
+lot.original_amount)`, integer arithmetic, truncated once. There is no
+per-credit rate in the ruleset; what a credit is worth comes from the lot it
+came from.
 
 ```
 Buy Now price   GH₵5,500
 150 credits consumed bidding on that auction
-Discount        GH₵  150
-Payable         GH₵5,350
+                drawn from a GH₵4,500 / 500-credit package = 9 pesewas each
+Discount        GH₵   13.50
+Payable         GH₵5,486.50
 ```
 
 The credits stay consumed. This reduces a separate purchase price; it does not
 refund them. Only credits a user actually consumed bidding **on that auction**
 qualify — never a wallet balance, credits bought and never bid, or credits
-spent on something else. The future engine must derive the figure from
-auditable bid and ledger records.
+spent on something else. The figure is derived from the immutable bid, ledger
+and lot-consumption records.
 
-Outside this one path, no code converts credits to money or money to credits.
+The same valuation is the Store Wallet's: when an auction ends and somebody
+else acquired the product, every losing bidder is issued the cash value of
+their purchased credits as Store Wallet spend (see Checkout and Store Wallet).
+Instructions and credit spend are separate ledger systems that share one
+valuation, never one balance.
+
+Outside this one path and the Store Wallet, no code converts credits to money
+or money to credits.
 
 ### Timing
 
@@ -454,8 +478,10 @@ Consequences to respect:
 
 - `AuctionRules` is a `readonly` class. Keep it that way.
 - Bump `AuctionRules::SNAPSHOT_VERSION` if its serialized shape changes.
-  Version 2 is the corrected model; version 1 was the last-bidder shape and is
-  refused rather than reinterpreted.
+  Version 3 is the corrected model — the flat-rate Buy Now discount is gone
+  and consumed credits are valued lot by lot; version 2 carried that flat rate
+  and is rewritten to version 3 by a migration; version 1 was the last-bidder
+  shape and is refused rather than reinterpreted.
 - Only **draft** rulesets are editable. Changing an active one means drafting
   a new version, never mutating it.
 - Archived rulesets are never deleted.
@@ -1011,7 +1037,52 @@ mistyped code attributes nothing and must never break registration.
 Loyalty points or tiers, coupons, promo codes, cashback, cash commissions,
 withdrawals, customer-to-customer transfers, marketing campaigns, or fraud AI.
 
-## Refunds
+## Store Wallet
+
+A separate ledger that stores the cash value of purchased credits a bidder no
+longer has the product to show for. It is not a second wallet of credits and
+not a refund of credits: credits stay consumed, and the money value moves into
+its own ledger with its own rules.
+
+### When it is issued
+
+When an auction ends and somebody else acquires the product, every losing
+bidder is issued the value of their consumed *purchased* credits — the same
+per-lot valuation the Buy Now discount uses, so the two paths can never
+disagree about what a credit was worth. The winner is excluded (their credits
+bought them the win and they owe the settlement), and a Buy Now buyer is
+excluded (their discount already came off what they paid). Free credits —
+promotional, referral, adjustment — are worth nothing and issue nothing, and
+an entirely promotional bidder's loss compensates to zero.
+
+Compensation runs inside the auction's own completion: `CloseAuction` and
+`CompleteBuyNow` pass the acquiring user in, `ForfeitAuction` and
+`CancelAuction` pass nobody. One auction and one bidder produce one issuance,
+enforced by a unique `idempotency_key` derived from their ids, so a retried
+sweep or replay converges on the row that already exists.
+
+### How it spends
+
+Store Wallet value is spendable on catalogue purchases — a Buy Now checkout
+with `auction_id IS NULL` — as a partial payment only. The checkout prices
+`store_wallet_applied_minor` and `payable_minor`, the provider is charged
+`payable_minor`, and a CHECK constraint refuses a checkout where the wallet
+covers everything. The application is committed at checkout time and released
+again if the checkout is cancelled, expires, or its payment fails — keyed
+`store-wallet:applied:order:{orderId}` / `store-wallet:released:order:{orderId}`.
+
+An auction-linked order never takes Store Wallet value: an auction product's
+own credit discount is auction-specific by design, and letting a general
+balance join it would reintroduce a global credit rate by the back door.
+
+### Never do these
+
+- Revalue or claw back an issuance; it is a historical fact with its own
+  ledger row, exactly like the credit ledger's.
+- Let a browser choose the amount. `CheckoutPricer` computes what applies.
+- Issue compensation automatically to the winner, to a buyer, or against
+  free credits.
+- Convert Store Wallet back into credits, or credits into Store Wallet.
 
 Money the platform received and gave back. Nothing else.
 

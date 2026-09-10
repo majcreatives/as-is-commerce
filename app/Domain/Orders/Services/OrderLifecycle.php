@@ -6,6 +6,7 @@ namespace App\Domain\Orders\Services;
 
 use App\Domain\Catalog\Services\InventoryService;
 use App\Domain\Orders\Exceptions\InvalidOrderTransition;
+use App\Domain\StoreWallet\Services\StoreWalletCheckout;
 use App\Enums\OrderStatus;
 use App\Events\OrderStatusChanged;
 use App\Models\Order;
@@ -46,12 +47,14 @@ class OrderLifecycle
 {
     public function __construct(
         private readonly InventoryService $inventory,
+        private readonly StoreWalletCheckout $storeWallet,
     ) {}
 
     /**
      * Withdraw an unpaid checkout.
      *
-     * Releases the held unit, if this order was holding one.
+     * Releases the held unit, if this order was holding one, and returns any
+     * Store Wallet value that was committed to it.
      */
     public function cancel(Order $order, string $reason, ?User $actor = null): Order
     {
@@ -61,6 +64,7 @@ class OrderLifecycle
             $this->assertCanMove($locked, OrderStatus::Cancelled);
 
             $this->releaseReservation($locked, $actor, 'Checkout cancelled.');
+            $this->storeWallet->release($locked);
 
             $locked->cancelled_at = Carbon::now();
 
@@ -77,7 +81,8 @@ class OrderLifecycle
      *
      * This is what stops an abandoned checkout holding stock indefinitely. It
      * is driven by the clock rather than by anybody's decision, which is why
-     * it is a separate state from Cancelled.
+     * it is a separate state from Cancelled. The held unit and any committed
+     * Store Wallet value both go back to the customer.
      */
     public function expire(Order $order, ?Carbon $now = null): Order
     {
@@ -95,6 +100,7 @@ class OrderLifecycle
             }
 
             $this->releaseReservation($locked, null, 'Checkout expired unpaid.');
+            $this->storeWallet->release($locked);
 
             return $this->apply(
                 $locked,
@@ -122,6 +128,7 @@ class OrderLifecycle
             }
 
             $this->releaseReservation($locked, null, 'Payment failed.');
+            $this->storeWallet->release($locked);
 
             return $this->apply($locked, OrderStatus::PaymentFailed, $reason, null);
         });

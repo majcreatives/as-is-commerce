@@ -135,11 +135,11 @@
                             Credit discount
                             @if ($pricing->discountCredits > 0)
                                 {{-- The count and the cedis, side by side: two different
-                                     quantities, and the page says so. --}}
+                                     quantities, and the page says so. Valued at what the
+                                     credits actually cost, never a fixed rate. --}}
                                 <span class="block text-xs text-slate-500">
-                                    {{ number_format($pricing->discountCredits) }} consumed bid credits at
-                                    <x-money :amount="App\Domain\Shared\Money\Money::fromMinor($pricing->discountRateMinorPerCredit, $order->currency)" />
-                                    each
+                                    {{ number_format($pricing->discountCredits) }} consumed bid credits,
+                                    valued at what those credits actually cost
                                 </span>
                             @endif
                         </dt>
@@ -162,12 +162,30 @@
                         <dd class="tabular-nums text-slate-900"><x-money :amount="$order->tax()" /></dd>
                     </div>
 
+                    @if ($order->store_wallet_applied_minor > 0)
+                        <div class="flex items-baseline justify-between gap-4">
+                            <dt class="text-slate-600">Applied from Store Wallet</dt>
+                            <dd class="tabular-nums text-slate-900">
+                                &minus;<x-money :amount="$order->storeWalletApplied()" />
+                            </dd>
+                        </div>
+                    @endif
+
                     <div class="flex items-baseline justify-between gap-4 border-t border-slate-200 pt-3">
                         <dt class="text-base font-semibold text-slate-900">Total</dt>
                         <dd class="text-xl font-bold tabular-nums text-slate-900">
                             <x-money :amount="$order->total()" />
                         </dd>
                     </div>
+
+                    @if ($order->store_wallet_applied_minor > 0)
+                        <div class="flex items-baseline justify-between gap-4 border-t border-slate-200 pt-3">
+                            <dt class="text-base font-semibold text-slate-900">Payable (provider verified)</dt>
+                            <dd class="text-xl font-bold tabular-nums text-slate-900">
+                                <x-money :amount="$order->payable()" />
+                            </dd>
+                        </div>
+                    @endif
                 </dl>
             </x-card>
 

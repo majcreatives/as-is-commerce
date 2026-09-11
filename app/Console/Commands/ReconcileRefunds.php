@@ -9,6 +9,8 @@ use App\Domain\Refunds\Services\RefundReconciler;
 use App\Enums\RefundStatus;
 use App\Models\Refund;
 use Illuminate\Console\Command;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -59,6 +61,8 @@ class ReconcileRefunds extends Command
         $settled = $this->verifyOutstanding($verify, $limit);
 
         $this->info("Checked {$settled['checked']} outstanding refund(s); {$settled['settled']} settled.");
+
+        Cache::put('sweeps:reconcile_refunds:last_run', Carbon::now());
 
         if ($this->option('skip-report') === true) {
             return self::SUCCESS;

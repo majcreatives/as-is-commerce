@@ -184,7 +184,8 @@ class OrderLifecycle
      * The money is real and stays recorded. This says why nothing further
      * happened, so the order lands in a queue for a human rather than being
      * silently marked done or silently lost. What is owed to the customer is a
-     * decision for a person, and refunds are not built in this stage.
+     * decision for a person, and refunds are never created automatically from a
+     * fulfilment failure.
      */
     public function blockFulfilment(Order $order, string $reason): Order
     {

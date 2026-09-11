@@ -6,6 +6,7 @@ namespace App\Livewire\Admin\Operations;
 
 use App\Domain\Operations\Queries\ExceptionCentre;
 use App\Domain\Operations\Queries\OperationsMetrics;
+use App\Domain\Operations\Queries\SchedulerStatus;
 use Illuminate\View\View;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
@@ -37,7 +38,7 @@ class OperationsDashboard extends Component
         $this->authorize('admin.dashboard.view');
     }
 
-    public function render(OperationsMetrics $metrics, ExceptionCentre $exceptions): View
+    public function render(OperationsMetrics $metrics, ExceptionCentre $exceptions, SchedulerStatus $scheduler): View
     {
         return view('livewire.admin.operations.operations-dashboard', [
             'metrics' => $metrics->all(),
@@ -48,6 +49,7 @@ class OperationsDashboard extends Component
             'exceptions' => auth()->user()->can('exceptions.view')
                 ? $exceptions->counts()
                 : [],
+            'sweeps' => $scheduler->all(),
         ]);
     }
 }

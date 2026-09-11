@@ -16,11 +16,13 @@
         $categories = [
             '' => 'Everything',
             'payments' => 'Payments',
+            'webhooks' => 'Webhooks',
             'refunds' => 'Refunds',
             'auctions' => 'Auctions',
             'delivery' => 'Delivery',
             'referrals' => 'Referrals',
             'inventory' => 'Inventory',
+            'store_wallet' => 'Store Wallet',
         ];
     @endphp
 

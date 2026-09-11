@@ -147,7 +147,7 @@ final class ProcessWebhookEvent
      * which also releases any unit it was holding. A refund or chargeback is
      * recorded but deliberately does nothing further: reversing a completed
      * sale is a business decision, not something to infer from an event, and
-     * refunds are not built in this stage.
+     * refunds are never created automatically from a webhook event.
      */
     private function handleFailedOrderCharge(
         PaymentWebhookEvent $event,

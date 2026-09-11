@@ -8,16 +8,20 @@ use App\Domain\Operations\ValueObjects\OperationalException;
 use App\Domain\Operations\ValueObjects\Severity;
 use App\Domain\Referrals\Services\ReferralReconciler;
 use App\Domain\Refunds\Services\RefundReconciler;
+use App\Domain\StoreWallet\Services\StoreWalletReconciler;
 use App\Enums\AuctionStatus;
 use App\Enums\DeliveryStatus;
 use App\Enums\OrderSource;
 use App\Enums\OrderStatus;
 use App\Enums\RefundStatus;
+use App\Enums\WebhookProcessingStatus;
 use App\Models\Auction;
 use App\Models\Delivery;
 use App\Models\Order;
+use App\Models\PaymentWebhookEvent;
 use App\Models\Product;
 use App\Models\Refund;
+use App\Models\StoreWallet;
 use Illuminate\Support\Carbon;
 
 /**
@@ -68,6 +72,7 @@ class ExceptionCentre
     public function __construct(
         private readonly RefundReconciler $refunds,
         private readonly ReferralReconciler $referrals,
+        private readonly StoreWalletReconciler $storeWallets,
     ) {}
 
     /**
@@ -84,11 +89,13 @@ class ExceptionCentre
 
         return $this->memo[$key] ??= [
             'payments' => $this->payments(),
+            'webhooks' => $this->webhooks(),
             'refunds' => $this->refundExceptions($askProviders),
             'auctions' => $this->auctions(),
             'delivery' => $this->delivery(),
             'referrals' => $this->referralExceptions(),
             'inventory' => $this->inventory(),
+            'store_wallet' => $this->storeWallets(),
         ];
     }
 
@@ -129,6 +136,33 @@ class ExceptionCentre
         $counts['total'] = array_sum($counts);
 
         return $counts;
+    }
+
+    // ---------------------------------------------------------- Store Wallet
+
+    /**
+     * Store Wallets whose materialized balance does not match the ledger.
+     *
+     * A single query that detects projection divergence -- enough for a
+     * dashboard count without the per-transaction depth of the dedicated
+     * screen.
+     *
+     * @return list<OperationalException>
+     */
+    private function storeWallets(): array
+    {
+        $mismatches = $this->storeWallets->projectionMismatches(self::PER_CATEGORY);
+
+        return $mismatches->map(fn (StoreWallet $wallet): OperationalException => new OperationalException(
+            category: 'store_wallet',
+            type: 'projection_divergence',
+            severity: Severity::Critical,
+            detail: "Store Wallet #{$wallet->id} balance ({$wallet->balance_minor}) does not match the sum of its ledger entries.",
+            reference: 'User #'.$wallet->user_id,
+            url: route('admin.wallets.show', $wallet->user_id),
+            detectedAt: $wallet->updated_at,
+            nextAction: 'Inspect the ledger on the Store Wallets screen. Correct with a compensating entry, never an edit.',
+        ))->all();
     }
 
     // ------------------------------------------------------------ Payments
@@ -181,6 +215,41 @@ class ExceptionCentre
                 nextAction: 'Decide what is owed, and refund through the order if it should be.',
             );
         })->all();
+    }
+
+    // ------------------------------------------------------------- Webhooks
+
+    /**
+     * Webhook events whose processing failed and remain unresolved.
+     *
+     * A failed event means Paystack told us something happened but we could
+     * not act on it. Paystack will retry delivery, but an operator needs to
+     * know something is stuck so they can investigate the root cause.
+     *
+     * Bounded, local, no provider calls. The webhook events screen holds
+     * the full payload and context.
+     *
+     * @return list<OperationalException>
+     */
+    private function webhooks(): array
+    {
+        $failed = PaymentWebhookEvent::query()
+            ->where('processing_status', WebhookProcessingStatus::Failed)
+            ->latest('id')
+            ->limit(self::PER_CATEGORY)
+            ->get();
+
+        return $failed->map(fn (PaymentWebhookEvent $event): OperationalException => new OperationalException(
+            category: 'webhooks',
+            type: 'webhook_processing_failed',
+            severity: Severity::Warning,
+            detail: 'A webhook event could not be processed: '
+                .($event->processing_error ?? 'no error recorded'),
+            reference: $event->provider->value.':'.$event->provider_event_id,
+            url: route('admin.payment-events'),
+            detectedAt: $event->processed_at ?? $event->received_at,
+            nextAction: 'Paystack will retry delivery. Check the webhook events screen for the full payload.',
+        ))->all();
     }
 
     // ------------------------------------------------------------- Refunds

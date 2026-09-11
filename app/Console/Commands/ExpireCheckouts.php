@@ -8,6 +8,7 @@ use App\Domain\Orders\Services\OrderLifecycle;
 use App\Models\Order;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -68,6 +69,8 @@ class ExpireCheckouts extends Command
         }
 
         $this->info("Expired {$expired} checkout(s).");
+
+        Cache::put('sweeps:expire_checkouts:last_run', Carbon::now());
 
         return self::SUCCESS;
     }

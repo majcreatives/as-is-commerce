@@ -45,9 +45,9 @@ interface AuctionLossCompensation
      *                                      the winning bidder, or the Buy Now
      *                                      buyer. Excluded from compensation.
      *                                      Null when nobody acquired it.
-     * @return array<int, int>  User id => minor units issued. Users whose
-     *                          consumed credits were worth nothing are absent
-     *                          rather than present at zero.
+     * @return array<int, int> User id => minor units issued. Users whose
+     *                         consumed credits were worth nothing are absent
+     *                         rather than present at zero.
      */
     public function compensateLosers(Auction $auction, ?int $acquiredByUserId): array;
 }

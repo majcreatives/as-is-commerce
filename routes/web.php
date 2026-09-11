@@ -33,6 +33,7 @@ use App\Livewire\Admin\Refunds\RefundQueue;
 use App\Livewire\Admin\Rulesets\RulesetForm;
 use App\Livewire\Admin\Rulesets\RulesetIndex;
 use App\Livewire\Admin\Settings\ManageSettings;
+use App\Livewire\Admin\StoreWallets\StoreWalletManager;
 use App\Livewire\Admin\Wallets\WalletDetail;
 use App\Livewire\Admin\Wallets\WalletIndex;
 use App\Livewire\Auctions\AuctionIndex;
@@ -251,6 +252,13 @@ Route::middleware(['auth', 'role:admin|super_admin'])
         Route::get('/wallets/{user}', WalletDetail::class)
             ->middleware('can:wallets.inspect')
             ->name('wallets.show');
+
+        // The Store Wallet: non-withdrawable purchasing power returned to
+        // losing bidders. Gated on the same permission as the credit/cash
+        // wallets, since inspecting any wallet is the same capability.
+        Route::get('/store-wallets', StoreWalletManager::class)
+            ->middleware('can:wallets.inspect')
+            ->name('store-wallets.index');
 
         Route::get('/credit-packages', PackageManager::class)
             ->middleware('can:credit_packages.view')

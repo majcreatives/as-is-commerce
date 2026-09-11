@@ -27,6 +27,7 @@
             ['Payments', 'admin.payments', 'admin.payments', 'order_payments.view'],
             ['Refunds', 'admin.refunds', 'admin.refunds', 'refunds.view'],
             ['Wallets', 'admin.wallets.index', 'admin.wallets.*', 'wallets.inspect'],
+            ['Store wallets', 'admin.store-wallets.index', 'admin.store-wallets.*', 'wallets.inspect'],
             ['Purchases', 'admin.credit-purchases', 'admin.credit-purchases', 'credit_purchases.view'],
             ['Payment events', 'admin.payment-events', 'admin.payment-events', 'payment_events.view'],
         ],

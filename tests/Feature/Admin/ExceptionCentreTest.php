@@ -7,7 +7,10 @@ use App\Domain\Operations\Queries\ExceptionCentre;
 use App\Domain\Operations\ValueObjects\OperationalException;
 use App\Domain\Operations\ValueObjects\Severity;
 use App\Domain\Refunds\Actions\ProcessRefund;
+use App\Enums\WebhookProcessingStatus;
 use App\Livewire\Admin\Operations\ExceptionCentrePage;
+use App\Models\PaymentWebhookEvent;
+use App\Models\StoreWallet;
 use App\Models\User;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Http;
@@ -171,4 +174,94 @@ it('carries nothing sensitive in what it reports', function (): void {
     foreach ([config('paystack.secret_key'), 'password', 'remember_token'] as $secret) {
         expect($rendered)->not->toContain((string) $secret);
     }
+});
+
+// --------------------------------------------------------------- Webhooks
+
+it('reports a failed webhook event', function (): void {
+    PaymentWebhookEvent::create([
+        'provider' => 'paystack',
+        'provider_event_id' => 'evt_test_123',
+        'event_type' => 'charge.success',
+        'payload' => ['event' => 'charge.success'],
+        'processing_status' => WebhookProcessingStatus::Failed,
+        'processing_error' => 'Purchase not found',
+        'received_at' => now(),
+    ]);
+
+    $exceptions = app(ExceptionCentre::class)->all('webhooks');
+
+    expect(typesIn($exceptions))->toContain('webhook_processing_failed')
+        ->and($exceptions[0]->severity)->toBe(Severity::Warning)
+        ->and($exceptions[0]->detail)->toContain('Purchase not found');
+});
+
+it('does not report processed or ignored webhook events', function (): void {
+    PaymentWebhookEvent::create([
+        'provider' => 'paystack',
+        'provider_event_id' => 'evt_test_456',
+        'event_type' => 'charge.success',
+        'payload' => ['event' => 'charge.success'],
+        'processing_status' => WebhookProcessingStatus::Processed,
+        'received_at' => now(),
+    ]);
+
+    PaymentWebhookEvent::create([
+        'provider' => 'paystack',
+        'provider_event_id' => 'evt_test_789',
+        'event_type' => 'refund.created',
+        'payload' => ['event' => 'refund.created'],
+        'processing_status' => WebhookProcessingStatus::Ignored,
+        'received_at' => now(),
+    ]);
+
+    $exceptions = app(ExceptionCentre::class)->all('webhooks');
+
+    expect($exceptions)->toBeEmpty();
+});
+
+// --------------------------------------------------------- Store Wallet
+
+it('reports a store wallet with a projection divergence', function (): void {
+    $user = userWithRole('customer');
+    fundStoreWallet($user, 500);
+
+    $wallet = StoreWallet::where('user_id', $user->id)->first();
+    $wallet->permittingBalanceWrites(function () use ($wallet): void {
+        $wallet->balance_minor = 0;
+        $wallet->save();
+    });
+
+    $exceptions = app(ExceptionCentre::class)->all('store_wallet');
+
+    expect(typesIn($exceptions))->toContain('projection_divergence')
+        ->and($exceptions[0]->severity)->toBe(Severity::Critical)
+        ->and($exceptions[0]->detail)->toContain('Store Wallet #'.$wallet->id);
+});
+
+it('does not report healthy store wallets', function (): void {
+    $user = userWithRole('customer');
+    fundStoreWallet($user, 500);
+
+    $exceptions = app(ExceptionCentre::class)->all('store_wallet');
+
+    expect($exceptions)->toBeEmpty();
+});
+
+it('includes webhooks and store_wallet in counts', function (): void {
+    PaymentWebhookEvent::create([
+        'provider' => 'paystack',
+        'provider_event_id' => 'evt_count_test',
+        'event_type' => 'charge.success',
+        'payload' => [],
+        'processing_status' => WebhookProcessingStatus::Failed,
+        'processing_error' => 'test',
+        'received_at' => now(),
+    ]);
+
+    $counts = app(ExceptionCentre::class)->counts();
+
+    expect($counts)->toHaveKey('webhooks')
+        ->and($counts)->toHaveKey('store_wallet')
+        ->and($counts['webhooks'])->toBeGreaterThanOrEqual(1);
 });

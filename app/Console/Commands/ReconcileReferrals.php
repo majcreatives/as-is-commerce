@@ -6,6 +6,7 @@ namespace App\Console\Commands;
 
 use App\Domain\Referrals\Services\ReferralReconciler;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * Reports referrals whose records do not add up.
@@ -43,6 +44,8 @@ class ReconcileReferrals extends Command
                 number_format($summary['credits_issued']),
             ]],
         );
+
+        Cache::put('sweeps:reconcile_referrals:last_run', now());
 
         $anomalies = $reconciler->report(max(1, (int) $this->option('limit')));
 

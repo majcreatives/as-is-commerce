@@ -12,6 +12,7 @@ use App\Enums\AuctionStatus;
 use App\Models\Auction;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -61,6 +62,8 @@ class RunAuctionClock extends Command
         $this->info(
             "Started {$started}, entered closing {$closing}, closed {$closed}, forfeited {$forfeited}."
         );
+
+        Cache::put('sweeps:auctions_tick:last_run', Carbon::now());
 
         return self::SUCCESS;
     }

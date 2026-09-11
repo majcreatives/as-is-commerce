@@ -17,6 +17,8 @@ use App\Domain\Referrals\Services\ReferralCodes;
 use App\Domain\Refunds\Actions\RequestRefund;
 use App\Domain\Shared\Money\Money;
 use App\Domain\StoreWallet\Services\StoreWalletLedgerService;
+use App\Domain\StoreWallet\ValueObjects\CreditValuation;
+use App\Domain\StoreWallet\ValueObjects\LotValuation;
 use App\Enums\CreditTransactionType;
 use App\Enums\DeliveryStatus;
 use App\Enums\NotificationType;
@@ -26,6 +28,7 @@ use App\Models\Address;
 use App\Models\Auction;
 use App\Models\AuctionRuleset;
 use App\Models\Bid;
+use App\Models\CreditLot;
 use App\Models\CreditPurchase;
 use App\Models\CreditTransaction;
 use App\Models\CreditWallet;
@@ -356,22 +359,45 @@ function storeWalletBalance(User $user, string $currency = 'GHS'): Money
 }
 
 /**
- * Put Store Wallet value into a user's wallet, through the ledger.
+ * Put Store Wallet value into a user's wallet, through the issuance path.
  *
- * The checkout-participation tests need a balance to spend, and the only
- * sanctioned way to create one is the ledger -- the same path an auction loss
- * uses. Each call funds with its own idempotency key, so repeated funding in
- * one test accumulates as separate rows.
+ * An auction loss compensation is issued, never credited: it carries an
+ * auction reference and a valuation over the qualifying consumed credits.
+ * The reconciler treats a mid-air AuctionLossCompensation row -- no
+ * reference, no credit sources -- as an anomaly, which is correct, so the
+ * helper walks the same path an auction loss uses. Each call funds with its
+ * own idempotency key, so repeated funding in one test accumulates as
+ * separate rows.
  */
 function fundStoreWallet(User $user, int $amountMinor, string $currency = 'GHS'): void
 {
-    app(StoreWalletLedgerService::class)->credit(
+    $credits = 500;
+
+    grantPurchasedCredits($user, $credits, $amountMinor, $currency);
+
+    $lot = CreditLot::query()
+        ->where('credit_wallet_id', creditWalletFor($user)->id)
+        ->latest('id')
+        ->firstOrFail();
+
+    $valuation = CreditValuation::of(
+        lines: collect([
+            LotValuation::forLot(
+                lot: $lot,
+                credits: $credits,
+                currency: $currency,
+            ),
+        ]),
+        currency: $currency,
+    );
+
+    app(StoreWalletLedgerService::class)->issue(
         wallet: app(StoreWalletLedgerService::class)->walletFor($user, $currency),
+        valuation: $valuation,
         type: StoreWalletTransactionType::AuctionLossCompensation,
-        amount: Money::fromMinor($amountMinor, $currency),
-        description: 'Test funding.',
-        actor: $user,
         idempotencyKey: 'test-fund:'.$user->id.':'.Str::uuid()->toString(),
+        reference: Auction::factory()->create(),
+        description: 'Test funding.',
     );
 }
 

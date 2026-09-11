@@ -2354,3 +2354,71 @@ decision, not an architectural one.
   message so registered phone numbers cannot be enumerated.
 - `/health` reports liveness and database reachability only. It exposes no
   hostnames, credentials, paths or exception detail.
+
+---
+
+## Operations: backup, recovery and rollback
+
+This section is **Documented**. The procedures below are known-correct
+descriptions of what to do; none of them have been executed against a
+production instance, because one does not yet exist.
+
+### Database backups
+
+Back up the MySQL database before every deployment:
+
+```bash
+mysqldump --single-transaction --routines --triggers as_is_commerce > backup_$(date +%Y%m%d_%H%M%S).sql
+```
+
+The `--single-transaction` flag ensures a consistent snapshot without
+locking the live tables. Retain at least seven daily backups and one
+weekly; delete older files.
+
+### App rollback
+
+If a new deployment introduces a problem, roll back to the previous
+release:
+
+```bash
+git log --oneline -5          # find the last known-good commit
+git checkout <commit-hash>
+composer install --no-dev
+php artisan config:cache
+php artisan route:cache
+php artisan view:cache
+```
+
+### Migration rollback
+
+Laravel's `php artisan migrate:rollback` reverses the most recent
+migration batch. This application carries **irreversible migrations**:
+
+| Migration | Why it is irreversible |
+|-----------|------------------------|
+| `2026_09_04_090000` (ledger `balance_after`) | Rewrote historical rows to carry a running balance; the original data is gone. |
+| `100200` / `100300` (Store Wallet & referrals) | Added columns with `NULL` default and backfilled; the original schema no longer exists. |
+| `100400` / `100500` (bid cooldown & idempotency index) | Changed column defaults and added a unique index; reversing would leave inconsistent state. |
+
+If a migration from this list has been applied, the only safe rollback is
+to restore from a database backup taken before that migration ran. Do not
+attempt `migrate:rollback` across an irreversible boundary.
+
+### Secrets recovery
+
+The `.env` file is never committed. If lost, recreate it from the
+`.env.example` template and re-enter every value. At minimum:
+
+- `APP_KEY` — required for session encryption and signed URLs. If lost,
+  sessions are invalidated and signed URLs break; regenerate with
+  `php artisan key:generate` and accept that all active sessions end.
+- `PAYSTACK_SECRET_KEY` / `PAYSTACK_PUBLIC_KEY` — required for payments.
+- `DATABASE_*` — required for all database access.
+
+### Immutable financial records
+
+The credit ledger, cash ledger, Store Wallet ledger, refunds, and
+`order_payments` rows are **append-only**. Database triggers enforce this
+at the engine level. If any of these tables contains incorrect data, the
+corrective action is a **compensating entry** — a new row that offsets the
+wrong one — never an edit to the existing row.

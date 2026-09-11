@@ -70,8 +70,7 @@ it('has no credit column on any order table', function (string $table): void {
 it('records the store wallet participation only on the order, never on items or payments', function (): void {
     foreach (['order_items', 'order_payments'] as $table) {
         $columns = collect(DB::select("SHOW COLUMNS FROM {$table}"))->pluck('Field')->all();
-        expect(collect($columns)->filter(fn (string $c): bool =>
-            str_contains($c, 'store_wallet') || str_contains($c, 'payable_minor')
+        expect(collect($columns)->filter(fn (string $c): bool => str_contains($c, 'store_wallet') || str_contains($c, 'payable_minor')
         )->all())->toBe([]);
     }
 

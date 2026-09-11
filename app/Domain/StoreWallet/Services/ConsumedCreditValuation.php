@@ -91,7 +91,7 @@ class ConsumedCreditValuation
      * have dozens of bids, each drawing from several lots, and the answer is
      * the same either way.
      *
-     * @return array<int, int>  Lot id => credits consumed from it.
+     * @return array<int, int> Lot id => credits consumed from it.
      */
     public function consumptionByLot(Auction $auction, int $userId): array
     {
@@ -126,7 +126,7 @@ class ConsumedCreditValuation
      * wallets in the same order -- which is what keeps concurrent closures
      * queueing rather than deadlocking.
      *
-     * @return Collection<int, int>  User ids, ascending.
+     * @return Collection<int, int> User ids, ascending.
      */
     public function biddersOn(Auction $auction): Collection
     {

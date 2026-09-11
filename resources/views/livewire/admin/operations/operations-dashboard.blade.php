@@ -144,6 +144,36 @@
         @endif
     @endforeach
 
+    {{-- Scheduler health. Last-run timestamps read from the cache; the
+         commands stamp these after every successful pass. Absence means the
+         sweep has never run or the cache was cleared, both of which are
+         information for a person, not an anomaly to act on. --}}
+    @can('admin.dashboard.view')
+        <section class="mt-8">
+            <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500">Scheduler</h2>
+
+            <div class="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                @foreach ($sweeps as $sweep)
+                    <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                        <span class="block text-sm font-semibold text-slate-900">{{ $sweep['label'] }}</span>
+                        @if ($sweep['last_run_at'])
+                            <span class="mt-1 block text-xs text-slate-600">
+                                Last ran {{ \Illuminate\Support\Carbon::parse($sweep['last_run_at'])->timezone(settings()->getString('display_timezone', 'UTC'))->format('j M, H:i:s') }}
+                            </span>
+                        @else
+                            <span class="mt-1 block text-xs text-slate-400">Not yet run</span>
+                        @endif
+                        @if ($sweep['cadence_minutes'] > 0)
+                            <span class="mt-1 block text-xs text-slate-400">Every {{ $sweep['cadence_minutes'] }} {{ Str::plural('minute', $sweep['cadence_minutes']) }}</span>
+                        @else
+                            <span class="mt-1 block text-xs text-slate-400">Manual</span>
+                        @endif
+                    </div>
+                @endforeach
+            </div>
+        </section>
+    @endcan
+
     <p class="mt-10 text-xs text-slate-500">
         Every figure is counted from the records themselves when this page loads. Nothing here is
         cached, and nothing on this screen changes anything &mdash; each card links to the place

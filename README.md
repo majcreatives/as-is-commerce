@@ -2043,6 +2043,8 @@ is only where this is written; nothing about the architecture assumes it.
 The whole application runs on PHP, MySQL and cron. That is deliberate, and it
 is what makes it deployable on ordinary shared hosting without a VPS.
 
+Step-by-step operational sequence: [Hostinger deployment runbook](docs/DEPLOYMENT.md).
+
 ### Plan requirements
 
 | Need | Why | Availability |

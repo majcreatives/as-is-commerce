@@ -89,6 +89,14 @@ class CreditPurchase extends Model
         return Money::fromMinor($this->amount_minor, $this->currency);
     }
 
+    /**
+     * Whether credits have been granted against this purchase.
+     *
+     * @phpstan-impure  The answer is whatever the row currently holds. Two
+     *                  reads of the same object can legitimately differ, and
+     *                  the state machine's writers re-read under a lock before
+     *                  trusting the figure.
+     */
     public function isFulfilled(): bool
     {
         return $this->status === CreditPurchaseStatus::Fulfilled;

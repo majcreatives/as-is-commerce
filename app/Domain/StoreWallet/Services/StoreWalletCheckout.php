@@ -166,7 +166,11 @@ class StoreWalletCheckout
      */
     public function release(Order $order): void
     {
-        if ($order->isPaid()) {
+        // Any order whose figures are commercial fact -- paid, or refunded --
+        // keeps its value. A refund returns money through the refund workflow;
+        // returning the committed value as well would compensate the customer
+        // twice for one purchase.
+        if ($order->status->isCommerciallyFrozen()) {
             return;
         }
 

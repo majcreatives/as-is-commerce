@@ -199,6 +199,23 @@ final class FulfillOrderPayment
             $order = $this->orders->lock($payment->order);
 
             if ($order->isPaid()) {
+                // A second, distinct payment was verified against an order the
+                // first one already paid. The money is real, so it is recorded
+                // on this attempt rather than thrown away -- the webhook must
+                // be acknowledged, and the record is where a person sees that
+                // an extra payment exists and decides what is owed. No second
+                // sale happens here, and nothing is refunded automatically.
+                $this->recordSuccess($payment, $verified);
+
+                Log::info('Verified payment recorded against an already-paid order', [
+                    'operation' => 'order_payment.released_already_paid',
+                    'order_id' => $order->id,
+                    'order_number' => $order->order_number,
+                    'payment_id' => $payment->id,
+                    'amount_minor' => $payment->amount_minor,
+                    'currency' => $payment->currency,
+                ]);
+
                 return [
                     'order_id' => $order->id,
                     'payment_id' => $payment->id,

@@ -12,6 +12,7 @@ use App\Domain\Auction\Exceptions\RulesetNotEditable;
 use App\Enums\RulesetStatus;
 use App\Models\AuctionRuleset;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Spatie\Activitylog\Models\Activity;
 
@@ -325,6 +326,22 @@ it('will not allow a duplicate name and version', function (): void {
 
     expect(fn () => AuctionRuleset::factory()->create(['name' => 'Standard', 'version' => 1]))
         ->toThrow(QueryException::class);
+});
+
+/*
+ * The schema default must agree with what the seeder, the factory and the
+ * admin form all register. A column default nobody reads becomes the rule
+ * that applies when a ruleset is created without an explicit interval, so a
+ * stale default is a decision made by accident.
+ */
+it('keeps the schema default for the bid interval in step with the configured one', function (): void {
+    $default = DB::table('information_schema.COLUMNS')
+        ->where('TABLE_SCHEMA', DB::connection()->getDatabaseName())
+        ->where('TABLE_NAME', 'auction_rulesets')
+        ->where('COLUMN_NAME', 'minimum_bid_interval_ms')
+        ->value('COLUMN_DEFAULT');
+
+    expect($default)->toBe('3000');
 });
 
 // ------------------------------------------------------------------- Audit

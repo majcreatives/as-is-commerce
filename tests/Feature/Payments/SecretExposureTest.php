@@ -149,6 +149,38 @@ it('never stores the secret on a webhook event', function (): void {
     expect(PaymentWebhookEvent::count())->toBeGreaterThan(0);
 });
 
+it('redacts card, log and customer details from the payload a staff screen sees', function (): void {
+    $payload = paystackChargePayload('AIC-SECRET-003', 4_500, transactionId: 303);
+    $payload['data']['authorization'] = [
+        'authorization_code' => 'AUTH_FAKE123',
+        'card_type' => 'visa',
+        'last4' => '4242',
+        'exp_month' => '12',
+        'exp_year' => '29',
+    ];
+    $payload['data']['customer'] = [
+        'id' => 913,
+        'email' => 'payer@example.com',
+        'phone' => '+233201234567',
+    ];
+    $payload['data']['log'] = ['time_spent' => 1000];
+
+    postOrderWebhook($payload)->assertOk();
+
+    $event = PaymentWebhookEvent::firstOrFail();
+    $redacted = $event->redactedPayload();
+
+    expect($redacted['data'])->not->toHaveKey('authorization')
+        ->and($redacted['data'])->not->toHaveKey('customer')
+        ->and($redacted['data'])->not->toHaveKey('log')
+        // What is still needed to explain the payment stays.
+        ->and($redacted['data']['reference'])->toBe('AIC-SECRET-003')
+        ->and($redacted['data']['amount'])->toBe(4_500)
+        // The stored record keeps the retry-able payload intact; only the
+        // staff-facing rendering strips it.
+        ->and($event->payload['data']['customer']['email'])->toBe('payer@example.com');
+});
+
 it('never stores the secret in an audit record', function (): void {
     $order = buyNowCheckout(bidder(), stockedProduct());
     payOrder($order);

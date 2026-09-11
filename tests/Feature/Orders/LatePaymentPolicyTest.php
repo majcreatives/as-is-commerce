@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Domain\Auction\Actions\CloseAuction;
 use App\Domain\Catalog\Services\InventoryService;
+use App\Domain\Orders\Actions\FulfillOrderPayment;
 use App\Domain\Orders\Services\OrderLifecycle;
 use App\Domain\Payments\Contracts\PaymentGateway;
 use App\Enums\CreditTransactionType;
@@ -19,6 +20,7 @@ use App\Models\PaymentWebhookEvent;
 use App\Models\Product;
 use App\Models\Refund;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 
 /*
  * The locked policy for a payment that succeeds when it can no longer buy
@@ -265,6 +267,77 @@ it('is harmless when a late payment is fulfilled repeatedly by hand', function (
     expect($order->fresh()->status)->toBe(OrderStatus::PaymentExpired)
         ->and($order->fresh()->isFulfilmentBlocked())->toBeTrue()
         ->and(OrderPayment::where('order_id', $order->id)->successful()->count())->toBe(1);
+});
+
+/*
+ * Two genuine payments can exist for one order: a customer opens a second tab,
+ * which abandons the first attempt, and both charges turn out to have
+ * succeeded. The second verified payment is real money and is recorded on its
+ * own attempt -- an acknowledgment is due to the provider, and the record is
+ * where a person sees that an extra payment exists. What it must not do is a
+ * second sale, a second paid transition, or an automatic refund.
+ */
+it('records a second verified payment against an already-paid order without a second sale', function (): void {
+    $product = policyProduct();
+    $order = buyNowCheckout(bidder(), $product);
+
+    $first = initializePayment($order);
+    // A second tab opened a fresh attempt, closing the first one out.
+    $second = initializePayment($order);
+
+    expect($first->fresh()->status)->toBe(OrderPaymentStatus::Abandoned);
+
+    // Both attempts genuinely succeeded at the provider, each under its own
+    // reference. Keying the stubs by reference means each verification can be
+    // faked independently.
+    fakeHttp([
+        'api.paystack.co/transaction/verify/'.$first->provider_reference => Http::response([
+            'status' => true,
+            'data' => [
+                'id' => 1111,
+                'reference' => $first->provider_reference,
+                'status' => 'success',
+                'amount' => $first->amount_minor,
+                'currency' => $first->currency,
+                'channel' => 'mobile_money',
+                'paid_at' => now()->toIso8601String(),
+            ],
+        ]),
+        'api.paystack.co/transaction/verify/'.$second->provider_reference => Http::response([
+            'status' => true,
+            'data' => [
+                'id' => 2222,
+                'reference' => $second->provider_reference,
+                'status' => 'success',
+                'amount' => $second->amount_minor,
+                'currency' => $second->currency,
+                'channel' => 'mobile_money',
+                'paid_at' => now()->toIso8601String(),
+            ],
+        ]),
+    ]);
+
+    // The open attempt is verified first: the order becomes Paid with one sale.
+    $result = app(FulfillOrderPayment::class)->handle($second->fresh());
+
+    expect($result['already_fulfilled'])->toBeFalse()
+        ->and($order->fresh()->status)->toBe(OrderStatus::Paid)
+        ->and(InventoryTransaction::where('type', InventoryTransactionType::Sale)->count())->toBe(1);
+
+    // The first attempt's webhook lands afterwards, against an order that is
+    // already Paid. Recorded, not acted on.
+    $late = app(FulfillOrderPayment::class)->handle($first->fresh());
+
+    $order = $order->fresh();
+
+    expect($late['already_fulfilled'])->toBeTrue()
+        ->and($order->status)->toBe(OrderStatus::Paid)
+        ->and(InventoryTransaction::where('type', InventoryTransactionType::Sale)->count())->toBe(1)
+        ->and($order->transitions()->where('to_status', OrderStatus::Paid)->count())->toBe(1)
+        // The second payment is recorded successful, because it was.
+        ->and($first->fresh()->status)->toBe(OrderPaymentStatus::Success)
+        ->and($first->fresh()->provider_transaction_id)->toBe(1111)
+        ->and($second->fresh()->status)->toBe(OrderPaymentStatus::Success);
 });
 
 // -------------------------------- 6. No duplicate effects, any late case

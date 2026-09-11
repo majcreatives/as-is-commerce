@@ -26,7 +26,7 @@ use Throwable;
  *      result. The caller receives what it would have received first time.
  *
  *   2. Otherwise the key is claimed by INSERT, inside the same transaction as
- *      the work. The unique index on (operation, key) is what makes this
+ *      the work. The unique index on (operation, user, key) is what makes this
  *      safe: two concurrent requests cannot both insert, so exactly one does
  *      the work.
  *
@@ -60,7 +60,7 @@ class IdempotencyGuard
         ?int $userId,
         Closure $work,
     ): array {
-        $existing = $this->find($operation, $key);
+        $existing = $this->find($operation, $key, $userId);
 
         if ($existing !== null) {
             return $this->resolveExisting($existing, $operation, $key);
@@ -82,6 +82,11 @@ class IdempotencyGuard
                 $winner = IdempotencyKey::query()
                     ->where('operation', $operation)
                     ->where('idempotency_key', $key)
+                    ->when(
+                        $userId === null,
+                        fn ($query) => $query->whereNull('user_id'),
+                        fn ($query) => $query->where('user_id', $userId),
+                    )
                     ->lockForUpdate()
                     ->first();
 
@@ -143,11 +148,16 @@ class IdempotencyGuard
         );
     }
 
-    private function find(string $operation, string $key): ?IdempotencyKey
+    private function find(string $operation, string $key, ?int $userId): ?IdempotencyKey
     {
         return IdempotencyKey::query()
             ->where('operation', $operation)
             ->where('idempotency_key', $key)
+            ->when(
+                $userId === null,
+                fn ($query) => $query->whereNull('user_id'),
+                fn ($query) => $query->where('user_id', $userId),
+            )
             ->first();
     }
 

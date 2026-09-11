@@ -140,6 +140,7 @@ it('refuses to proceed while the same key is still in flight', function (): void
     IdempotencyKey::factory()->create([
         'operation' => 'test.op',
         'idempotency_key' => 'in-flight',
+        'user_id' => null,
         'status' => IdempotencyStatus::Pending,
     ]);
 
@@ -151,6 +152,7 @@ it('releases a key whose previous attempt is recorded as failed', function (): v
     IdempotencyKey::factory()->create([
         'operation' => 'test.op',
         'idempotency_key' => 'previously-failed',
+        'user_id' => null,
         'status' => IdempotencyStatus::Failed,
     ]);
 
@@ -168,19 +170,46 @@ it('releases a key whose previous attempt is recorded as failed', function (): v
  * the application checks alone would race.
  */
 it('rejects a duplicate key for the same operation at the database level', function (): void {
-    IdempotencyKey::factory()->create(['operation' => 'test.op', 'idempotency_key' => 'dupe']);
+    $user = User::factory()->create();
+
+    IdempotencyKey::factory()->create([
+        'operation' => 'test.op',
+        'idempotency_key' => 'dupe',
+        'user_id' => $user->id,
+    ]);
 
     expect(fn () => IdempotencyKey::factory()->create([
         'operation' => 'test.op',
         'idempotency_key' => 'dupe',
+        'user_id' => $user->id,
     ]))->toThrow(QueryException::class);
 });
 
 it('allows the same key under a different operation', function (): void {
-    IdempotencyKey::factory()->create(['operation' => 'op.one', 'idempotency_key' => 'dupe']);
-    IdempotencyKey::factory()->create(['operation' => 'op.two', 'idempotency_key' => 'dupe']);
+    $user = User::factory()->create();
+
+    IdempotencyKey::factory()->create(['operation' => 'op.one', 'idempotency_key' => 'dupe', 'user_id' => $user->id]);
+    IdempotencyKey::factory()->create(['operation' => 'op.two', 'idempotency_key' => 'dupe', 'user_id' => $user->id]);
 
     expect(IdempotencyKey::count())->toBe(2);
+});
+
+/*
+ * The unique index is scoped to the user as well as to the operation and the
+ * key. Two customers who use the same key therefore run two independent
+ * operations: the second must not be told the first customer's result, which
+ * is what a user-global index would have made it do.
+ */
+it('keeps the same key independent across different users', function (): void {
+    $first = User::factory()->create();
+    $second = User::factory()->create();
+
+    $a = $this->guard->execute('test.op', 'shared-key', $first->id, fn (): array => ['who' => 'first']);
+    $b = $this->guard->execute('test.op', 'shared-key', $second->id, fn (): array => ['who' => 'second']);
+
+    expect($a['who'])->toBe('first')
+        ->and($b['who'])->toBe('second')
+        ->and(IdempotencyKey::count())->toBe(2);
 });
 
 it('rejects two ledger transactions sharing an idempotency key', function (): void {

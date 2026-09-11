@@ -254,8 +254,11 @@ it('releases the amount again when an attempt fails', function (): void {
 it('produces one refund however many times the request is retried', function (): void {
     $order = blockedPaidOrder();
 
-    $first = requestRefund($order, key: 'operator-double-click');
-    $second = requestRefund($order->fresh(), key: 'operator-double-click');
+    // The same operator pressing the button again -- a retry of the same key
+    // from the same person resolves to the refund they already asked for.
+    $admin = userWithRole('admin');
+    $first = requestRefund($order, key: 'operator-double-click', actor: $admin);
+    $second = requestRefund($order->fresh(), key: 'operator-double-click', actor: $admin);
 
     expect($second->id)->toBe($first->id)
         ->and(Refund::count())->toBe(1);

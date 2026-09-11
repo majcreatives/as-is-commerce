@@ -132,6 +132,63 @@ final class FulfillCreditPurchase
                 ];
             }
 
+            // A verified payment arrived against a purchase that has already
+            // closed -- a successful charge landing after the provider
+            // reported the charge failed, or after the purchase was cancelled.
+            // The same rule as a late payment on a closed order: the money is
+            // real, so it is recorded on this row and the fact is surfaced,
+            // and the purchase stays in the state that says why it closed.
+            //
+            // No credits are granted. The state machine forbids a closed
+            // purchase from re-opening, and granting credits for a cancelled
+            // purchase is a policy decision for a person, not one to infer
+            // from a verification. Nothing is refunded automatically either.
+            //
+            // Not throwing is what matters to the provider: a 5xx here would
+            // make Paystack retry a delivery that can never succeed, forever.
+            if ($locked->status->isTerminal()) {
+                $locked->provider_transaction_id = $verified->providerTransactionId;
+                $locked->provider_channel = $verified->channel;
+
+                if ($locked->status === CreditPurchaseStatus::Failed) {
+                    $locked->failure_reason = mb_substr(
+                        trim(($locked->failure_reason ?? '').' A payment was verified after this purchase closed; credits were not granted.'),
+                        0,
+                        500,
+                    );
+                }
+
+                $locked->save();
+
+                activity('credit_purchase')
+                    ->performedOn($locked)
+                    ->causedBy($locked->user)
+                    ->withProperties([
+                        'provider_reference' => $locked->provider_reference,
+                        'provider_transaction_id' => $verified->providerTransactionId,
+                        'channel' => $verified->channel,
+                        'status' => $locked->status->value,
+                    ])
+                    ->log('credit_purchase_paid_after_close');
+
+                Log::warning('Verified payment recorded against a closed credit purchase', [
+                    'operation' => self::OPERATION.'.late_payment',
+                    'purchase_id' => $locked->id,
+                    'user_id' => $locked->user_id,
+                    'status' => $locked->status->value,
+                    'amount_minor' => $locked->amount_minor,
+                    'currency' => $locked->currency,
+                    'reference' => $locked->provider_reference,
+                    'provider_transaction_id' => $verified->providerTransactionId,
+                ]);
+
+                return [
+                    'purchase_id' => $locked->id,
+                    'credit_transaction_id' => null,
+                    'already_fulfilled' => false,
+                ];
+            }
+
             $locked->provider_transaction_id = $verified->providerTransactionId;
             $locked->provider_channel = $verified->channel;
             $locked->save();

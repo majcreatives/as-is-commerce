@@ -287,6 +287,88 @@ it('asks the provider to retry when processing fails', function (): void {
     expect(PaymentWebhookEvent::first()->processing_status)->toBe(WebhookProcessingStatus::Failed);
 });
 
+/*
+ * The stored event is durable for a reason: when the provider retries a
+ * delivery that failed once, the retry must act on the intact stored payload
+ * rather than acknowledge a job never done. The unique index still means one
+ * row, and the fulfilment path is idempotent by row lock and key, so the
+ * retry cannot grant credits a second time.
+ */
+it('reprocesses a previously failed delivery when the provider retries', function (): void {
+    // First delivery: the provider is unreachable, so verification cannot
+    // happen. The event is stored as Failed and the endpoint asks for a retry.
+    fakeHttp([
+        'api.paystack.co/transaction/verify/*' => Http::response(['status' => false, 'message' => 'Down'], 503),
+    ]);
+
+    $payload = paystackChargePayload('AIC-TEST-REF-001', 4_500);
+
+    postWebhook($payload)->assertStatus(500);
+
+    expect(PaymentWebhookEvent::first()->processing_status)->toBe(WebhookProcessingStatus::Failed)
+        ->and(CreditTransaction::where('type', 'purchase')->count())->toBe(0);
+
+    // The retry, with the provider healthy again. The same event identity is
+    // recognised by the database, and because the previous attempt failed, the
+    // stored event is processed for real instead of being dismissed.
+    fakePaystackVerify([
+        'id' => 987654321,
+        'reference' => 'AIC-TEST-REF-001',
+        'status' => 'success',
+        'amount' => 4_500,
+        'currency' => 'GHS',
+        'channel' => 'mobile_money',
+        'paid_at' => now()->toIso8601String(),
+    ]);
+
+    postWebhook($payload)->assertOk()->assertJson(['status' => 'processed']);
+
+    expect(PaymentWebhookEvent::count())->toBe(1)
+        ->and(PaymentWebhookEvent::first()->processing_status)->toBe(WebhookProcessingStatus::Processed)
+        ->and(CreditTransaction::where('type', 'purchase')->count())->toBe(1)
+        ->and(creditWalletFor($this->customer)->fresh()->balance)->toBe(500)
+        ->and($this->purchase->fresh()->status)->toBe(CreditPurchaseStatus::Fulfilled);
+
+    // A third delivery of the same event now that it is processed stays a
+    // duplicate: the retry granted once, and no further delivery grants again.
+    postWebhook($payload)->assertOk()->assertJson(['status' => 'duplicate']);
+
+    expect(CreditTransaction::where('type', 'purchase')->count())->toBe(1);
+});
+
+/*
+ * The mirror of the order late-payment rule, for a credit purchase: a verified
+ * success landing after the purchase already closed records the money but
+ * grants nothing. The closed status stands, no credits are invented, and the
+ * endpoint acknowledges the webhook instead of asking Paystack to retry
+ * forever against a state that will never accept the payment.
+ */
+it('records a late verified success without granting credits when the purchase already closed', function (): void {
+    // The provider reported the charge failed, so the purchase closed.
+    $failed = paystackChargePayload('AIC-TEST-REF-001', 4_500);
+    $failed['event'] = 'charge.failed';
+    $failed['data']['status'] = 'failed';
+
+    postWebhook($failed)->assertOk();
+    expect($this->purchase->fresh()->status)->toBe(CreditPurchaseStatus::Failed);
+
+    // The charge actually did complete, and the success arrives anyway. It is
+    // recorded on the row and surfaced, never acted on.
+    postWebhook(paystackChargePayload('AIC-TEST-REF-001', 4_500))
+        ->assertOk()
+        ->assertJson(['status' => 'processed']);
+
+    $purchase = $this->purchase->fresh();
+
+    expect($purchase->status)->toBe(CreditPurchaseStatus::Failed)
+        ->and($purchase->status)->not->toBe(CreditPurchaseStatus::Fulfilled)
+        ->and($purchase->provider_transaction_id)->toBe(987654321)
+        ->and($purchase->provider_channel)->toBe('mobile_money')
+        ->and($purchase->failure_reason)->toContain('credits were not granted')
+        ->and(CreditTransaction::count())->toBe(0)
+        ->and(creditWalletFor($this->customer)->fresh()->balance)->toBe(0);
+});
+
 it('refuses an event whose metadata names a different purchase', function (): void {
     $other = CreditPurchase::factory()->create();
 

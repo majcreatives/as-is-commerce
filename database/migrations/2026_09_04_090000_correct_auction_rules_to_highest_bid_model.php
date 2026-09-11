@@ -111,33 +111,25 @@ return new class extends Migration
         SQL);
     }
 
+    /**
+     * Rollback is refused, on purpose.
+     *
+     * Reversing this migration would resurrect the columns of the Last Bidder
+     * Standing model -- `unique_leader`, `bid_cost_credits`,
+     * `default_checkout_price_minor` -- and the codebase has asserted ever
+     * since that none of them exist. Rolling back would hand every later
+     * migration and the running application a schema the code actively
+     * rejects. The only correct rollback is the whole database from backup;
+     * a half-rolled-forward schema serving a corrected application is not a
+     * state this migration may produce.
+     *
+     * @throws RuntimeException
+     */
     public function down(): void
     {
-        DB::statement('ALTER TABLE auction_rulesets DROP CHECK chk_rulesets_minimum_bid');
-        DB::statement('ALTER TABLE auction_rulesets DROP CHECK chk_rulesets_minimum_increment');
-        DB::statement('ALTER TABLE auction_rulesets DROP CHECK chk_rulesets_discount_rate');
-
-        Schema::table('auction_rulesets', function (Blueprint $table) {
-            $table->dropColumn([
-                'minimum_bid_credits',
-                'minimum_bid_increment_credits',
-                'allow_bid_increase',
-                'buy_now_enabled',
-                'buy_now_credit_discount_enabled',
-                'buy_now_credit_discount_minor_per_credit',
-            ]);
-
-            $table->unsignedInteger('bid_cost_credits')->default(1)->after('description');
-            $table->boolean('unique_leader')->default(true)->after('bid_cost_credits');
-            $table->unsignedBigInteger('default_checkout_price_minor')->nullable()->after('forfeit_policy');
-        });
-
-        DB::statement(<<<'SQL'
-            ALTER TABLE auction_rulesets
-            ADD CONSTRAINT chk_rulesets_bid_cost CHECK (bid_cost_credits >= 1),
-            ADD CONSTRAINT chk_rulesets_checkout_price CHECK (
-                default_checkout_price_minor IS NULL OR default_checkout_price_minor > 0
-            )
-        SQL);
+        throw new RuntimeException(
+            'This migration corrects the auction rules model to Highest Valid Credit Bid '
+            .'and cannot be rolled back. Restore the database from backup instead.'
+        );
     }
 };

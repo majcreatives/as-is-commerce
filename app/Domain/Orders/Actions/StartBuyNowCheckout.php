@@ -83,16 +83,22 @@ final class StartBuyNowCheckout
                 dueAt: $this->deadlineFor($lockedAuction),
             );
 
-            // Store Wallet value was part of the bill; take it at checkout so
-            // two checkouts cannot both plan to spend it. Idempotent by key.
-            // Only a plain catalogue purchase may carry any.
-            $this->storeWallet->commit($order, $buyer, $pricing->storeWalletApplied);
-
             // Only a purchase standing on its own holds stock. An auction
             // already holds the unit this would buy.
             if ($lockedAuction === null) {
                 $this->orders->reserveUnit($order, $buyer);
             }
+
+            // Store Wallet value was part of the bill; take it at checkout so
+            // two checkouts cannot both plan to spend it. Idempotent by key.
+            // Only a plain catalogue purchase may carry any.
+            //
+            // LOCKED AFTER THE RESERVATION, on purpose: the product row is
+            // this path's step before the wallet, so holding the wallet before
+            // the product would invert the order used everywhere else in the
+            // stage and invite a deadlock with the completion path, which
+            // locks product then wallet.
+            $this->storeWallet->commit($order, $buyer, $pricing->storeWalletApplied);
 
             Log::info('Buy Now checkout opened', [
                 'operation' => 'checkout.buy_now',

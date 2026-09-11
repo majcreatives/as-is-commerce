@@ -6,6 +6,7 @@ namespace Database\Factories;
 
 use App\Enums\IdempotencyStatus;
 use App\Models\IdempotencyKey;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Str;
 
@@ -24,6 +25,9 @@ class IdempotencyKeyFactory extends Factory
         return [
             'operation' => 'test.operation',
             'idempotency_key' => Str::uuid()->toString(),
+            // A user-owned operation by default. Set null explicitly where a
+            // test models an administrative key with no owning customer.
+            'user_id' => User::factory(),
             'status' => IdempotencyStatus::Pending,
         ];
     }

@@ -55,11 +55,12 @@ final class PaystackCallbackController extends Controller
         }
 
         try {
-            // Whether this call granted the credits or found them already
-            // granted, the customer's situation is the same: they have them.
             $fulfil->handle($purchase);
 
-            $state = 'fulfilled';
+            // Fulfilment re-reads the purchase under lock, so the model we
+            // hold is stale the moment handle() returns -- refresh it before
+            // asking what happened, or a successful grant reads as pending.
+            $state = $purchase->refresh()->isFulfilled() ? 'fulfilled' : 'pending';
         } catch (ConcurrentOperationInProgress) {
             // A webhook is fulfilling this same purchase right now. Not an
             // error -- the customer just needs a moment.

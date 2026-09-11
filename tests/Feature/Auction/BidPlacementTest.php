@@ -326,6 +326,71 @@ it('does not let a rejected bid restart the bid interval', function (): void {
         ->toThrow(BidRejected::class, 'Bids are limited');
 });
 
+// ------------------------------------------------- Cooldown boundaries
+
+/*
+ * The timestamp the interval is measured from is stored to the second, so a
+ * test must stay clear of the millisecond edge: 59s of a 60s interval is
+ * guaranteed below it however the stored second landed, and 60s is guaranteed
+ * at or above it.
+ */
+it('refuses a bid just before the interval elapses', function (): void {
+    $ruleset = AuctionRuleset::factory()->active()->create(['minimum_bid_interval_ms' => 60_000]);
+    $auction = liveAuction(ruleset: $ruleset);
+    $user = bidder(1_000);
+
+    placeBid($auction, $user, 100);
+
+    $this->travel(59)->seconds();
+
+    expect(fn (): Bid => placeBid($auction, $user, 200))
+        ->toThrow(BidRejected::class, 'Bids are limited');
+});
+
+it('accepts a bid exactly when the interval elapses', function (): void {
+    $ruleset = AuctionRuleset::factory()->active()->create(['minimum_bid_interval_ms' => 60_000]);
+    $auction = liveAuction(ruleset: $ruleset);
+    $user = bidder(1_000);
+
+    placeBid($auction, $user, 100);
+
+    $this->travel(60)->seconds();
+
+    expect(placeBid($auction, $user, 200)->amount_credits)->toBe(200);
+});
+
+it('accepts a bid once the interval has passed', function (): void {
+    $ruleset = AuctionRuleset::factory()->active()->create(['minimum_bid_interval_ms' => 60_000]);
+    $auction = liveAuction(ruleset: $ruleset);
+    $user = bidder(1_000);
+
+    placeBid($auction, $user, 100);
+
+    $this->travel(61)->seconds();
+
+    expect(placeBid($auction, $user, 200)->amount_credits)->toBe(200);
+});
+
+/*
+ * Two bids from the same user inside one interval must land as one bid with
+ * one credit consumption. The per-user check runs under the auction row lock,
+ * so the "concurrent" case -- the second request arriving while the first is
+ * still in flight -- resolves to this same state after the first commits.
+ */
+it('consumes credits exactly once when the same user bids twice inside one interval', function (): void {
+    $ruleset = AuctionRuleset::factory()->active()->create(['minimum_bid_interval_ms' => 3000]);
+    $auction = liveAuction(ruleset: $ruleset);
+    $user = bidder(1_000);
+
+    placeBid($auction, $user, 100);
+
+    expect(fn (): Bid => placeBid($auction, $user, 200))
+        ->toThrow(BidRejected::class, 'Bids are limited');
+
+    expect(creditWalletFor($user)->fresh()->balance)->toBe(900)
+        ->and(Bid::where('auction_id', $auction->id)->where('user_id', $user->id)->count())->toBe(1);
+});
+
 // ------------------------------------------------------- Auction state
 
 it('refuses a bid on a draft auction', function (): void {

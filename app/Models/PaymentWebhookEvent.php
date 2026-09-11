@@ -99,7 +99,9 @@ class PaymentWebhookEvent extends Model
      *
      * Paystack echoes card and authorization details on a charge event. None
      * of it is needed to explain a payment, and an admin screen is the wrong
-     * place for it to surface.
+     * place for it to surface. The customer block (email, phone, and
+     * everything under it) goes with it: staff read identities from the
+     * application's own customer screens, never from a provider blob.
      *
      * @return array<string, mixed>
      */
@@ -110,7 +112,7 @@ class PaymentWebhookEvent extends Model
         if (isset($payload['data']) && is_array($payload['data'])) {
             unset(
                 $payload['data']['authorization'],
-                $payload['data']['customer']['metadata'],
+                $payload['data']['customer'],
                 $payload['data']['log'],
             );
         }

@@ -403,9 +403,13 @@ it('cannot be over-refunded by a repeated request', function (): void {
     $order = blockedPaidOrder();
     $payment = $order->payments()->successful()->first();
 
-    $refund = requestRefund($order, Money::fromMinor(1_000), key: 'same-key');
-    requestRefund($order->fresh(), Money::fromMinor(1_000), key: 'same-key');
-    requestRefund($order->fresh(), Money::fromMinor(1_000), key: 'same-key');
+    // Same operator, same key: the retries are the same double-click, not
+    // three administrators each claiming a third of the money.
+    $admin = userWithRole('admin');
+
+    $refund = requestRefund($order, Money::fromMinor(1_000), key: 'same-key', actor: $admin);
+    requestRefund($order->fresh(), Money::fromMinor(1_000), key: 'same-key', actor: $admin);
+    requestRefund($order->fresh(), Money::fromMinor(1_000), key: 'same-key', actor: $admin);
 
     expect(Refund::count())->toBe(1)
         ->and((int) DB::table('refunds')->where('order_payment_id', $payment->id)->sum('amount_minor'))

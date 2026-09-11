@@ -7,9 +7,11 @@ use App\Domain\Catalog\Services\InventoryService;
 use App\Domain\Orders\Actions\StartBuyNowCheckout;
 use App\Domain\Orders\Exceptions\InvalidCheckout;
 use App\Domain\Orders\Services\OrderLifecycle;
+use App\Domain\Refunds\Actions\ProcessRefund;
 use App\Domain\StoreWallet\Services\StoreWalletCheckout;
 use App\Domain\StoreWallet\Services\StoreWalletLedgerService;
 use App\Enums\OrderStatus;
+use App\Enums\RefundStatus;
 use App\Enums\StoreWalletTransactionType;
 use App\Models\Auction;
 use App\Models\Order;
@@ -203,6 +205,52 @@ it('keeps the value applied when the payment succeeds', function (): void {
         // A paid order is released by nobody.
         ->and($this->checkout->release($order->fresh()))->toBeNull()
         ->and(storeWalletBalance($buyer)->minor)->toBe(0);
+});
+
+/*
+ * A refund is commercial fact as surely as a paid order: money was taken, the
+ * platform failed to deliver against it, and the Refund workflow returned it.
+ * An order that closed as expired keeps the status it closed with -- the
+ * refund record is what says the money went back -- and the committed Store
+ * Wallet value returned exactly once, at the moment the checkout closed. No
+ * later step, refund included, may give that value back again.
+ */
+it('never releases a checkout once it has been refunded', function (): void {
+    $product = Product::factory()->active()->pricedAt(550_000)->create();
+    app(InventoryService::class)->initialStock($product, 1);
+
+    $buyer = userWithRole('customer');
+    fundStoreWallet($buyer, 300);
+
+    $order = buyNowCheckout($buyer, $product);
+    $payment = initializePayment($order);
+
+    // The checkout expires: the committed value returns once, at close.
+    $this->travel(2)->hours();
+    $this->orders->expire($order->fresh());
+
+    expect($order->fresh()->status)->toBe(OrderStatus::PaymentExpired)
+        ->and(storeWalletBalance($buyer)->minor)->toBe(300);
+
+    // The payment lands late, so this expired checkout becomes a blocked paid
+    // order -- refundable, and worth refunding in full.
+    payOrder($order->fresh(), $payment->fresh());
+    expect($order->fresh()->isFulfilmentBlocked())->toBeTrue();
+
+    $refund = requestRefund($order->fresh());
+    fakePaystackRefund(paystackRefundBody($refund->amount_minor, 'processed', 'RF-200'));
+    app(ProcessRefund::class)->handle($refund, userWithRole('admin'));
+
+    // The money went back, but the order keeps the status that explains why it
+    // closed in the first place -- exactly what the refund lifecycle says.
+    expect($order->fresh()->status)->toBe(OrderStatus::PaymentExpired)
+        ->and($refund->fresh()->status)->toBe(RefundStatus::Succeeded)
+        // Emphatically not a second payout of the Store Wallet value: the one
+        // release that may happen did happen at expiry, and is the only one.
+        ->and($this->checkout->release($order->fresh()))->toBeNull()
+        ->and(storeWalletBalance($buyer)->minor)->toBe(300)
+        ->and(StoreWalletTransaction::where('idempotency_key', StoreWalletCheckout::releasedKeyFor($order->id))->count())
+        ->toBe(1);
 });
 
 // --------------------------------------------- Everywhere it must never apply

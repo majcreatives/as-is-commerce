@@ -225,7 +225,7 @@ The rules constrain which amounts are acceptable:
 | `minimum_bid_credits` | Smallest bid that can ever be submitted | **Not decided** — null |
 | `minimum_bid_increment_credits` | How far a bid must exceed the standing highest | **Not decided** — null |
 | `allow_bid_increase` | Whether a bidder may raise their own bid | **Not decided** — null |
-| `minimum_bid_interval_ms` | Anti-spam gap between a user's bids | 1000 |
+| `minimum_bid_interval_ms` | Anti-spam gap between a user's bids | 3000 |
 
 Null means *no rule*, which is deliberately different from any particular
 number. The business has not chosen these values, and seeding one would make

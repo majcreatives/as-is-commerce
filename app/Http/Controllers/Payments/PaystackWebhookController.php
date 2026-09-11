@@ -87,6 +87,14 @@ final class PaystackWebhookController extends Controller
      * The unique index does the recognising, not a preceding SELECT, which
      * would race two simultaneous deliveries of the same event.
      *
+     * A delivery of an event that already exists is normally acknowledged
+     * without rework. There is one deliberate exception: if the previous
+     * delivery failed to process, or was stored but never processed, the
+     * provider's retry is an opportunity to act on an intact stored payload
+     * instead of an acknowledgement of a job never done. The event row is
+     * returned for reprocessing; every fulfilment path is idempotent by row
+     * lock and key, so this cannot grant a second time.
+     *
      * @param  array<string, mixed>  $payload
      */
     private function store(PaymentGateway $gateway, array $payload, ?string $signature): ?PaymentWebhookEvent
@@ -102,9 +110,36 @@ final class PaystackWebhookController extends Controller
                 'received_at' => now(),
             ]);
         } catch (UniqueConstraintViolationException) {
+            $existing = PaymentWebhookEvent::query()
+                ->where('provider', PaymentProvider::Paystack)
+                ->where('provider_event_id', $gateway->eventIdentifier($payload))
+                ->first();
+
+            if ($existing === null) {
+                Log::info('Clashed with a webhook event that has already gone', [
+                    'provider' => PaymentProvider::Paystack->value,
+                    'event_type' => $payload['event'],
+                ]);
+
+                return null;
+            }
+
+            if ($existing->processing_status === WebhookProcessingStatus::Failed
+                || $existing->processing_status === WebhookProcessingStatus::Received) {
+                Log::info('Reprocessing a previously failed webhook event', [
+                    'provider' => PaymentProvider::Paystack->value,
+                    'event_id' => $existing->id,
+                    'event_type' => $existing->event_type,
+                    'processing_status' => $existing->processing_status->value,
+                ]);
+
+                return $existing;
+            }
+
             Log::info('Ignored a repeat webhook delivery', [
                 'provider' => PaymentProvider::Paystack->value,
-                'event_type' => $payload['event'],
+                'event_id' => $existing->id,
+                'event_type' => $existing->event_type,
             ]);
 
             return null;

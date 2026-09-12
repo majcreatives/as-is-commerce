@@ -42,7 +42,7 @@ return new class extends Migration
         // The ruleset column.
         // ---------------------------------------------------------------
 
-        DB::statement('ALTER TABLE auction_rulesets DROP CHECK chk_rulesets_discount_rate');
+        DB::statement('ALTER TABLE auction_rulesets DROP CONSTRAINT chk_rulesets_discount_rate');
 
         Schema::table('auction_rulesets', function (Blueprint $table) {
             $table->dropColumn('buy_now_credit_discount_minor_per_credit');

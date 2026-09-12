@@ -46,8 +46,8 @@ return new class extends Migration
     public function up(): void
     {
         // The CHECK constraint references a column that is about to go.
-        DB::statement('ALTER TABLE auction_rulesets DROP CHECK chk_rulesets_bid_cost');
-        DB::statement('ALTER TABLE auction_rulesets DROP CHECK chk_rulesets_checkout_price');
+        DB::statement('ALTER TABLE auction_rulesets DROP CONSTRAINT chk_rulesets_bid_cost');
+        DB::statement('ALTER TABLE auction_rulesets DROP CONSTRAINT chk_rulesets_checkout_price');
 
         Schema::table('auction_rulesets', function (Blueprint $table) {
             // ---- Bidding, under the corrected model ---------------------

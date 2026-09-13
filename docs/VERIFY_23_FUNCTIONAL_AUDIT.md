@@ -66,7 +66,8 @@ is required (Flow 3b).
 | Inventory | on-hand -1, reserved -1 (sale converted from reservation) |
 | Fulfilment | `FulfilmentHandoff` opened a delivery record |
 | Credits | untouched (Buy Now is GHS, no credit movement) |
-| Ledger | `cash_transactions` entry exists |
+| Buy Now financial evidence | exactly one sale; payment amount matches the frozen order total; provider transaction/reference retained on `order_payments`; order/payment states consistent |
+| `cash_transactions` | Not applicable to Buy Now revenue — `cash_transactions` records user cash-wallet activity, not platform revenue. Buy Now financial evidence is the `orders` + `order_payments` records, with Paystack as the external payment/settlement record. Platform-level revenue/fee accounting is outside this ledger and would be a future accounting/reconciliation stage if required. |
 
 ---
 
@@ -186,7 +187,7 @@ Record per-flow PASS / FAIL with the verifying query/output.
 
 | Flow | Result |
 |---|---|
-| 1 Catalog Buy Now | |
+| 1 Catalog Buy Now | PASS — order `AIC-O-20260913-NAO4RZ6Z6N` `paid`; one `order_payments` row `succeeded` (provider ref `AIC-P-20260913-NMVVIYOTMYGH6EZW`, 340000 minor); inventory `reservation` → `sale` (on-hand −1, reserved −1); delivery `pending`; credits untouched; no `cash_transactions` expected (see Flow 1 note); Livewire `wire:click` dead-click incident resolved via config/route cache refresh |
 | 2 Credit purchase | |
 | 3a Create/schedule/activate | |
 | 3b Closing | |

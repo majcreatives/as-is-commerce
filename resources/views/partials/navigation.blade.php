@@ -4,6 +4,20 @@
     // when the page you are on lives behind a closed menu.
     $inAccount = request()->routeIs('dashboard', 'wallet', 'orders.*', 'addresses.*', 'referrals.*', 'profile.*', 'credits.history');
 
+    // The most recent checkout that is still payable right now. A customer who
+    // abandons the checkout page but has not paid yet needs a way back into it,
+    // so when one exists the header shows a cart pointing at that order.
+    // Bound to a single indexed row because this runs on every page.
+    $activeCheckout = auth()->user()
+        ?->orders()
+        ->awaitingPayment()
+        ->where(function ($query) {
+            $query->whereNull('payment_due_at')
+                ->orWhere('payment_due_at', '>', now());
+        })
+        ->latest('id')
+        ->first();
+
     // The account menu, grouped the way somebody looks for things: what is
     // happening, what it cost, where it goes, then who else to tell. Each
     // group is separated by a rule in the panel, which is what stops eight
@@ -98,6 +112,20 @@
                 <x-button href="{{ route('login') }}" variant="ghost" size="sm">Sign in</x-button>
                 <x-button href="{{ route('register') }}" variant="primary" size="sm">Create account</x-button>
             @else
+                {{-- A cart appears only while a checkout is actually waiting to
+                     be paid, so an abandoned buy is never lost. Single icon,
+                     no badge: there is at most one payable checkout and a number
+                     would only dress it up. --}}
+                @if ($activeCheckout)
+                    <a href="{{ route('checkout.show', $activeCheckout) }}"
+                       class="inline-flex items-center rounded-md p-2 text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+                       aria-label="Return to your checkout">
+                        <svg class="size-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 10.5V6a3.75 3.75 0 1 0-7.5 0v4.5m11.356-1.993 1.263 12A1.125 1.125 0 0 1 19.75 22H4.25a1.125 1.125 0 0 1-1.12-1.243l1.264-12A1.125 1.125 0 0 1 5.513 7.5h12.974c.576 0 1.059.435 1.119 1.007Z" />
+                        </svg>
+                    </a>
+                @endif
+
                 {{-- The account menu.
 
                      Closes on Escape and on a click outside, because a menu
@@ -242,6 +270,14 @@
                         </span>
                     @endif
                 </x-nav-link>
+
+                @if ($activeCheckout)
+                    <x-nav-link href="{{ route('checkout.show', $activeCheckout) }}"
+                                class="block"
+                                :active="request()->routeIs('checkout.show')">
+                        Return to checkout
+                    </x-nav-link>
+                @endif
 
                 @role('admin|super_admin')
                     <x-nav-link href="{{ route('admin.dashboard') }}" class="block" :active="request()->routeIs('admin.*')">Admin</x-nav-link>

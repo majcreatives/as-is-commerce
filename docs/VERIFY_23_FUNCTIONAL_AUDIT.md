@@ -189,12 +189,12 @@ Record per-flow PASS / FAIL with the verifying query/output.
 |---|---|
 | 1 Catalog Buy Now | PASS — order `AIC-O-20260913-NAO4RZ6Z6N` `paid`; one `order_payments` row `succeeded` (provider ref `AIC-P-20260913-NMVVIYOTMYGH6EZW`, 340000 minor); inventory `reservation` → `sale` (on-hand −1, reserved −1); delivery `pending`; credits untouched; no `cash_transactions` expected (see Flow 1 note); Livewire `wire:click` dead-click incident resolved via config/route cache refresh |
 | 2 Credit purchase | PASS — purchase `id:4` ref `AIC-20260913-SGLAMNBCHJDOYHCNMT` status `fulfilled`, amt 1000 = Starter 100 credits, package snapshot stored; `credit_tx:1`, `cash_tx:2` (deposit+debit net zero), cash wallet 0; `projection 600 == ledger_sum 600`; lot source `purchased` acq 1000 remaining 100 (0 consumed) |
-| 3a Create/schedule/activate | |
-| 3b Closing | |
-| 3c Bidding | |
-| 3d Winner/settlement/compensation | |
+| 3a Create/schedule/activate | PASS — auction `1` (product "Northline N7 Smartphone 128GB", ruleset "Standard Auction") created Draft, then **live**; snapshot frozen: envelope `v1` / rules `v3`, `min_bid_interval_ms:3000`, `closing_window:0`, `buy_now_enabled:1`; `settlement_minor:10000` ≠ Buy Now `550000`; reservation posted (on-hand 4, reserved 1) |
+| 3b Closing | skipped by default config — seeded `closing_window_seconds=0`, Live → PendingSettlement directly (documented). CLOSING not yet observed; needs an operator-created windowed ruleset |
+| 3c Bidding | PASS — 16 accepted bids (users 2/3 alternating), each with `credit_transaction_id` set and lot consumption == bid amount; amounts rose 10→135; bid #16 (135, user 2) = `highest_bid_id`. 3000ms interval frozen in snapshot; discrete sub-3000ms rejection attempt not separately exercised this run |
+| 3d Winner/settlement/compensation | PASS — `closure:highest_bid`; winner user 2 (Adom Nas) at 135 credits (`winning_bid_id:16` = `highest_bid_id`); `settlement_due_at` set; settlement order `AIC-O-20260913-DPJKPLULVX` source `auction_win` total 10000 now **Paid** (17:00:34); auction `settled`; winner credit wallet 600→147 (453 consumed, matches bids); loser user 3 wallet 500→120 (380 consumed); loser Store Wallet `auction_loss_compensation` **3420 minor = floor(380×4500/500)** key `auction-loss:1:3` single row; winner excluded (no `auction-loss:1:2`); free-credit contribution 0 (lot 4 source `purchased`, paid 380 / free 0); Store Wallet ledger sum == `balance_minor` MATCH (then applied, see Flow 5) |
 | 4 No-bid / cancel / forfeit / relist / Buy Now | |
-| 5 Store Wallet apply/release/freeze/conflict | |
+| 5 Store Wallet apply/release/freeze/conflict | partial — compensation applied to catalogue order: `store-wallet:applied:order:3` (−3420, balance 3420→0, ledger==projection MATCH). Release / paid-freeze / payment-conflict not yet exercised |
 
 Verdict: **PASS / FAIL / NEEDS REVIEW**
 

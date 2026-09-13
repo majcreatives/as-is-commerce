@@ -188,7 +188,7 @@ Record per-flow PASS / FAIL with the verifying query/output.
 | Flow | Result |
 |---|---|
 | 1 Catalog Buy Now | PASS — order `AIC-O-20260913-NAO4RZ6Z6N` `paid`; one `order_payments` row `succeeded` (provider ref `AIC-P-20260913-NMVVIYOTMYGH6EZW`, 340000 minor); inventory `reservation` → `sale` (on-hand −1, reserved −1); delivery `pending`; credits untouched; no `cash_transactions` expected (see Flow 1 note); Livewire `wire:click` dead-click incident resolved via config/route cache refresh |
-| 2 Credit purchase | |
+| 2 Credit purchase | PASS — purchase `id:4` ref `AIC-20260913-SGLAMNBCHJDOYHCNMT` status `fulfilled`, amt 1000 = Starter 100 credits, package snapshot stored; `credit_tx:1`, `cash_tx:2` (deposit+debit net zero), cash wallet 0; `projection 600 == ledger_sum 600`; lot source `purchased` acq 1000 remaining 100 (0 consumed) |
 | 3a Create/schedule/activate | |
 | 3b Closing | |
 | 3c Bidding | |

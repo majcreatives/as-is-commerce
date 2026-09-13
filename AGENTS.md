@@ -6,7 +6,7 @@
 **Product:** Gamified Credit-Based E-Commerce Auction Marketplace
 **Market:** Ghana
 **Currency:** GHS / GH₵
-**Current Stage:** Stage 20.5B
+**Current Stage:** Stage 22
 **Stable Branch:** `main`
 **Repository:** `https://github.com/majcreatives/as-is-commerce.git`
 **Stage 20 Baseline Commit:** `0bafe97` — `Stage 20 — Hostinger MariaDB compatibility baseline`

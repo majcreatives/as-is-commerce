@@ -40,7 +40,7 @@ work today. Nothing in this roadmap relaxes any rule in `AGENTS.md`.
 | Stage | Purpose | Risk | Gate / exit criteria |
 |---|---|---|---|
 | **20.5B** | GitHub-native Hostinger staging deployment | Low | Release zip built by GitHub Actions and downloaded on Hostinger; `.env` set (APP_ENV=staging, APP_DEBUG=false, Paystack **test** keys); app boots; `/health` and `/up` respond; no secrets visible anywhere |
-| **21** | Real Laravel migration on MariaDB 11.8.9 | Medium | The full product migration runs clean against `u146516859_asiscomm`; schema audit passes — tables, indexes, foreign keys, constraints, BIGINT definitions, timestamps, collations, unique constraints, JSON columns, enum-like fields, transaction/`FOR UPDATE` behavior |
+| **21** | Real Laravel migration on MariaDB 11.8.9 | Medium | **VERIFIED on staging (2026-09-13)** — full product migration ran clean against `u146516859_asiscomm` (28/28 Ran); schema audit passed via `docs/VERIFY_21_SCHEMA_AUDIT.md`: tables, indexes (incl. `bids_highest_bid_index` `DESC`), foreign keys, constraints (73 named `chk_*` + 18 `json_valid`; legacy 3 removed), BIGINT definitions, timestamps, collations, unique constraints (idempotency scoped to user), JSON columns, enum-like fields, transaction/`FOR UPDATE` behavior, freeze/append-only triggers (28) |
 | **22** | Hostinger application/bootstrap verification | Medium | Auth (register/login/logout/verify/password), catalogue reads, admin login, health endpoints all pass on staging; `APP_DEBUG=false` confirmed; `config:show paystack` reports the key is set (value never printed) |
 | **23** | Full staging functional audit | High | Buy Now; credit purchase; credit wallet ledger + consumption; auctions (create, schedule, activate, bid, cooldown, closing, winner resolution, settlement handoff, cancel, forfeit, relist); Store Wallet (loss compensation, lot valuation, balance, checkout application, release, paid-order freeze) — every flow inspected |
 | **24** | Payment/webhook staging audit | Very High | Paystack **test mode** — initialization, callback, webhook, HMAC signature verification, duplicate-event idempotency, payment conflict (Paid + fulfilment blocked), failed payment, late payment. No real money moves |
@@ -59,6 +59,12 @@ staging gate stays small:
 
 - **Paystack "not configured"** is fixed in **20.5B** as an operator step (a
   stale `config:cache` after a `.env` change), not a code change.
+- **OTP / email verification / password reset** was investigated in **22** and
+  recorded as a gap: the current implementation ships register/login/logout
+  plus a profile password change, with `phone_verified_at` / `email_verified_at`
+  stored but no verification or password-reset routes. Building them needs an
+  explicit business decision (OTP provider/transport) and is deferred — it is
+  not silently added.
 - **Admin sidebar, product image gallery and editable auction end dates** wait
   for **31+**. In particular, auction end dates touch the frozen-snapshot and
   server-clock model and require an explicit business decision when they are

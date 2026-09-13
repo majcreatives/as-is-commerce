@@ -26,6 +26,18 @@ this document and the queries hit the connection already in `.env`:
 Paste each SQL block below into that REPL. Copy each output block into the
 Results section (end of this file) as evidence.
 
+### Know your two prompts
+
+- `[u146516859@nl-srv-web975 …]$` = **bash**. Only `artisan` commands run here
+  (they start with `/opt/alt/php84/usr/bin/php`).
+- `MariaDB [u146516859_asiscomm]>` = the **DB REPL** opened by `artisan db`.
+  Only SQL (statements ending in `;`) runs here.
+- Do not type an `artisan` command into the DB REPL — the client treats it as
+  an unfinished SQL statement and waits forever behind a `->` prompt. Press
+  **Ctrl+C** to discard, type `exit;` (or `\q`) to return to bash.
+- Leave the REPL with `exit;` before every run of a bash block; re-enter it
+  with `artisan db` again (each session is fresh).
+
 Record the MariaDB version for the record:
 
 ```sql
@@ -38,9 +50,15 @@ Expect `11.8.x`.
 
 ## 0. Migration state
 
+> Run at the **bash** prompt, not inside the DB REPL.
+
 ```bash
-/opt/alt/php84/usr/bin/php artisan migrate:status --force
+/opt/alt/php84/usr/bin/php artisan migrate:status
 ```
+
+> **Do not add `--force`.** It exists on `migrate` but not on `migrate:status`
+> — `artisan migrate:status --force` errors with "The '--force' option does
+> not exist."
 
 | Expectation |
 |---|
@@ -64,7 +82,8 @@ ORDER BY table_name;
 
 | Expectation |
 |---|
-| **47** tables |
+| **47** product tables |
+| The query also returns Laravel's bookkeeping `migrations` table → **48 rows total**. `migrations` is framework machinery, not a product table; do not count it in the 47 |
 | Every `engine` = `InnoDB` |
 | Every `table_collation` = `utf8mb4_unicode_ci` (or a compatible unicode collation) |
 
@@ -157,12 +176,13 @@ WHERE constraint_schema = DATABASE()
 
 ### 3c. Engine-level round-trip (TEMPORARY table, no FK dependency)
 
+> Paste the whole block as **one line** with `JSON_EXTRACT`. The `payload->>`
+> arrow operators are mangled by some paste paths into the REPL (syntax error
+> 1064), and temp tables die if the client reconnects mid-run — so everything
+> that touches the probe must arrive in the same, single paste.
+
 ```sql
-DROP TEMPORARY TABLE IF EXISTS audit_json_probe;
-CREATE TEMPORARY TABLE audit_json_probe (payload JSON);
-INSERT INTO audit_json_probe VALUES (JSON_OBJECT('version', 3));
-SELECT payload->>'$.version' AS round_trip_result FROM audit_json_probe;
-DROP TEMPORARY TABLE audit_json_probe;
+DROP TEMPORARY TABLE IF EXISTS audit_json_probe; CREATE TEMPORARY TABLE audit_json_probe (payload JSON); INSERT INTO audit_json_probe VALUES (JSON_OBJECT('version', 3)); SELECT JSON_EXTRACT(payload, '$.version') AS round_trip_result FROM audit_json_probe; DROP TEMPORARY TABLE audit_json_probe;
 ```
 
 | Expectation |
@@ -185,7 +205,10 @@ WHERE tc.table_schema = DATABASE()
 ORDER BY tc.table_name, tc.constraint_name;
 ```
 
-Expect roughly **60** `chk_*` constraints, including:
+Expect **91 rows = 73 named `chk_*` constraints + 18 `json_valid` checks**.
+(In MariaDB, the JSON-declared columns surface as extra CHECK rows named after
+the column — e.g. `metadata`, `rules_snapshot`, `payload`, `result` — so the
+total exceeds the `chk_*` count.) The named `chk_*` constraints include:
 
 - orders: `chk_orders_status`, `chk_orders_payable_positive`,
   `chk_orders_payable_consistent`, `chk_orders_store_wallet_within_total`,
@@ -413,6 +436,57 @@ guards, including but not limited to:
 
 > Paste each query's output here with the audit-point label and a PASS/FAIL
 > verdict, e.g.:
+
+### Executed on `u146516859_asiscomm` (Hostinger MariaDB 11.8.x) — Stage 21 CLOSED
+
+Probe warning: the client repeatedly printed `ERROR 2006 (HY000): Server has
+gone away` then "No connection. Trying to reconnect…" before every query. This
+is a Hostinger connection-idle behavior. Every query completed on the
+reconnected session with a correct result; audit decisions below use the
+results, not the reconnect noise. A query that *hangs* (rather than
+reconnecting) would be a stopping condition — none did.
+
+- 0. Migrations — **PASS** (28/28 listed **Ran**, none Pending; order
+  0001_01_01 framework → … → 2026_09_10_100500; `migrate:status --force` was
+  run first and errors correctly — retried without `--force`).
+- 1. Tables / engine / collation — **PASS** (48 rows returned = 47 product
+  tables + `migrations`; every engine `InnoDB`; every collation
+  `utf8mb4_unicode_ci`).
+- 2. Integer minor units — **PASS** (0 decimal columns; no `float`/`double`
+  anywhere).
+- 3. JSON columns and round-trip — **PASS** (23 `longtext` candidates listed
+  incl. `auctions.rules_snapshot`, `orders.pricing_snapshot`,
+  `payment_webhook_events.payload`, ledger `metadata` columns; 18 carry
+  `json_valid`; `notifications.data` correctly plain TEXT and absent from the
+  json_valid set; single-paste `JSON_EXTRACT` probe returned `round_trip_result
+  = 3`. The `->>` arrow form failed with syntax error 1064 — see §3c rewrite).
+- 4. CHECK constraints — **PASS** (91 rows = 73 named `chk_*` + 18 `json_valid`
+  checks; all hardening rules present incl. `chk_orders_payable_consistent`,
+  `chk_orders_store_wallet_buy_now_only`, `chk_auctions_winner_pairing`,
+  `chk_bids_amount_positive`).
+- 4b. Critical negative test — **PASS** (`chk_rulesets_bid_cost`,
+  `chk_rulesets_checkout_price`, `chk_rulesets_discount_rate` → **Empty set**;
+  the three legacy constraints are genuinely gone — schema is not rolled back).
+- 5. Idempotency key unique — **PASS**
+  (`UNIQUE \`idempotency_keys_operation_user_id_idempotency_key_unique\`
+  (\`operation\`,\`user_id\`,\`idempotency_key\`)`; `result` longtext with
+  `CHECK (json_valid(result))`; FK `user_id → users.id ON DELETE SET NULL`).
+- 6. `FOR UPDATE` — **PASS** (SQL probe: row 1 locked then `ROLLBACK`; app
+  probe via tinker: `locked_row = site_name` then
+  `RuntimeException: rollback-only audit probe` — rollback confirmed).
+- 7. Direction-critical index — **PASS**
+  (`KEY \`bids_highest_bid_index\` (\`auction_id\`,\`amount_credits\` DESC,
+  \`sequence\`)` — `DESC` present).
+- 8. Append-only / freeze triggers — **PASS** (28 triggers: freeze guards
+  `auctions_frozen_configuration`, `orders_frozen_after_payment`,
+  `order_payments_frozen_request`, `deliveries_frozen_address`,
+  `refunds_frozen_request`, `referrals_frozen_relationship`,
+  `credit_lots_acquisition_frozen`; no-update/no-delete; immutable
+  transitions guards).
+
+Verdict: **PASS** — Stage 21 gate closes; Stage 22 proceeds.
+
+> Template (retained for future runs):
 >
 > - 0. Migrations — **PASS** (28/28 Ran)
 > - 1. Tables / engine / collation — **PASS** (47 InnoDB, utf8mb4_unicode_ci)

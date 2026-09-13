@@ -58,7 +58,7 @@ it('referrals:reconcile stamps the cache', function (): void {
 // --------------------------------------------------------------- Query
 
 it('reads all sweep timestamps from the cache', function (): void {
-    $now = now();
+    $now = now()->toIso8601String();
     Cache::put('sweeps:auctions_tick:last_run', $now);
     Cache::put('sweeps:expire_checkouts:last_run', $now);
     Cache::put('sweeps:reconcile_refunds:last_run', $now);
@@ -69,7 +69,7 @@ it('reads all sweep timestamps from the cache', function (): void {
     expect($status)->toHaveCount(4);
 
     foreach ($status as $sweep) {
-        expect($sweep['last_run_at'])->not->toBeNull();
+        expect($sweep['last_run_at'])->toBe($now);
     }
 });
 
@@ -86,8 +86,7 @@ it('shows null for sweeps that have never run', function (): void {
 // --------------------------------------------------------------- Dashboard
 
 it('shows sweep timestamps on the dashboard', function (): void {
-    $now = now();
-    Cache::put('sweeps:auctions_tick:last_run', $now);
+    Cache::put('sweeps:auctions_tick:last_run', now()->toIso8601String());
 
     Livewire::actingAs($this->admin)
         ->test(OperationsDashboard::class)

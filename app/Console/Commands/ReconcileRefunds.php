@@ -62,7 +62,7 @@ class ReconcileRefunds extends Command
 
         $this->info("Checked {$settled['checked']} outstanding refund(s); {$settled['settled']} settled.");
 
-        Cache::put('sweeps:reconcile_refunds:last_run', Carbon::now());
+        Cache::put('sweeps:reconcile_refunds:last_run', Carbon::now()->toIso8601String());
 
         if ($this->option('skip-report') === true) {
             return self::SUCCESS;

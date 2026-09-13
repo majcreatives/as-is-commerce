@@ -63,7 +63,7 @@ class RunAuctionClock extends Command
             "Started {$started}, entered closing {$closing}, closed {$closed}, forfeited {$forfeited}."
         );
 
-        Cache::put('sweeps:auctions_tick:last_run', Carbon::now());
+        Cache::put('sweeps:auctions_tick:last_run', Carbon::now()->toIso8601String());
 
         return self::SUCCESS;
     }

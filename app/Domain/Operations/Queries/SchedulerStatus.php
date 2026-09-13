@@ -63,7 +63,7 @@ class SchedulerStatus
                 'key' => $key,
                 'label' => $meta['label'],
                 'cadence_minutes' => $meta['cadence_minutes'],
-                'last_run_at' => Cache::get($key)?->toIso8601String(),
+                'last_run_at' => Cache::get($key),
             ],
             array_keys(self::SWEEPS),
             self::SWEEPS,

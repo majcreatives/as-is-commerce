@@ -45,7 +45,7 @@ class ReconcileReferrals extends Command
             ]],
         );
 
-        Cache::put('sweeps:reconcile_referrals:last_run', now());
+        Cache::put('sweeps:reconcile_referrals:last_run', now()->toIso8601String());
 
         $anomalies = $reconciler->report(max(1, (int) $this->option('limit')));
 

@@ -70,7 +70,7 @@ class ExpireCheckouts extends Command
 
         $this->info("Expired {$expired} checkout(s).");
 
-        Cache::put('sweeps:expire_checkouts:last_run', Carbon::now());
+        Cache::put('sweeps:expire_checkouts:last_run', Carbon::now()->toIso8601String());
 
         return self::SUCCESS;
     }

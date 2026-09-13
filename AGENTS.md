@@ -3,535 +3,410 @@
 # As-Is-Commerce — Universal AI Agent Development Protocol
 
 **Project:** As-Is-Commerce
-**Project Type:** Gamified Credit-Based E-Commerce Auction Marketplace
-**Target Market:** Ghana
+**Product:** Gamified Credit-Based E-Commerce Auction Marketplace
+**Market:** Ghana
 **Currency:** GHS / GH₵
-**Current Baseline:** Stage 20
-**Repository Branch:** `main`
+**Current Stage:** Stage 20
+**Stable Branch:** `main`
 **Repository:** `https://github.com/majcreatives/as-is-commerce.git`
+**Stage 20 Baseline Commit:** `0bafe97` — `Stage 20 — Hostinger MariaDB compatibility baseline`
 
 ---
 
-# 1. PURPOSE OF THIS FILE
+## 1. PURPOSE
 
-This file is the authoritative development protocol for **any AI coding agent** working on As-Is-Commerce.
+This file is the authoritative development protocol for **every AI coding agent** working on As-Is-Commerce.
 
-It applies regardless of:
-
-* AI provider
-* AI model
-* IDE
-* terminal
-* coding environment
-* local or cloud execution environment
-
-Examples include, but are not limited to:
+It applies regardless of agent, model, IDE, or platform, including:
 
 * Claude
-* OpenAI Codex
+* Codex
 * Gemini
 * Cursor
 * Windsurf
 * GitHub Copilot
 * OpenCode
-* other autonomous or semi-autonomous coding agents
+* other compatible coding agents
 
-An agent must read and follow this file before modifying the repository.
+There is intentionally **one authoritative instruction file**.
 
-If another instruction conflicts with this file, the agent must identify the conflict rather than silently overriding established project rules.
+Do not create competing agent instruction files unless explicitly requested.
 
-The project owner has final authority over business requirements.
+### Authority rule
 
----
+The repository and current implementation are authoritative.
 
-# 2. PROJECT STATUS
+When documentation conflicts with the actual Stage 20 implementation:
 
-The project is currently at the **Stage 20 baseline**.
+1. inspect the implementation;
+2. inspect tests;
+3. inspect migrations/schema;
+4. inspect recent Git history;
+5. identify the discrepancy;
+6. do not silently choose a financial or auction behavior;
+7. ask for clarification when the discrepancy affects business correctness.
 
-Stage 20 established the Hostinger/MariaDB deployment compatibility baseline and synchronized the local Git repository with the staging-compatible migration changes.
-
-The current Git baseline is:
-
-```
-0bafe97 Stage 20 — Hostinger MariaDB compatibility baseline
-```
-
-The repository is hosted on GitHub and the current branch is:
-
-```
-main
-```
-
-The working tree is expected to remain clean unless the agent is actively performing approved development work.
+Historical documentation must not override the current Stage 20 architecture.
 
 ---
 
-# 3. SOURCE OF TRUTH
+# 2. CURRENT PROJECT STATE
 
-The development hierarchy is:
+As-Is-Commerce is a Ghana-focused e-commerce marketplace combining:
 
-```
-Local Repository
-      ↓
-    Git
-      ↓
-   GitHub
-      ↓
-```
+* ordinary Buy Now commerce;
+* credit-based auctions;
+* Paystack payments;
+* platform-owned inventory;
+* credit wallets and credit lots;
+* cash ledgers;
+* Store Wallet;
+* manual fulfilment;
+* operational/admin workflows.
 
-Hostinger Staging
-↓
-Verification
-↓
-Production
+The application is a **server-authoritative Laravel modular monolith**.
 
-### Local repository
+Do not introduce microservices merely for architectural fashion.
 
-The local repository is the primary development environment.
-
-### GitHub
-
-GitHub is the canonical remote Git repository and source-control history.
-
-### Hostinger staging
-
-Hostinger is a **deployment and verification environment**.
-
-Hostinger is NOT the primary development environment.
-
-Do not treat manual changes made directly on Hostinger as the source of truth.
-
-Do not develop by editing application source directly on the server.
-
-If a server-side emergency change is ever required, it must subsequently be reconciled into the local repository and Git history.
-
-### Production
-
-Production must never be changed merely because staging works.
-
-Production deployment is a separate controlled step.
-
----
-
-# 4. CURRENT DEPLOYMENT ENVIRONMENT
-
-The current staging environment is hosted on Hostinger.
-
-Staging domain:
-
-```
-darksalmon-swan-978886.hostingersite.com
-```
-
-Staging application directory:
-
-```
-/home/u146516859/domains/darksalmon-swan-978886.hostingersite.com/public_html/as-is-commerce-stage20
-```
-
-The application currently uses:
+Current environment:
 
 * Laravel 13
 * PHP 8.4+
-* MariaDB 11.8.x on Hostinger
+* MariaDB 11.8.x on Hostinger staging
+* MySQL/MariaDB-compatible development architecture
 * database-backed cache
 * database-backed queue
 * database-backed sessions
-* Paystack architecture
-* Redis architecture planned/used for later high-concurrency requirements
+* Paystack
+* Redis may be used later for high-concurrency auction transport/workloads
+* Livewire
+* Tailwind
+* Vite
+* Pest/PHPUnit tooling as currently configured
+* PHPStan
+* Laravel Pint
 
-Hostinger's shell-level default PHP may differ from the application's required PHP version.
+Redis, Reverb, Horizon, persistent workers, courier integrations, and other infrastructure must not be introduced merely because they may be useful later.
 
-The deployment has therefore been configured to explicitly use PHP 8.4 where required.
-
-Do not assume that:
-
-```
-php
-```
-
-and:
-
-```
-/opt/alt/php84/usr/bin/php
-```
-
-refer to the same PHP runtime on Hostinger.
-
-Always verify the actual runtime before making deployment decisions.
+Use the infrastructure currently supported by the target deployment.
 
 ---
 
-# 5. DEVELOPMENT WORKFLOW
+# 3. SOURCE-OF-TRUTH HIERARCHY
 
-For normal development:
+When determining what is true:
+
+1. **Current local repository**
+2. **Current Git state/history**
+3. **GitHub `origin/main`**
+4. **Hostinger staging**
+5. **Verification/testing evidence**
+6. Historical documentation
+
+Staging is for deployment and verification.
+
+Staging must not become the source of application logic.
+
+If a manual change is made on staging for investigation, reproduce the intended change in local source code before considering it part of the product.
+
+---
+
+# 4. AI AGENT OPERATING PROTOCOL
+
+Before changing code:
 
 1. Inspect the repository.
-2. Read `AGENTS.md`.
-3. Check Git status.
+2. Read this `AGENTS.md`.
+3. Run:
+
+   ```bash
+   git status
+   ```
 4. Confirm the current branch.
-5. Pull the latest relevant GitHub changes when appropriate.
-6. Inspect existing implementation.
-7. Understand the affected architecture.
-8. Plan the change.
-9. Implement the smallest appropriate change.
-10. Run relevant tests.
-11. Review the Git diff.
-12. Commit meaningful changes.
-13. Push to GitHub.
-14. Deploy to staging when appropriate.
-15. Verify staging.
-16. Report exactly what was changed and verified.
+5. Confirm the current commit when relevant.
+6. Inspect the implementation involved.
+7. Inspect related tests.
+8. Inspect migrations/schema when persistence is involved.
+9. Inspect relevant services/actions/domain objects.
+10. Understand existing behavior before changing it.
+11. Make a minimal implementation plan.
+12. Make the smallest correct change.
+13. Run appropriate tests.
+14. Inspect the Git diff.
+15. Run formatting/static analysis where appropriate.
+16. Commit meaningful work.
+17. Push only when instructed/appropriate.
+18. Deploy to staging when required.
+19. Verify staging behavior.
+20. Report exactly what was changed and verified.
 
-Do not skip inspection merely because the requested change appears simple.
+### Never claim work that was not performed.
 
----
+Do not say:
 
-# 6. BEFORE MODIFYING THE REPOSITORY
+* "tested" if tests were not run;
+* "deployed" if deployment was not performed;
+* "verified" if verification did not happen;
+* "fixed" if the implementation was not actually changed;
+* "working" based only on reasoning.
 
-Before changing code, the agent should inspect:
+Distinguish clearly between:
 
-```
-git status
-git branch --show-current
-git log --oneline -10
-```
-
-Then inspect the relevant existing implementation.
-
-The agent must not assume:
-
-* a feature does not exist
-* a component is unused
-* a database field is obsolete
-* a service can be replaced
-* a migration can safely be rewritten
-* a business rule can be inferred from UI behavior
-
-The existing codebase is authoritative for implementation details unless the project owner explicitly requests a change.
+* implemented;
+* tested locally;
+* deployed;
+* manually verified;
+* not yet verified.
 
 ---
 
-# 7. GIT SAFETY
+# 5. GIT SAFETY
 
-Git is part of the project's safety system.
+Never perform destructive Git operations without explicit approval.
 
-### Never perform without explicit approval:
+Do not:
 
-```
+```bash
 git reset --hard
 git clean -fd
 git push --force
 git push --force-with-lease
-history rewriting
-destructive branch deletion
-mass file deletion
-reverting unrelated commits
 ```
 
-Do not destroy existing work to make a task easier.
+Do not:
 
-Do not overwrite user modifications without understanding them.
+* rewrite history;
+* delete branches containing useful work;
+* mass-delete project files;
+* revert unrelated work;
+* overwrite user changes;
+* replace existing project instructions without first preserving their useful content.
 
-Before committing:
+Never run `git init` in this project.
 
-```
+The repository already exists.
+
+Before modifying files, inspect:
+
+```bash
 git status
-git diff
+git branch --show-current
+git log -5 --oneline
 ```
-
-Review staged changes as well when appropriate.
 
 ### Commit discipline
 
-Commits should:
+Use meaningful commits.
 
-* represent one coherent change
-* have a meaningful message
-* avoid unrelated modifications
-* be understandable from Git history
+Prefer:
+
+```text
+Stage 20 — ...
+Fix ...
+Add ...
+Update ...
+Refactor ...
+Test ...
+```
 
 Do not create meaningless commits such as:
 
-```
+```text
 changes
-fixes
 update
-stuff
+fix stuff
 test
+asdf
 ```
-
-Prefer messages that describe the actual change.
 
 ---
 
-# 8. BRANCHING
+# 6. BRANCHING
 
-`main` represents the stable project baseline.
+`main` is the stable branch.
 
-Do not use `main` as an unrestricted experimental workspace.
+For substantial work, use an appropriate feature/fix/chore branch unless the workflow explicitly requires direct work on `main`.
 
-For substantial development work, create a focused feature branch.
+Do not merge unrelated work into a feature task.
 
-Example:
-
-```
-git checkout -b feature/auction-ui-improvements
-```
-
-For bug fixes:
-
-```
-git checkout -b fix/auction-validation
-```
-
-For deployment work:
-
-```
-git checkout -b chore/hostinger-deployment
-```
-
-Small, trivial documentation-only changes may be handled differently when appropriate.
-
-Do not create unnecessary branches for every tiny change.
+Do not create unnecessary branches for trivial documentation or configuration changes.
 
 ---
 
-# 9. SECRETS AND CREDENTIALS
+# 7. SECRETS
 
 Never commit:
 
 * `.env`
-* production `.env`
-* database passwords
+* API secrets
 * Paystack secret keys
-* API keys
-* webhook secrets
+* database passwords
+* SSH passwords
 * private keys
-* SSH credentials
-* access tokens
-* personal credentials
+* tokens
+* webhook secrets
+* credentials
+* customer secrets
+* authentication codes
 
-Use `.env.example` for configuration documentation.
+Never place secrets in:
 
-Never paste secrets into:
+* source code;
+* tests;
+* documentation;
+* screenshots;
+* Git history;
+* logs.
 
-* Git commits
-* source files
-* logs
-* screenshots
-* test fixtures
-* documentation
-* AI prompts
-* issue reports
+Use environment variables/configuration.
 
-If a secret is accidentally exposed, stop and report it immediately.
-
----
-
-# 10. CORE ARCHITECTURE
-
-As-Is-Commerce is a **server-authoritative modular monolith**.
-
-Do not introduce microservices merely because a task could theoretically use them.
-
-Prefer the existing architecture.
-
-The system is built around:
-
-* Laravel
-* relational database
-* server-side business rules
-* separate financial/credit accounting
-* auction state management
-* Paystack payment processing
-* idempotent transaction handling
-* role-based administration
-* controlled inventory acquisition
-
-Architecture changes require explicit approval when they materially alter the established design.
+Never print secret values during diagnosis.
 
 ---
 
-# 11. BUSINESS LOGIC IS LOCKED
+# 8. ARCHITECTURE
 
-Business rules are not implementation suggestions.
+As-Is-Commerce is a:
 
-They are product requirements.
+> **Server-authoritative modular monolith.**
 
-An AI agent must not silently change business behavior because another implementation appears:
+Keep domain boundaries clear without prematurely converting the system into microservices.
 
-* simpler
-* cleaner
-* more profitable
-* more conventional
-* easier to code
-* easier to test
+## Core principles
 
-If a requested implementation conflicts with an established business rule, identify the conflict and ask the project owner before changing the rule.
+The server decides:
 
-Do not reinterpret requirements silently.
+* auction state;
+* bid validity;
+* bid ordering;
+* credit consumption;
+* inventory ownership;
+* payment validity;
+* order payment state;
+* fulfilment state;
+* Store Wallet issuance;
+* financial balances;
+* settlement;
+* refunds.
 
----
+The browser is never authoritative.
 
-# 12. AUCTION MODEL
-
-The locked auction model is:
-
-## Highest Valid Credit Bid
-
-The system must not silently revert to or implement:
-
-* Last Bidder Standing
-* Lowest Unique Bid
-* Highest bidder plus arbitrary additional fees
-* random winner selection
-* hidden bid weighting
-* credit-derived fake cash auction pricing
-
-unless the project owner explicitly changes the business model.
-
-The authoritative auction result must be determined by the server.
-
-The client must never be trusted as the final authority for:
-
-* bid validity
-* bid amount
-* auction timing
-* winner
-* settlement
-* credit deduction
-* inventory ownership
+JavaScript, Livewire, forms, polling, countdowns, or UI state must never determine financial or auction outcomes.
 
 ---
 
-# 13. AUCTION SETTLEMENT ECONOMICS
+# 9. LOCKED BUSINESS MODEL
 
-The normal auction winner pays:
+The following rules are business-critical.
 
-1. The highest valid bid in permanently consumed credits
-2. The separately configured GHS Auction Settlement Amount
-3. Applicable checkout delivery and other charges
-
-The GHS Auction Settlement Amount is:
-
-* independently configured
-* separate from Buy Now pricing
-* frozen/snapshotted for the auction
-* not derived from a displayed Buy Now price
-
-Do not replace this model with a percentage of Buy Now price unless explicitly instructed.
-
-Do not invent a "current auction cash price" based on accumulated credits.
-
-Credits are an economic component of the auction, not a substitute for the configured GHS settlement amount.
+Do not change them without explicit approval.
 
 ---
 
-# 14. BID COST
+## 9.1 Credit purchases
 
-The architecture supports configurable bid cost.
+A credit purchase is:
 
-The current architecture default is:
+> GHS paid → fixed number of credits received.
 
-```
-bid_cost_credits = 1
+The credit package defines:
+
+* package name;
+* credit quantity;
+* package price;
+* currency.
+
+The package snapshot must be stored on the purchase.
+
+Fulfilment must use the immutable purchase snapshot rather than relying on a mutable package record.
+
+---
+
+# 10. CREDIT / BID / BUY NOW SEPARATION
+
+These are three different concepts.
+
+### Credit purchase
+
+GHS buys credits.
+
+### Bid
+
+A customer spends a chosen number of credits on an auction bid.
+
+### Buy Now
+
+Customer pays a GHS product price.
+
+Never conflate these systems.
+
+---
+
+## 10.1 Explicit bid amounts
+
+**There is no fixed one-credit-per-bid assumption.**
+
+A bid carries an explicit number of credits chosen by the bidder.
+
+The architecture must not silently introduce:
+
+```text
+1 credit = 1 bid
 ```
 
-Do not assume that changing bid cost is merely a UI setting.
+or a mandatory fixed bid cost.
 
-Bid-cost changes can affect:
-
-* credit consumption
-* auction validity
-* ledgers
-* winner calculation
-* financial reporting
-* loss-credit calculations
-* tests
-
-Treat such changes as financial/business changes.
+If a future business change introduces a fixed bid cost, that is a deliberate business change requiring approval.
 
 ---
 
-# 15. AUCTION STATE MACHINE
+## 10.2 Highest valid credit bid
 
-The established auction lifecycle is:
+The auction winner is determined by:
 
-```
-DRAFT
-  ↓
-SCHEDULED
-  ↓
-LIVE
-  ↓
-CLOSING
-  ↓
-PENDING_SETTLEMENT
-  ↓
-SETTLED
-```
+> **Highest Valid Credit Bid**
 
-Alternative outcomes include:
+The system must not silently change to:
 
-```
-FORFEITED
-  ↓
-RELISTED
-```
-
-Cancellation is supported from appropriate pre-settlement states.
-
-Do not introduce arbitrary states without understanding the existing state machine.
-
-Auction transitions must remain server-authoritative.
+* Last Bidder Standing;
+* Lowest Unique Bid;
+* highest cash bid;
+* earliest bidder;
+* random selection;
+* another auction model.
 
 ---
 
-# 16. AUCTION RULE SNAPSHOTS
+## 10.3 Buy Now price
 
-Auction rules are snapshotted.
+Buy Now is a GHS amount.
 
-An auction must not unexpectedly inherit new global rules after it has been created if the architecture requires a frozen rule snapshot.
+It is not:
 
-When changing auction configuration:
+* an auction price;
+* a credit value;
+* the current bid;
+* the settlement amount.
 
-* determine whether the change affects future auctions only
-* determine whether existing auctions use a snapshot
-* preserve historical correctness
-* never retroactively alter financial outcomes without explicit approval
+Public UI should use:
 
----
+> **Highest Bid (Credits)**
 
-# 17. CREDIT SYSTEM
+not:
 
-Credits are a financial/economic instrument within the application.
+> Auction Price
 
-Treat credits with the same care as monetary balances.
-
-The application uses:
-
-* credit balances
-* credit lots
-* credit consumption
-* lot acquisition values
-* auction credit consumption
-* store-wallet economics
-* ledger/idempotency controls
-
-Credits must not be treated as an ordinary UI counter.
+when referring to the credit bid.
 
 ---
 
-# 18. CREDIT LOTS
+# 11. CREDIT VALUATION
 
-Credit valuation is lot-based.
+Credits have no universal cash value.
 
-The current Stage 16.5 implementation uses lot-based valuation rather than a flat universal credit valuation.
+For qualifying purchased credits consumed on an auction, the valuation is lot-specific:
 
-The relevant economic calculation uses:
-
-```
+```text
 floor(
     credits
     × lot.acquisition_amount_minor
@@ -539,344 +414,1226 @@ floor(
 )
 ```
 
-Integer truncation occurs according to the established implementation.
+All money is integer minor units.
 
-Do not replace lot-based valuation with a flat credit price without explicit approval.
+No floating-point financial arithmetic.
 
-The established lot allocation behavior must be preserved.
-
----
-
-# 19. CREDIT LOT ALLOCATION
-
-The project uses controlled credit-lot allocation behavior, including:
-
-* promotional priority where applicable
-* earliest-expiry handling
-* lot-specific acquisition value
-* accounting-safe consumption
-
-Do not casually reorder or simplify lot allocation.
-
-Any change must be evaluated for its effect on:
-
-* customer balances
-* loss-credit calculations
-* store-wallet issuance
-* financial reporting
-* historical transactions
+Free, promotional, referral, and zero-value adjustment credits have zero cash-equivalent valuation unless the business rules explicitly state otherwise.
 
 ---
 
-# 20. STORE WALLET
+# 12. CREDIT LOTS
 
-Stage 16.5 introduced the store-wallet ledger.
+Credit balances are allocated through credit lots.
 
-The implementation includes:
+Lot allocation is deterministic.
 
-* `store_wallets`
-* append-only `store_wallet_transactions`
-* unique idempotency keys
-* wallet-row locking
-* balance projection
-* one-time issuance protection
+Where applicable, use:
 
-Store-wallet issuance must remain idempotent.
+1. promotional credits first;
+2. then earliest-expiring applicable lots;
+3. then oldest applicable lots.
 
-The store wallet is currently associated with the defined catalogue checkout economics.
+Do not invent a different allocation order.
 
-Do not automatically expand store-wallet coverage to auction Buy Now or unrelated flows without explicit product approval.
+Credit consumption must preserve enough information to reconstruct:
 
----
+* which credits were consumed;
+* which lots supplied them;
+* their acquisition value;
+* the resulting cash-equivalent valuation.
 
-# 21. LOSS-CREDIT ECONOMICS
-
-The established loss-credit/store-wallet calculation is lot-based.
-
-The current implementation uses the acquisition value of the consumed credit lots.
-
-Do not replace it with a flat cash-per-credit conversion.
-
-Do not round in a way that changes the established economic result.
-
-Any change to this area requires:
-
-* unit tests
-* edge-case tests
-* idempotency tests
-* review of historical implications
+Financial reconciliation must be reproducible.
 
 ---
 
-# 22. PAYMENT ARCHITECTURE
+# 13. FINANCIAL RULES
 
-Payments use Paystack.
+These rules are non-negotiable.
 
-Payment status must be determined from authoritative server-side/payment-provider information.
+1. Ledgers are authoritative.
+2. Wallet balances are projections.
+3. Financial transaction tables are append-only.
+4. Never directly mutate a financial balance as a substitute for a ledger entry.
+5. Credit and cash are separate systems.
+6. Money uses integer minor units/pesewas.
+7. Credits use BIGINT.
+8. Financial operations occur transactionally.
+9. External retries are protected by idempotency.
+10. Corrections use compensating entries.
 
-Do not trust:
+Never "repair" financial balances by simply assigning a new balance.
 
-* browser success messages
-* client-side redirects
-* manipulated request parameters
-* UI state
-
-Payment processing must remain idempotent.
-
-Webhook handling must remain safe against:
-
-* duplicate delivery
-* retries
-* reordered events
-* partially completed requests
+Never delete financial history to correct an error.
 
 ---
 
-# 23. PAYMENT CONFLICT POLICY
+# 14. MONEY
 
-This is a LOCKED rule.
+All GHS amounts must use integer minor units.
+
+Examples:
+
+```text
+GH₵10.00 = 1000 pesewas
+GH₵1.50  = 150 pesewas
+```
+
+Use the project's `Money` abstraction.
+
+Do not use:
+
+```php
+(float)
+```
+
+for financial calculations.
+
+Do not use:
+
+```php
+(int) ($amount * 100)
+```
+
+as a financial conversion strategy.
+
+Do not use DECIMAL arithmetic in application logic when integer minor units are appropriate.
+
+Rates should use basis points or another explicitly integer representation.
+
+---
+
+# 15. AUCTION SETTLEMENT
+
+The auction winner's settlement consists of:
+
+1. the highest valid bid expressed in permanently consumed credits;
+2. the separately configured GHS Auction Settlement Amount;
+3. delivery and other applicable checkout charges.
+
+The Auction Settlement Amount is:
+
+* independent of Buy Now price;
+* fixed for the auction;
+* snapshotted/frozen;
+* not dynamically derived from Buy Now price.
+
+Do not invent margin warnings or minimum settlement requirements unless explicitly requested.
+
+---
+
+# 16. AUCTION RULE SNAPSHOTS
+
+When an auction leaves Draft, its runtime rules become immutable.
+
+At auction creation:
+
+```php
+$rules = $ruleset->toRules();
+
+$auction->rules_snapshot = $rules->toArray();
+```
+
+Runtime behavior uses the snapshot.
+
+Do not read mutable ruleset settings during a live auction.
+
+If the serialized rule shape changes, bump the snapshot version.
+
+Current corrected model is Snapshot Version 3.
+
+Historical Version 1 last-bidder behavior must not be reintroduced.
+
+---
+
+# 17. AUCTION RULES
+
+Relevant auction configuration may include:
+
+* minimum bid credits;
+* minimum bid increment;
+* whether bid increases are allowed;
+* duration;
+* closing/anti-sniping behavior;
+* extension rules;
+* settlement amount;
+* currency;
+* other explicitly configured auction behavior.
+
+Do not invent defaults for nullable settings.
+
+In particular:
+
+* `minimum_bid_credits`
+* `minimum_bid_increment_credits`
+* `allow_bid_increase`
+
+must not be arbitrarily populated when the domain allows null.
+
+Extensions are independent of who ultimately wins.
+
+Extensions are off by default unless the auction configuration enables them.
+
+---
+
+# 18. AUCTION STATE MACHINE
+
+The normal lifecycle is:
+
+```text
+DRAFT
+→ SCHEDULED
+→ LIVE
+→ CLOSING
+→ PENDING_SETTLEMENT
+→ SETTLED
+```
+
+Alternative paths may include:
+
+```text
+FORFEITED
+→ RELISTED
+```
+
+Cancellations may occur only through valid lifecycle transitions.
+
+Do not manually assign terminal statuses from UI code.
+
+---
+
+# 19. AUCTION ENGINE
+
+`CloseAuction` determines the winner from bid records.
+
+The authoritative resolver is:
+
+```text
+HighestBidResolver::highestBid()
+```
+
+Do not determine the winner from a cached projection.
+
+### Tie handling
+
+If two bids have the same winning credit amount, use the earliest valid bid according to the auction's authoritative sequence.
+
+Do not rely on timestamp precision for tie-breaking.
+
+---
+
+# 20. BID PLACEMENT
+
+A valid bid must:
+
+1. receive/check idempotency;
+2. lock the auction;
+3. validate auction state;
+4. validate bidder eligibility;
+5. validate bid amount;
+6. consume credits;
+7. write the bid;
+8. rebuild/update the bid projection;
+9. apply extension logic if appropriate;
+10. commit atomically.
+
+A bid must never exist without its successful credit deduction.
+
+A rejected bid must not:
+
+* create a successful bid record;
+* consume credits;
+* partially mutate financial state.
+
+---
+
+# 21. LOCKING ORDER
+
+Use the established lock ordering.
+
+For bid-related operations:
+
+1. auction row `FOR UPDATE`;
+2. product row through `InventoryService`;
+3. wallet row through `CreditLedgerService`;
+4. wallet credit lots by id.
+
+Do not casually introduce a conflicting lock order.
+
+Deadlock prevention is part of correctness.
+
+---
+
+# 22. AUCTION PROJECTIONS
+
+Fields such as:
+
+* `highest_bid_id`;
+* `highest_bid_credits`;
+* `bid_count`;
+
+are projections/cache.
+
+They are not the authoritative winner source.
+
+`HighestBidResolver` is authoritative.
+
+Rebuild logic recomputes projections.
+
+Verification reports discrepancies.
+
+Verification must not silently repair financial or auction data.
+
+---
+
+# 23. AUCTION CLOCK
+
+Auction timing is server authoritative.
+
+The authoritative values are:
+
+* `starts_at`;
+* `ends_at`.
+
+The client countdown is presentation only.
+
+The countdown must never:
+
+* close an auction;
+* declare a winner;
+* extend an auction;
+* determine payment deadlines.
+
+Scheduled auction processing is performed by server-side commands such as:
+
+```bash
+php artisan auctions:tick
+```
+
+The command must be idempotent.
+
+---
+
+# 24. BUY NOW AUCTIONS
+
+A successful Buy Now ends the auction.
+
+It does not allow the standing bidder to become the winner.
+
+The closure must record appropriate fields such as:
+
+```text
+closure_reason = buy_now
+buy_now_user_id = purchaser
+winner fields = null
+```
+
+Database constraints must prevent incompatible winner/Buy Now states.
+
+---
+
+# 25. AUCTION FREEZING
+
+Once an auction leaves Draft, freeze the business-critical values including:
+
+* rules snapshot;
+* snapshot version;
+* settlement amount;
+* product;
+* currency;
+* other values explicitly defined as immutable by the current schema.
+
+Do not allow ordinary product/ruleset edits to silently change a live auction.
+
+---
+
+# 26. INVENTORY
+
+The platform owns the marketplace inventory.
+
+Do not introduce seller/vendor/merchant ownership concepts unless explicitly approved.
+
+Inventory truth is represented through inventory transactions.
+
+`products.stock_on_hand` and `products.stock_reserved` are projections.
+
+Never directly mutate them as a business operation.
+
+Use:
+
+```text
+InventoryService
+```
+
+for inventory movements.
+
+---
+
+# 27. INVENTORY TRANSACTIONS
+
+Inventory movements are append-only.
+
+Corrections use opposing adjustment movements.
+
+Every movement should record appropriate:
+
+* movement type;
+* signed delta;
+* resulting on-hand;
+* resulting reserved;
+* reason;
+* actor;
+* timestamp.
+
+Stock must never become negative.
+
+Reserved stock must never exceed on-hand stock.
+
+Available stock:
+
+```text
+on_hand - reserved
+```
+
+---
+
+# 28. INVENTORY LOCKING
+
+`InventoryService` must lock the product row before reading and changing stock.
+
+Use:
+
+```sql
+SELECT ... FOR UPDATE
+```
+
+or the equivalent Laravel locking mechanism.
+
+Never trust a previously-read stock value during a concurrent acquisition.
+
+---
+
+# 29. AUCTION RESERVATIONS
+
+Publishing an auction may reserve one inventory unit.
+
+Depending on the lifecycle:
+
+* auction publication reserves;
+* Buy Now or successful settlement converts reservation into sale;
+* cancellation releases;
+* no-bid closure releases;
+* forfeiture releases.
+
+Multiple concurrent auctions are only allowed where available inventory supports the reservations.
+
+Do not invent reservation expiry behavior where the current domain does not provide it.
+
+---
+
+# 30. PRODUCT STATES
+
+Product lifecycle generally follows:
+
+```text
+Draft
+→ Active
+→ Inactive / OutOfStock
+→ Archived
+```
+
+Only appropriate public statuses are visible.
+
+Only `Active` products are purchasable.
+
+Categories and brands should be archived rather than deleted.
+
+Public queries must use the project's `publiclyVisible` behavior.
+
+---
+
+# 31. MARKETPLACE AVAILABILITY
+
+Catalog stock alone does not determine whether a product can be purchased.
+
+A live auction may hold the unit.
+
+Use the marketplace availability resolver, such as:
+
+```text
+ListingAvailability
+ProductDiscoveryQuery::availabilityFor()
+```
+
+Do not blindly call:
+
+```text
+isInStock()
+```
+
+from product/listing pages when auction state affects availability.
+
+Avoid per-card queries.
+
+Use page-level/batched read queries.
+
+---
+
+# 32. ORDERS
+
+An Order represents a GHS obligation.
+
+It is distinct from:
+
+* auction;
+* bid;
+* payment attempt;
+* inventory;
+* fulfilment;
+* delivery.
+
+Creating checkout does not mean payment succeeded.
+
+Creating an order does not mean inventory was sold.
+
+---
+
+# 33. PAYMENT AUTHORITY
+
+A payment becomes successful only through server-side Paystack verification.
+
+The browser callback is not proof of payment.
+
+The callback must reference an owned purchase/order and then execute the same verified fulfilment pathway as appropriate.
+
+Never accept an amount supplied by the browser as authoritative.
+
+The server calculates the expected amount.
+
+---
+
+# 34. PAYSTACK CREDIT PURCHASE FLOW
+
+`FulfillCreditPurchase` is the authoritative credit-purchase fulfilment path.
+
+It must:
+
+1. verify with Paystack server-to-server;
+2. compare against the immutable purchase snapshot;
+3. verify success status;
+4. verify reference;
+5. verify currency;
+6. verify amount;
+7. apply idempotency protection;
+8. lock the purchase;
+9. ensure it has not already been fulfilled;
+10. post the cash transaction;
+11. post the credit transaction;
+12. mark the purchase fulfilled;
+13. commit atomically.
+
+The purchase must not be marked fulfilled before the credits exist.
+
+If anything fails, the financial transaction rolls back.
+
+---
+
+# 35. PAYSTACK WEBHOOK
+
+Webhook processing is unauthenticated at the application level and therefore must be strongly verified.
+
+Paystack webhook signature:
+
+* use HMAC SHA-512;
+* use the raw request body;
+* use the Paystack secret;
+* use `hash_equals`.
+
+Verify the signature before:
+
+* trusting payload contents;
+* parsing for business purposes;
+* storing;
+* acting.
+
+Protect against duplicate events using a unique combination such as:
+
+```text
+provider + provider_event_id
+```
+
+Return success promptly for successfully handled events.
+
+Return an appropriate failure status when processing genuinely fails so Paystack can retry.
+
+CSRF exemption should apply only to the webhook route.
+
+---
+
+# 36. PAYSTACK CONFIGURATION
+
+Relevant environment configuration includes:
+
+```text
+PAYSTACK_SECRET_KEY
+PAYSTACK_PUBLIC_KEY
+PAYSTACK_BASE_URL=https://api.paystack.co
+PAYSTACK_CURRENCY=GHS
+PAYSTACK_TIMEOUT
+```
+
+Never log:
+
+* secret keys;
+* full authorization payloads;
+* card information;
+* sensitive payment credentials.
+
+Never disable TLS verification.
+
+---
+
+# 37. PAYMENT CONFLICT POLICY
+
+This is a locked business rule.
 
 If:
 
-1. Paystack payment succeeds, but
-2. the single inventory unit has already been legitimately acquired by another transaction,
+1. Paystack payment succeeds;
+2. but the single inventory unit was legitimately acquired by another transaction first;
 
-the successful order/payment must remain:
+then:
 
+* preserve the order as **Paid**;
+* preserve the successful payment;
+* mark fulfilment as blocked;
+* record an appropriate `fulfilment_blocked_reason`;
+* place it into the administrative exception workflow;
+* do not silently cancel;
+* do not fabricate a failed payment;
+* do not automatically invent a refund.
+
+Recovery/refund is a separate business decision and later workflow.
+
+The payment must not be represented as failed merely because fulfilment became impossible.
+
+---
+
+# 38. OTHER PAYMENT CONFLICTS
+
+Relevant conflict cases include:
+
+* another transaction acquired the inventory unit;
+* checkout expired during payment;
+* auction was forfeited before payment completed.
+
+The system must always preserve the actual verified payment state.
+
+Do not manipulate payment status merely to make inventory fulfilment easier.
+
+---
+
+# 39. ORDER PAYMENT
+
+`Paid` must only be reachable through the verified payment pathway.
+
+There is no:
+
+```text
+mark as paid
 ```
-Paid
+
+administrative shortcut.
+
+Do not create one.
+
+A payment attempt is verified against its immutable attempt/order data, not mutable browser input.
+
+---
+
+# 40. PAYMENT AND INVENTORY RACE
+
+Inventory acquisition is determined by locking and server-side transactions.
+
+It is never determined by:
+
+* checkout creation time;
+* browser click order;
+* UI leader state;
+* JavaScript;
+* who appeared first on a screen.
+
+One successful payment may result in a fulfilment-blocked Paid order if another legitimate transaction acquired the unit first.
+
+That is intentional.
+
+---
+
+# 41. ORDER EXPIRY
+
+For ordinary Buy Now checkout without an auction reservation, use the existing `payment_due_at`/expiry mechanism.
+
+Scheduled expiry:
+
+```bash
+php artisan orders:expire-checkouts
 ```
 
-The fulfillment must be marked blocked and routed to the appropriate admin exception workflow.
+must be idempotent.
 
-Do NOT:
+Expired orders release their appropriate reservation through the proper lifecycle.
 
-* silently cancel the order
-* mark payment as failed
-* invent an automatic refund
-* delete the transaction
-* pretend the inventory race did not happen
-
-Refund/recovery is a dedicated workflow.
-
-Do not alter this policy without explicit approval from the project owner.
+Do not directly mutate lifecycle states.
 
 ---
 
-# 24. ORDER LIFECYCLE
+# 42. SETTLEMENT HANDOFF
 
-Order lifecycle logic is authoritative.
+Closing an auction should hand off to settlement through:
 
-Do not bypass the existing lifecycle services/state transitions simply to make a feature work.
+```text
+SettlementHandoff
+```
 
-When modifying orders, inspect:
+Do not bypass the lifecycle by directly calling an unrelated checkout-start operation.
 
-* order state
-* payment state
-* fulfillment state
-* inventory ownership
-* exception handling
-* idempotency behavior
+If settlement handoff fails:
 
-A UI action must not directly mutate financial state if the architecture expects a domain/service workflow.
-
----
-
-# 25. INVENTORY INTEGRITY
-
-Single-unit inventory is especially sensitive.
-
-The application must protect against two legitimate transactions acquiring the same physical unit.
-
-Do not solve inventory races purely at the UI level.
-
-Inventory ownership must be protected server-side using the existing transaction/locking/state architecture.
-
-Test race-sensitive operations where applicable.
+* the auction remains closed;
+* it must not be reopened simply because checkout creation failed;
+* the issue becomes an operational exception.
 
 ---
 
-# 26. IDEMPOTENCY
+# 43. FORFEITURE / CANCELLATION
 
-Idempotency is mandatory for financial and retry-prone operations.
+`ForfeitAuction` and `CancelAuction` must use the proper order/lifecycle pathways.
+
+If there is an outstanding winner settlement checkout, close it through the correct lifecycle.
+
+Do not directly mutate order status.
+
+Paid settlement orders must not be silently altered.
+
+Settled is terminal.
+
+---
+
+# 44. STORE WALLET
+
+Store Wallet is a separate cash-value ledger.
+
+It is **not a credit refund**.
+
+When an auction ends because another customer acquires the product, qualifying losing bidders may receive Store Wallet value equal to the lot-based valuation of their consumed purchased credits.
+
+The Store Wallet system currently covers:
+
+> **catalogue checkout only**
+
+Do not expand Store Wallet usage to auction Buy Now or other flows without explicit approval.
+
+---
+
+# 45. STORE WALLET EXCLUSIONS
+
+Store Wallet must not be issued to:
+
+* the auction winner;
+* the Buy Now purchaser;
+* a customer whose credits were free/promo/referral credits with zero valuation;
+* customers where the auction ended by cancellation/forfeiture with no acquiring customer.
+
+Store Wallet issuance must be idempotent.
+
+Use a unique auction+bidder/business-event idempotency key.
+
+---
+
+# 46. STORE WALLET LEDGER
+
+The current Store Wallet implementation uses:
+
+```text
+store_wallets
+store_wallet_transactions
+```
+
+Transactions are append-only.
+
+Use:
+
+* unique idempotency keys;
+* wallet row locking;
+* projected balance;
+* deterministic valuation.
+
+Do not directly set the wallet balance.
+
+---
+
+# 47. STORE WALLET CHECKOUT
+
+Store Wallet may be used as partial payment for eligible catalogue purchases.
+
+It cannot necessarily cover an entire checkout where the current business rules prohibit full coverage.
+
+The browser must not choose an arbitrary authoritative wallet deduction.
+
+Application code computes the valid amount.
+
+When an order is cancelled, expires, or payment fails, an applied Store Wallet amount is released through the proper lifecycle.
+
+Existing idempotency keys include patterns such as:
+
+```text
+store-wallet:applied:order:{orderId}
+store-wallet:released:order:{orderId}
+```
+
+Auction-linked orders do not use Store Wallet.
+
+Do not revalue Store Wallet balances.
+
+Do not claw back value based on later changes in credit pricing.
+
+Do not convert:
+
+```text
+Store Wallet ↔ Credits
+```
+
+unless explicitly approved.
+
+---
+
+# 48. REFUNDS
+
+A refund is a separate financial event.
+
+Never edit the original payment to represent a refund.
+
+`order_payments.amount_minor` remains the original amount.
+
+Refund transactions represent separate amounts/statuses.
+
+Do not:
+
+* return credits automatically;
+* restore stock automatically;
+* reopen a closed order;
+* rewrite payment history.
+
+---
+
+# 49. REFUND POLICY
+
+The current refund architecture primarily supports fulfilment-blocked cases.
+
+A healthy Paid order is not automatically refundable simply because an operator wants a convenience action.
+
+Delivered orders are a different return/fulfilment concern.
+
+Refunds are asynchronous with Paystack.
+
+Provider terminal status determines whether a refund actually succeeded.
+
+---
+
+# 50. REFUND PROCESSING
+
+Conceptually:
+
+```text
+RequestRefund
+→ Pending
+→ ProcessRefund
+→ provider result
+→ terminal state
+```
+
+Provider failures should be recorded.
+
+Do not throw in ways that create uncontrolled provider retries unless that is explicitly the intended provider behavior.
+
+Refund amount is calculated server-side:
+
+```text
+refundable =
+    original payment
+    - succeeded refunds
+    - in-flight refunds
+```
+
+Lock the order before the relevant payment/refund state.
+
+Reconciliation reports discrepancies.
+
+It does not silently repair them.
+
+---
+
+# 51. REFERRALS
+
+Referral credits are ordinary credits.
+
+Use:
+
+```text
+CreditLedgerService::addCredits()
+```
+
+with the appropriate referral source.
+
+Do not create a separate referral cash/credit wallet.
+
+Qualification occurs when:
+
+* the referred customer has a verified successful payment;
+* the order reaches Paid;
+* the payment is not fulfilment-blocked.
+
+Paid is intentionally used rather than Fulfilled.
+
+---
+
+# 52. REFERRAL INTEGRITY
+
+Rules include:
+
+* one referrer per customer;
+* one reward per referral;
+* no self-referral;
+* no reassignment;
+* reward amount snapshotted at issue;
+* issued rewards are immutable;
+* no clawback.
+
+`qualify()` and `reward()` are separate.
+
+A qualified referral may remain retryable if reward issuance fails.
+
+Reconciliation reports problems.
+
+It does not silently grant rewards.
+
+---
+
+# 53. REFERRAL SETTINGS
+
+Relevant settings may include:
+
+```text
+referrals_enabled
+referral_reward_credits
+referral_max_rewards_per_referrer
+```
+
+A zero maximum means no cap where that is the established setting definition.
+
+Permissions include appropriate:
+
+```text
+referrals.view
+referrals.manage
+referrals.settings
+```
+
+Privacy wording should describe:
+
+* joining;
+* credits received.
+
+Do not describe referrals as:
+
+* commissions;
+* earnings;
+* withdrawable income.
+
+---
+
+# 54. NOTIFICATIONS
+
+Notifications are informational.
+
+They are never authoritative.
+
+Business state must not depend on a notification being delivered.
+
+Notifications should be dispatched after the relevant database transaction commits.
+
+Notification handlers must not throw failures back into the commerce transaction.
+
+Use unique event keys based on:
+
+```text
+business event + recipient
+```
+
+with database uniqueness.
+
+---
+
+# 55. NOTIFICATION WORDING
+
+Notification wording must clearly distinguish:
+
+* credits;
+* GHS settlement;
+* Store Wallet;
+* payment;
+* fulfilment;
+* refund.
+
+Do not use language implying that consumed credits have been refunded.
+
+Do not promise a refund before provider confirmation.
+
+For a blocked paid order, wording should communicate:
+
+* payment was received/verified;
+* fulfilment is blocked;
+* investigation/recovery is required.
+
+Do not promise the eventual outcome.
+
+---
+
+# 56. CUSTOMER MARKETPLACE
+
+The marketplace UI is presentation over domain decisions.
+
+It must not contain business logic that decides:
+
+* winners;
+* payment;
+* inventory ownership;
+* credit deductions;
+* auction closure.
+
+Use domain services/queries.
+
+---
+
+# 57. MARKETPLACE READ MODELS
+
+Read-only marketplace queries belong in:
+
+```text
+app/Domain/Marketplace/Queries/
+```
 
 Examples include:
 
-* payments
-* webhooks
-* wallet transactions
-* credit issuance
-* credit consumption
-* store-wallet issuance
-* order lifecycle transitions
-* inventory acquisition
+```text
+ProductDiscoveryQuery
+AuctionDiscoveryQuery
+CustomerDashboardQuery
+```
 
-Do not remove an idempotency key because a request "should only happen once."
+Queries should be optimized and bounded.
 
-The reason for idempotency is precisely that real systems retry.
+Avoid N+1 query patterns.
 
 ---
 
-# 27. DATABASE RULES
+# 58. CUSTOMER DASHBOARD
 
-The application currently targets MySQL-compatible relational databases and has been specifically verified against MariaDB on Hostinger.
+Display available and committed/spent credits separately.
 
-Hostinger currently runs MariaDB 11.8.x.
+Never imply that:
 
-Database changes must therefore consider MariaDB compatibility.
+```text
+available + committed
+```
 
-Do not assume that MySQL-specific syntax will always work on Hostinger.
+is a single spendable balance.
+
+Use clear terminology.
 
 ---
 
-# 28. MIGRATION DISCIPLINE
+# 59. CUSTOMER AUCTION UI
 
-Migrations are part of the application's history.
+Use:
 
-Do not casually rewrite migrations that have already been applied to a shared/staging/production environment.
-
-If an already-applied schema needs changing:
-
-Prefer a new migration.
-
-Only modify an existing migration when the project owner explicitly approves it or when it is a controlled baseline correction that has not become part of a trusted deployed history.
-
-Before deployment, inspect:
-
-```
-php artisan migrate:status
+```text
+Highest Bid (Credits)
 ```
 
-After deployment, verify migration status again.
+not:
+
+```text
+Auction Price
+```
+
+when displaying the current bid.
+
+Use:
+
+```text
+x-money
+x-credits
+```
+
+or the project's equivalent formatting components.
+
+Money is GHS.
+
+Credit counts are not currency.
 
 ---
 
-# 29. MARIA DB COMPATIBILITY BASELINE
+# 60. BIDDING UI
 
-Stage 20 established MariaDB compatibility corrections.
+The customer may:
 
-The following migration syntax was corrected from:
+1. review the auction;
+2. choose the bid amount;
+3. submit;
+4. server validates;
+5. server consumes credits;
+6. server records the bid;
+7. UI reflects the authoritative result.
 
-```
-DROP CHECK
-```
-
-to:
-
-```
-DROP CONSTRAINT
-```
-
-for MariaDB compatibility.
-
-Affected constraints include:
-
-```
-chk_rulesets_bid_cost
-chk_rulesets_checkout_price
-chk_rulesets_discount_rate
-```
-
-These were syntax-level compatibility corrections.
-
-They must not be interpreted as permission to alter the underlying business rules.
+Live countdowns and JavaScript may enhance presentation but cannot determine the result.
 
 ---
 
-# 30. TESTING REQUIREMENTS
+# 61. CUSTOMER PRIVACY
 
-A feature is not complete simply because the UI appears to work.
+Bidder identities are private.
 
-Test appropriate combinations of:
+Do not expose:
 
-### Happy path
+* bidder names;
+* phone numbers;
+* wallet information;
+* credit lots;
+* credit transactions;
+* payment information.
 
-* valid input
-* successful payment
-* successful bid
-* successful checkout
-* successful fulfillment
-
-### Failure path
-
-* invalid input
-* insufficient credits
-* failed payment
-* unavailable inventory
-* expired auction
-* unauthorized access
-
-### Retry path
-
-* duplicate request
-* duplicate webhook
-* page refresh
-* repeated checkout
-* repeated bid submission where applicable
-
-### Concurrency path
-
-Where applicable:
-
-* simultaneous bids
-* simultaneous inventory acquisition
-* payment/inventory race
-* wallet race
-* duplicate financial operation
-
-### Security path
-
-* unauthorized users
-* wrong role
-* forged parameters
-* manipulated IDs
-* direct endpoint access
+Public auction transport must use a deliberately limited payload.
 
 ---
 
-# 31. TEST DATABASE
+# 62. SEO
 
-Be aware that test configuration must explicitly control:
+Public pages must contain truthful SEO information.
 
-* database connection
-* cache driver
-* queue driver
-* session driver
+Authenticated/private pages should not accidentally become indexable.
 
-Do not assume the test suite is using the intended database merely because PHPUnit starts successfully.
-
-Verify test configuration when debugging database-related tests.
-
-Never run destructive commands against a production database.
+Do not build a CMS/blog/personalization system merely because it could improve SEO unless explicitly requested.
 
 ---
 
-# 32. UI / UX DEVELOPMENT
+# 63. FULFILMENT
 
-The project has a gamified marketplace experience.
+Current fulfilment is primarily manual.
 
-UI changes must preserve the underlying business rules.
+Separate these concepts:
 
-When changing an existing page:
+* payment;
+* order;
+* fulfilment;
+* delivery;
+* refund.
 
-1. Inspect the existing implementation.
-2. Identify reusable components.
-3. Understand existing state handling.
-4. Preserve responsive behavior.
-5. Preserve authorization.
-6. Preserve server-side validation.
-7. Avoid duplicating existing functionality.
-8. Verify the final UI.
+A delivery status change must never alter:
 
-Do not modify backend financial logic simply to make a visual change easier.
+* payment;
+* credit balance;
+* inventory ownership;
+* auction result.
 
 ---
 
-# 33. ADMIN SYSTEM
+# 64. DELIVERY LIFECYCLE
 
-The application contains role-based administration.
+Use the established:
 
-Established roles include:
+```text
+DeliveryLifecycle
+```
+
+as the writer of delivery state.
+
+Transitions must be:
+
+* authorized;
+* recorded;
+* locked where appropriate;
+* idempotent.
+
+Do not create delivery records merely because a checkout page was opened.
+
+---
+
+# 65. FULFILMENT HANDOFF
+
+Successful payment may create fulfilment/delivery through the proper:
+
+```text
+FulfilmentHandoff
+```
+
+path.
+
+A fulfilment-blocked order does not receive ordinary fulfilment.
+
+Paid-but-blocked orders enter the operational exception workflow.
+
+---
+
+# 66. DELIVERY SCOPE
+
+Manual delivery is the current baseline.
+
+Do not introduce:
+
+* Bolt integration;
+* Uber integration;
+* Yango integration;
+* driver assignment;
+* GPS tracking;
+* route optimization;
+* automated shipping pricing;
+* courier webhooks;
+* automated tracking;
+* reverse logistics;
+
+unless explicitly approved as a later stage.
+
+When a future delivery-provider integration is implemented, provider APIs should be the source of provider-calculated delivery pricing rather than invented local calculations.
+
+Accra-first delivery constraints may apply as a business rule.
+
+---
+
+# 67. ADMIN / OPERATIONS
+
+The admin application is a control surface over the domain.
+
+It must not become a second implementation of business logic.
+
+Admin actions should call the same domain services used by the customer/application workflows.
+
+Examples:
+
+```text
+InventoryService
+AuctionLifecycle
+CreditLedgerService
+RefundLifecycle
+DeliveryLifecycle
+RewardReferral
+```
+
+---
+
+# 68. ADMIN ROLES
+
+Current role model includes:
 
 * Super Admin
 * Finance Admin
@@ -887,687 +1644,1417 @@ Established roles include:
 * Marketing Manager
 * Fraud Analyst
 
-Do not bypass authorization by hiding buttons.
+Do not authorize business operations merely because a user has a convenient role name.
 
-Authorization must remain enforced server-side.
-
-A user not seeing a button does not mean they are authorized to call the underlying endpoint.
+Use explicit permissions.
 
 ---
 
-# 34. ADMIN FINANCIAL ACTIONS
-
-Administrative actions affecting:
-
-* credits
-* balances
-* orders
-* refunds
-* payments
-* inventory
-* auction results
-
-must have appropriate authorization and auditability.
-
-Do not add an admin shortcut that directly modifies financial data without considering:
-
-* authorization
-* idempotency
-* audit trail
-* concurrency
-* reversibility
-
----
-
-# 35. SECURITY
-
-Never weaken:
-
-* authentication
-* authorization
-* CSRF protection
-* validation
-* server-side ownership checks
-* payment verification
-* webhook verification
-* rate limiting
-* audit logging
-
-Do not disable security controls merely to make local testing easier.
-
-If a security control needs to be bypassed for a development test, use a controlled test mechanism rather than changing production behavior.
-
----
-
-# 36. PERFORMANCE
-
-Do not optimize blindly.
-
-Before changing a query or caching layer:
-
-1. Understand the current behavior.
-2. Determine whether the query is actually a bottleneck.
-3. Preserve correctness.
-4. Check cache invalidation.
-5. Check authorization and user-specific state.
-6. Test the result.
-
-A faster incorrect financial calculation is worse than a slower correct one.
-
----
-
-# 37. QUEUES AND JOBS
-
-Queue behavior must be treated as asynchronous application logic.
-
-When modifying jobs or queued notifications, consider:
-
-* retries
-* duplicate execution
-* failure handling
-* serialization
-* idempotency
-* queue driver differences between local and staging
-
-Do not assume that synchronous local execution represents production queue behavior.
-
----
-
-# 38. REDIS
-
-Redis is part of the intended architecture for later high-concurrency auction behavior and queue/single-writer requirements.
-
-Do not introduce Redis assumptions into code paths that are currently intentionally supported by database-backed infrastructure unless the project stage explicitly requires it.
-
-The architecture should be prepared for Redis without making staging deployment dependent on unavailable infrastructure unnecessarily.
-
----
-
-# 39. AUCTION CONCURRENCY
-
-Auction bidding is server-authoritative.
-
-The architecture anticipates a high-concurrency bid path involving:
-
-* authoritative server time
-* transactional consistency
-* wallet/credit locking
-* idempotency
-* later Redis single-writer processing
-* controlled/coalesced broadcasts
-
-Do not implement client-side timing as the authoritative auction clock.
-
-Do not let browser timestamps determine winners.
-
----
-
-# 40. DELIVERY
-
-Delivery is a checkout concern and must remain separate from the auction's configured settlement amount.
-
-The platform may eventually integrate third-party delivery providers such as Bolt, Uber or Yango.
-
-Do not assume delivery pricing or availability without verifying the actual provider API and project requirements.
-
-For geographic delivery restrictions, preserve server-side validation.
-
-Do not rely only on a frontend map/radius check.
-
----
-
-# 41. PRODUCT / CATALOGUE
-
-Catalogue products and auction products are related but must not be treated as identical flows.
-
-A product may support:
-
-* Buy Now
-* Auction
-* both
-
-depending on its configuration.
-
-Do not assume that a Buy Now price determines the auction settlement amount.
-
-Do not automatically copy catalogue pricing into auction financial calculations.
-
----
-
-# 42. EXPERIMENTATION
-
-The project intentionally contains gamification and micro-transaction concepts.
-
-Potential future experiments may include:
-
-* auction voting
-* auction discovery
-* participation mechanics
-* credit packages
-* engagement features
-* promotional incentives
-
-However:
-
-**Increasing revenue is not permission to violate transparency, financial integrity, user consent, or the locked accounting model.**
-
-Do not implement hidden charges.
-
-Do not misrepresent prices.
-
-Do not manipulate financial records.
-
-Do not disguise a monetary transaction as something it is not.
-
-Experiments must remain compatible with the project's accounting and legal requirements.
-
----
-
-# 43. DO NOT OVER-ENGINEER
-
-Do not introduce:
-
-* unnecessary services
-* unnecessary abstractions
-* unnecessary packages
-* microservices
-* duplicate repositories
-* duplicate state machines
-* duplicate validation systems
-
-unless there is a demonstrated requirement.
-
-Prefer the smallest change that correctly fits the existing architecture.
-
----
-
-# 44. DO NOT UNDER-ENGINEER FINANCIAL FLOWS
-
-The opposite rule also applies.
-
-Do not simplify:
-
-* payment handling
-* wallet handling
-* credit accounting
-* auction settlement
-* inventory ownership
-* order state transitions
-
-merely because the simpler implementation is shorter.
-
-Financial correctness takes priority over implementation convenience.
-
----
-
-# 45. WHEN A REQUEST IS AMBIGUOUS
-
-Use this decision process:
-
-### Minor implementation ambiguity
-
-Use the existing architecture and conventions.
-
-### Product/UI ambiguity
-
-Make the least disruptive interpretation and clearly report the assumption.
-
-### Financial ambiguity
-
-STOP and ask.
-
-### Auction-rule ambiguity
-
-STOP and ask.
-
-### Inventory ownership ambiguity
-
-STOP and ask.
-
-### Security ambiguity
-
-STOP and ask.
-
-### Architecture ambiguity
-
-Inspect existing architecture first. If the choice materially changes architecture, ask before proceeding.
-
----
-
-# 46. NEVER CLAIM UNVERIFIED WORK
-
-An AI agent must never claim:
-
-* "tested"
-* "deployed"
-* "verified"
-* "working"
-* "fixed"
-* "migration completed"
-* "payment confirmed"
-
-unless it actually performed the appropriate verification.
-
-If something could not be tested, say:
-
-```
-Not tested.
+# 69. AUTHORIZATION
+
+Authorization should use permissions rather than hard-coded role checks wherever possible.
+
+Relevant permissions include examples such as:
+
+```text
+admin.dashboard.view
+exceptions.view
+customers.view
+audit.view
+refunds.view
+refunds.request
+refunds.process
+refunds.retry
+refunds.inspect
+referrals.view
+referrals.manage
+referrals.settings
 ```
 
-If something was inferred rather than verified, say:
+Super Admin behavior may be provided through the project's Gate configuration.
 
-```
-Not verified; inferred from the current implementation.
-```
-
-Accuracy of the development report is mandatory.
+Every sensitive operation must be authorized server-side.
 
 ---
 
-# 47. DEPLOYMENT TO HOSTINGER
+# 70. ADMIN READ-ONLY SCREENS
 
-Hostinger staging is a verification environment.
+Read-only screens must remain read-only.
 
-Before deployment:
+Examples include:
 
-1. Confirm Git status.
-2. Confirm branch.
-3. Review diff.
-4. Commit approved changes.
-5. Push to GitHub.
-6. Deploy the intended commit to staging.
-7. Run required dependency/database commands.
-8. Verify migrations.
-9. Clear/rebuild appropriate caches.
-10. Test the changed functionality.
-11. Check logs where necessary.
+* OperationsDashboard
+* ExceptionCentre
+* GlobalSearch
+* CustomerDetail
+* CustomerIndex
+* OrderPaymentIndex
+* AuditLog
 
-Do not deploy uncommitted experimental work unless explicitly instructed.
+Do not add hidden financial mutation actions to read-only pages.
 
 ---
 
-# 48. PRODUCTION DEPLOYMENT
+# 71. EXCEPTION CENTRE
 
-Production deployment requires explicit project-owner approval.
+The exception centre detects and reports problems.
 
-Do not infer production approval from:
+It does not automatically repair financial state.
 
-* "staging works"
-* "looks good"
-* "tests passed"
-* "push it"
-* "deploy"
+Do not add:
 
-unless the context clearly identifies production deployment.
+* automatic dismissal;
+* automatic reconciliation;
+* automatic refunds;
+* automatic credit grants;
+* automatic balance repair.
 
-Production deployment must be a deliberate step.
-
----
-
-# 49. HOSTINGER SERVER CHANGES
-
-Manual Hostinger changes can be necessary for infrastructure configuration.
-
-Examples may include:
-
-* permissions
-* `.htaccess`
-* PHP runtime selection
-* server configuration
-* deployment commands
-
-These are not automatically application-source changes.
-
-If a server change affects application behavior, document it.
-
-If it should be reproducible, capture the configuration in the project's deployment documentation or scripts where appropriate.
+Human decisions should remain explicit where the business requires them.
 
 ---
 
-# 50. FILE PERMISSIONS
+# 72. AUDIT LOG
 
-Do not blindly run recursive permission changes across the entire application.
+Use the project's activity logging conventions.
 
-When repairing permissions:
+For Activitylog v5:
 
-* understand the affected path
-* modify only what is necessary
-* preserve executable requirements
-* avoid making secrets world-readable
-* avoid making application files writable unnecessarily
+* model diffs belong in `attribute_changes`;
+* manual business properties belong in `properties`;
+* actor context should use the appropriate `CauserResolver`.
 
----
+Audit logs are evidence.
 
-# 51. DOCUMENTATION
-
-When an architectural or deployment decision is important enough to affect future agents, document it.
-
-Do not rely on one AI conversation as the only source of project knowledge.
-
-Important knowledge should live in:
-
-* `AGENTS.md`
-* appropriate project documentation
-* code comments where genuinely necessary
-* migration history
-* Git commit history
-* deployment documentation
+Do not rewrite history to hide an error.
 
 ---
 
-# 52. AI AGENT BEHAVIOR
+# 73. SEARCH
 
-The AI agent is an implementation assistant, not the project owner.
+Operational search must be bounded.
 
-The agent should:
+Normalize phone numbers to E.164 where appropriate.
 
-* inspect before modifying
-* explain significant assumptions
-* preserve existing work
-* identify conflicts
-* avoid unnecessary rewrites
-* test changes
-* report truthfully
-* keep changes focused
-
-The agent should NOT:
-
-* invent requirements
-* silently change economics
-* silently change auction mechanics
-* silently change payment policy
-* silently alter financial calculations
-* delete existing functionality
-* rewrite large portions of the application unnecessarily
-* claim success without verification
+Do not create unbounded database scans for admin convenience.
 
 ---
 
-# 53. CHANGE REVIEW CHECKLIST
+# 74. PHONE / EMAIL / OTP
 
-Before considering a substantial task complete, verify:
+Phone is the primary customer identity/contact channel.
 
-## Code
+Email is secondary/optional where configured.
 
-* [ ] Existing implementation inspected
-* [ ] No unrelated files changed
-* [ ] No unnecessary dependencies added
-* [ ] No secrets added
+Phone numbers use E.164 normalization.
 
-## Business logic
+OTP behavior must be secure.
 
-* [ ] Auction model preserved
-* [ ] Settlement economics preserved
-* [ ] Credit economics preserved
-* [ ] Payment conflict policy preserved
-* [ ] Inventory integrity preserved
+If OTP is unconfigured, the application should fail explicitly.
 
-## Database
+Do not create fake development OTPs such as:
 
-* [ ] Migration reviewed
-* [ ] MariaDB compatibility considered
-* [ ] Existing data safety considered
-* [ ] Migration status verified where applicable
-
-## Security
-
-* [ ] Authorization preserved
-* [ ] Server-side validation preserved
-* [ ] Sensitive data protected
-
-## Testing
-
-* [ ] Relevant tests run
-* [ ] Failure paths considered
-* [ ] Idempotency considered
-* [ ] Concurrency considered where relevant
-
-## Git
-
-* [ ] `git status` reviewed
-* [ ] `git diff` reviewed
-* [ ] Commit is focused
-* [ ] No secrets committed
-* [ ] Correct branch used
-
-## Deployment
-
-* [ ] Staging deployment performed if required
-* [ ] Staging behavior verified
-* [ ] Production not changed without approval
-
----
-
-# 54. COMPLETION REPORT FORMAT
-
-For substantial tasks, the agent should finish with a concise report using this structure:
-
-```
-## Completed
-
-- [change]
-- [change]
-- [change]
-
-## Files Changed
-
-- [file]
-- [file]
-
-## Tests
-
-- [test/command]
-- [result]
-
-## Database
-
-- [migration/schema change]
-- [status]
-
-## Deployment
-
-- Local: [status]
-- GitHub: [status]
-- Staging: [status]
-- Production: [status]
-
-## Risks / Notes
-
-- [remaining issue]
-- [assumption]
-- [follow-up]
+```text
+123456
 ```
 
-Do not report a status that was not actually verified.
+unless a controlled test-only mechanism explicitly exists.
+
+Never bypass authentication in tests to make a workflow easier.
 
 ---
 
-# 55. CURRENT STAGE 20 BASELINE
+# 75. SETTINGS
 
-The current repository baseline includes the Stage 20 Hostinger/MariaDB compatibility work.
+Business settings must use the project's typed settings access mechanism.
 
-The current known Git state is:
+Use:
 
+```text
+settings()
 ```
-main
-origin/main
-0bafe97 Stage 20 — Hostinger MariaDB compatibility baseline
+
+and the established SettingsSeeder definitions.
+
+Do not scatter magic configuration values throughout controllers/components.
+
+Settings that affect financial/auction behavior must be explicit and auditable.
+
+---
+
+# 76. LIVE AUCTION TRANSPORT
+
+Polling is authoritative.
+
+Broadcasting is an enhancement.
+
+The application must continue functioning if:
+
+* Redis is unavailable;
+* Reverb is unavailable;
+* JavaScript is disabled;
+* broadcast delivery fails.
+
+Current broadcast connection may be:
+
+```text
+BROADCAST_CONNECTION=null
 ```
 
-The repository should be treated as stable at this baseline unless the agent is performing an explicitly requested change.
-
-Future work should build on this state rather than reconstructing earlier stages.
+Do not make commerce correctness dependent on broadcasting.
 
 ---
 
-# 56. STAGE 16.5 ECONOMIC BASELINE
+# 77. BROADCAST EVENTS
 
-Stage 16.5 established important financial infrastructure.
+Existing domain events may include:
 
-This includes:
+```text
+BidAccepted
+AuctionClosed
+AuctionSoldViaBuyNow
+AuctionForfeited
+```
 
-* Store Wallet ledger
-* append-only store-wallet transactions
-* unique idempotency keys
-* wallet-row locking
-* projected wallet balances
-* lot-based credit valuation
-* snapshot versioning
-* migration handling for prior valuation models
-* controlled catalogue checkout coverage
-* order-lifecycle-based releases
-* bid cooldown configuration
+Transport subscribers may listen to these events.
 
-These systems are part of the current architecture.
+Do not alter domain event semantics merely to accommodate a transport mechanism.
 
-Do not regress them when implementing later features.
+Broadcast failures must never turn a successfully committed bid into an HTTP 500.
 
 ---
 
-# 57. HISTORICAL COMPATIBILITY
+# 78. PUBLIC BROADCAST PAYLOAD
 
-When modifying existing functionality, consider that the application may contain:
+Public auction payload must be deliberately limited.
 
-* existing users
-* existing credits
-* existing credit lots
-* existing orders
-* existing auctions
-* existing payment records
-* existing wallet transactions
-* existing snapshots
+Allowed concepts include:
 
-Do not write new code that only works for freshly seeded data if existing data may exist.
+```text
+auction_id
+status
+highest_bid_credits
+bid_count
+ends_at
+sequence
+extended_by_seconds
+```
 
-Backward compatibility should be evaluated whenever data structures change.
+Never expose:
 
----
-
-# 58. SEEDERS
-
-Seeders may create:
-
-* roles
-* permissions
-* settings
-* auction rulesets
-* credit packages
-* catalogue products
-
-Do not assume that seeders should create fake auctions unless explicitly designed to do so.
-
-Seed data must not accidentally be mistaken for real financial activity.
-
-When changing seeders, understand whether they are:
-
-* development-only
-* staging bootstrap
-* production-safe
-* idempotent
+* bidder identity;
+* wallet state;
+* credit lots;
+* credit transactions;
+* order information;
+* payment information;
+* settlement amount;
+* Buy Now purchaser;
+* delivery information;
+* refund information;
+* referral information;
+* notification content.
 
 ---
 
-# 59. ADMIN ACCOUNT CREATION
+# 79. BROADCAST SEQUENCING
 
-Administrative accounts must be created using the application's intended administrative mechanisms.
+Clients should maintain a sequence high-water mark.
 
-Do not insert admin users directly into the database unless explicitly required for recovery/debugging.
+Rules:
 
-Do not weaken role/permission checks to make administration easier.
+* newer sequence replaces state;
+* stale sequence is discarded;
+* duplicate sequence is discarded;
+* terminal state messages must still apply;
+* reconnecting clients reread current state through HTTP.
+
+Keep polling available.
 
 ---
 
-# 60. VISUAL / STAGING VERIFICATION
+# 80. REDIS / REVERB / HORIZON
 
-When a task changes the UI, visual verification should be performed where practical.
+Redis may be introduced later where required for high-concurrency workloads.
+
+Do not assume Redis is available on Hostinger Web/Cloud.
+
+Do not introduce Laravel Horizon simply because queues exist.
+
+Do not install Laravel Reverb unless explicitly required.
+
+Do not add redundant framework packages.
+
+Current Hostinger deployment must work without persistent daemons where the hosting tier does not support them.
+
+---
+
+# 81. QUEUED WORK
+
+Financial operations must not depend on asynchronous queues.
+
+Financial operations are:
+
+* synchronous;
+* transactional;
+* idempotent.
+
+The current queue use is primarily communication/presentation, such as:
+
+```text
+SendNotificationEmail
+```
+
+Queued jobs must not become the only mechanism that makes money, credits, inventory, or payment state correct.
+
+---
+
+# 82. SCHEDULED COMMANDS
+
+Relevant commands include:
+
+```bash
+php artisan auctions:tick
+php artisan orders:expire-checkouts
+```
+
+and later/appropriate reconciliation commands such as:
+
+```bash
+php artisan refunds:reconcile
+php artisan referrals:reconcile
+```
+
+Scheduled jobs must be:
+
+* idempotent;
+* bounded;
+* safe to retry.
+
+---
+
+# 83. SCHEDULER LOCKS
+
+Do not use bare:
+
+```php
+withoutOverlapping()
+```
+
+where the project's explicit scheduler lock mechanism is required.
+
+Use:
+
+```text
+App\Support\ScheduleLocks
+```
+
+with explicit expiry.
+
+Typical defaults:
+
+```text
+SWEEP_MINUTES = 5
+RECONCILE_MINUTES = 30
+```
+
+The purpose is to prevent stale scheduler locks from becoming outages.
+
+---
+
+# 84. SWEEP LIMITS
+
+Scheduled sweeps should be bounded.
+
+Typical auction/order sweep limits may be around:
+
+```text
+200 records
+```
+
+per execution.
+
+Refund reconciliation provider calls should remain bounded, for example:
+
+```text
+100
+```
+
+per reconciliation execution.
+
+Do not create unbounded provider/network loops.
+
+---
+
+# 85. HOSTINGER PRODUCTION MODEL
+
+Hostinger hPanel cron is the scheduler.
+
+Do not assume a persistent worker or daemon exists.
+
+The baseline architecture must not depend on:
+
+* Supervisor;
+* Horizon workers;
+* persistent queue workers;
+* persistent WebSocket server;
+
+unless the deployment tier explicitly supports and requires them.
+
+A scheduler cron may run:
+
+```bash
+php artisan schedule:run
+```
+
+according to the hosting configuration.
+
+---
+
+# 86. HOSTINGER STAGING
+
+Current staging domain:
+
+```text
+darksalmon-swan-978886.hostingersite.com
+```
+
+Current application path:
+
+```text
+/home/u146516859/domains/darksalmon-swan-978886.hostingersite.com/public_html/as-is-commerce-stage20
+```
+
+Hostinger PHP 8.4 binary:
+
+```text
+/opt/alt/php84/usr/bin/php
+```
+
+Composer command:
+
+```text
+/opt/alt/php84/usr/bin/php /opt/alt/php83/usr/bin/composer.phar
+```
+
+SSH:
+
+```text
+ssh -p 65002 u146516859@89.116.53.20
+```
+
+Never store the SSH password in this file.
+
+---
+
+# 87. HOSTINGER DATABASE
+
+Staging database configuration is private.
+
+Known structural configuration:
+
+```text
+database: u146516859_asiscomm
+user: u146516859_asisadmin
+host: 127.0.0.1
+port: 3306
+```
+
+Never put the database password into Git or documentation.
+
+---
+
+# 88. HOSTINGER DOMAIN ROUTING
+
+The Hostinger domain configuration currently uses:
+
+```apache
+RewriteEngine On
+RewriteRule ^(.*)$ as-is-commerce-stage20/public/$1 [L]
+```
+
+This is deployment infrastructure.
+
+Do not copy Hostinger-specific routing into application source unless the architecture requires it.
+
+---
+
+# 89. STAGING DEPLOYMENT
+
+A typical staging deployment includes:
+
+1. verify Git state;
+2. update code;
+3. install dependencies;
+4. verify `.env`;
+5. ensure application key;
+6. run migrations;
+7. verify application status;
+8. optimize caches appropriately;
+9. ensure storage link;
+10. seed only where explicitly intended;
+11. create/administer required admin account;
+12. run smoke checks;
+13. verify UI and critical workflows.
+
+Admin creation command:
+
+```bash
+/opt/alt/php84/usr/bin/php artisan app:create-admin --role=super_admin
+```
+
+Never expose credentials in this document.
+
+---
+
+# 90. PRODUCTION
+
+Production deployment requires explicit approval.
+
+Never infer permission to deploy to production merely because staging is verified.
+
+Never make a production migration or financial change casually.
+
+Production deployment must be treated as a separate controlled operation.
+
+---
+
+# 91. DATABASE COMPATIBILITY
+
+The application must remain compatible with the target MariaDB/MySQL environments.
+
+Stage 20 specifically establishes compatibility with:
+
+```text
+MariaDB 11.8.x
+```
+
+Do not assume MySQL-only syntax where MariaDB compatibility matters.
+
+---
+
+# 92. STAGE 20 MIGRATION DISCIPLINE
+
+Applied migrations should not be casually rewritten.
+
+Prefer:
+
+```text
+new migration
+```
+
+over rewriting history.
+
+Stage 20 included compatibility corrections from:
+
+```text
+DROP CHECK
+```
+
+to:
+
+```text
+DROP CONSTRAINT
+```
+
+for relevant constraints such as:
+
+```text
+chk_rulesets_bid_cost
+chk_rulesets_checkout_price
+chk_rulesets_discount_rate
+```
+
+Do not reintroduce incompatible syntax.
+
+Before changing migrations, inspect the current migration history and target database behavior.
+
+---
+
+# 93. DATABASE TESTING
+
+The project uses MySQL/MariaDB-compatible testing because database behavior matters.
+
+Do not switch important financial/concurrency tests to SQLite merely for convenience.
+
+The test database must support behavior relied upon by the application, including:
+
+```text
+FOR UPDATE
+```
+
+where applicable.
+
+Verify the test environment explicitly.
+
+Do not assume `phpunit.xml` configuration is being applied correctly merely because it appears correct.
+
+---
+
+# 94. TEST ENVIRONMENT
 
 Verify:
 
-* desktop
-* mobile/responsive behavior
-* empty states
-* validation states
-* error states
-* loading states
-* authorization states
-* successful states
+* test database;
+* cache driver;
+* queue driver;
+* session driver;
+* mail driver;
+* external service fakes.
 
-Do not consider a UI task complete merely because the underlying PHP/JavaScript compiles.
+Tests must not accidentally use the development database.
 
----
+A previous Stage 16.5 issue involved tests unexpectedly using:
 
-# 61. PRINCIPLE OF MINIMAL CHANGE
-
-When implementing a requested change:
-
-> Change what is necessary. Preserve what already works.
-
-Do not turn a focused UI change into a system-wide refactor.
-
-Do not refactor unrelated code merely because it could be cleaner.
-
-If a refactor is genuinely necessary, explain why before expanding scope.
-
----
-
-# 62. PRINCIPLE OF EXPLICITNESS
-
-If a decision could materially affect:
-
-* money
-* credits
-* inventory
-* payments
-* users
-* auctions
-* security
-* database integrity
-
-make the decision explicit.
-
-Do not hide important behavior inside:
-
-* magic constants
-* undocumented assumptions
-* implicit side effects
-* silent fallbacks
-
----
-
-# 63. FINAL GOLDEN RULE
-
-When uncertain:
-
-```
-Inspect first.
-
-Preserve existing work.
-
-Follow the current architecture.
-
-Do not guess about business logic.
-
-Do not silently change economics.
-
-Do not silently change auction rules.
-
-Do not silently change payment behavior.
-
-Do not destroy data.
-
-Do not expose secrets.
-
-Test before claiming success.
-
-Keep Git history clean.
-
-Keep Hostinger as staging, not the source of truth.
-
-Ask the project owner when an important decision is genuinely ambiguous.
+```text
+as_is_commerce
 ```
 
-The goal is not merely to make code run.
+instead of:
 
-The goal is to evolve As-Is-Commerce without breaking the business model,
-financial integrity, historical correctness, security, or architectural
-direction established by the project owner.
+```text
+as_is_commerce_testing
+```
+
+Do not repeat this mistake.
+
+---
+
+# 95. PAYSTACK TESTING
+
+Use HTTP fakes for Paystack.
+
+The project may use helper functions such as:
+
+```text
+fakeHttp()
+fakePaystackVerify()
+```
+
+Be aware that:
+
+* the first HTTP fake may win;
+* service resolution may capture an older factory/configuration.
+
+When a payment test behaves unexpectedly, inspect service resolution and HTTP fake ordering rather than guessing.
+
+---
+
+# 96. TEST COVERAGE EXPECTATIONS
+
+For financial, inventory, auction, and payment changes, test:
+
+### Happy path
+
+The normal successful workflow.
+
+### Failure path
+
+Expected validation/provider/business failures.
+
+### Retry path
+
+Repeated webhook/callback/command attempts.
+
+### Concurrency
+
+Two or more legitimate actors competing for the same resource.
+
+### Security
+
+Unauthorized and tampered requests.
+
+### Idempotency
+
+Duplicate requests/events do not duplicate financial outcomes.
+
+---
+
+# 97. TESTING FINANCIAL INVARIANTS
+
+When touching financial code, test that:
+
+* balances equal ledger projections;
+* credits cannot be created without a ledger entry;
+* credits cannot be consumed without a ledger entry;
+* money is integer based;
+* transactions roll back atomically;
+* retries do not duplicate credits;
+* retries do not duplicate Store Wallet;
+* payment conflicts preserve Paid status;
+* inventory cannot become negative;
+* reserved cannot exceed on-hand.
+
+---
+
+# 98. STAGE 16.5 ECONOMIC BASELINE
+
+The following Stage 16.5 work is part of the current economic foundation and must not be accidentally regressed.
+
+Implemented:
+
+* Store Wallet ledger;
+* append-only Store Wallet transactions;
+* unique Store Wallet idempotency;
+* wallet row locking;
+* lot-based credit valuation;
+* Snapshot Version 3;
+* Store Wallet catalogue checkout coverage;
+* OrderLifecycle-based Store Wallet release;
+* `minimum_bid_interval_ms` seeded at `3000ms`.
+
+The lot-based loss valuation is:
+
+```text
+floor(
+    credits × lot.acquisition_amount_minor / lot.original_amount
+)
+```
+
+Valuation is reconstructed from:
+
+```text
+bid records
+→ credit transactions
+→ lot consumptions
+```
+
+Do not replace this with a simplistic wallet-average or current-package calculation.
+
+---
+
+# 99. STAGE 16.5 TEST FIXES
+
+Known historical fixes included:
+
+* queued-email sync configuration;
+* Buy Now polling query-budget/cache/session issue;
+* referral/reference assertion collision caused by date-based values matching a user ID;
+* test database configuration correction.
+
+These are reminders of known failure patterns.
+
+Do not assume they remain fixed if changing adjacent infrastructure; rerun relevant tests.
+
+---
+
+# 100. SNAPSHOT VERSION HISTORY
+
+Snapshot Version 3 is the corrected model.
+
+Version 2 used a previous flat-rate approach and required migration.
+
+Version 1 represented an incompatible last-bidder model.
+
+Do not revive old snapshot behavior.
+
+When changing snapshot serialization:
+
+1. understand existing persisted versions;
+2. preserve migration compatibility where required;
+3. bump version;
+4. add tests;
+5. do not reinterpret historical snapshots silently.
+
+---
+
+# 101. APPLICATION CODE ORGANIZATION
+
+Domain logic belongs in:
+
+```text
+app/Domain/<Context>/
+```
+
+Controllers and Livewire components should remain thin.
+
+Multi-step business operations should use Actions/services where appropriate.
+
+Use PHP enums rather than magic strings.
+
+Interfaces should be bound through the established service provider architecture.
+
+Do not move business rules into:
+
+* Blade templates;
+* JavaScript;
+* Livewire rendering;
+* controllers;
+* form request presentation logic.
+
+---
+
+# 102. DOMAIN ACTIONS
+
+Examples of domain-level operations include:
+
+```text
+PlaceBid
+CloseAuction
+CompleteBuyNow
+ForfeitAuction
+CancelAuction
+FulfillOrderPayment
+FulfillCreditPurchase
+RequestRefund
+ProcessRefund
+```
+
+Actions must preserve:
+
+* transactionality;
+* idempotency;
+* locking;
+* authorization;
+* domain invariants.
+
+---
+
+# 103. IDEMPOTENCY
+
+Use idempotency wherever retries can produce duplicate effects.
+
+Relevant areas include:
+
+* Paystack callbacks;
+* Paystack webhooks;
+* credit issuance;
+* credit consumption;
+* wallet transactions;
+* Store Wallet issuance;
+* Store Wallet application/release;
+* order lifecycle;
+* notification events;
+* scheduled commands.
+
+Idempotency keys should represent the business event, not arbitrary browser state.
+
+---
+
+# 104. LOCKING AND TRANSACTIONS
+
+Financial and inventory operations must be transactional.
+
+Acquire locks in the established order.
+
+Never:
+
+1. read a balance;
+2. release the lock;
+3. later assume it is still valid.
+
+Never perform a financial write based on stale projections.
+
+---
+
+# 105. SECURITY
+
+Never trust the browser.
+
+Validate server-side:
+
+* user ownership;
+* permissions;
+* auction status;
+* bid amount;
+* available credits;
+* payment amount;
+* Paystack reference;
+* payment status;
+* inventory;
+* order state;
+* Store Wallet amount.
+
+Never trust hidden form fields.
+
+Never trust JavaScript-calculated totals.
+
+Never trust browser countdowns.
+
+Never trust a payment callback without server verification.
+
+---
+
+# 106. STAFF BIDDING
+
+Staff must not bid in customer auctions.
+
+Do not introduce administrative bypasses that allow staff to participate as ordinary bidders.
+
+Testing should use controlled test users.
+
+---
+
+# 107. UI / UX PRESERVATION
+
+Do not redesign the marketplace unnecessarily while fixing backend logic.
+
+If a task concerns backend correctness:
+
+* preserve existing visual design;
+* preserve existing flows;
+* change only what is necessary.
+
+When UI work is explicitly requested:
+
+* inspect the existing design first;
+* maintain consistency;
+* verify on staging.
+
+---
+
+# 108. VISUAL VERIFICATION
+
+When a task affects customer-facing or admin-facing UI:
+
+1. deploy to staging;
+2. open the relevant pages;
+3. verify actual rendered behavior;
+4. test representative states;
+5. inspect desktop/mobile layouts where relevant;
+6. check console/runtime errors where available;
+7. verify that domain state matches the UI.
+
+Do not claim visual verification from source inspection alone.
+
+---
+
+# 109. CURRENT MARKETPLACE OPERATING MODEL
+
+The application is intended to be a customer marketplace over a completed commerce engine.
+
+At the current baseline:
+
+* auctions can operate;
+* customers can participate;
+* customers can be informed;
+* settlement can occur;
+* paid blocked orders can be surfaced to humans;
+* fulfilment remains operational/manual.
+
+Do not build large future systems simply because the product may eventually need them.
+
+---
+
+# 110. FEATURES NOT TO BUILD AHEAD OF APPROVAL
+
+Unless explicitly requested as the next stage, do not introduce:
+
+* physical returns/reverse logistics;
+* automated courier/driver integration;
+* GPS delivery tracking;
+* shipping-price engines;
+* tax engines;
+* chargeback/dispute systems;
+* automated compensation systems;
+* AI fraud decisions;
+* full gamification layer;
+* loyalty systems;
+* coupons;
+* personalization;
+* recommendation engines;
+* CMS/blog infrastructure;
+* unnecessary microservices;
+* unnecessary real-time infrastructure.
+
+Future ideas may be discussed separately without being silently implemented.
+
+---
+
+# 111. EXPERIMENTS AND MONETIZATION
+
+As-Is-Commerce may eventually experiment with:
+
+* auction voting;
+* microtransactions;
+* engagement mechanics;
+* promotional mechanics;
+* participation incentives.
+
+However, monetization must never rely on:
+
+* hidden charges;
+* deceptive pricing;
+* fabricated scarcity;
+* misleading credit values;
+* secretly changing financial rules;
+* unauthorized automatic charges.
+
+All financial behavior must remain explicit and auditable.
+
+---
+
+# 112. AUCTION VOTING
+
+A future auction-voting feature may be considered as an engagement mechanism.
+
+If implemented, it must be designed as a clearly disclosed product feature.
+
+Do not silently convert votes into:
+
+* paid bids;
+* financial obligations;
+* hidden charges;
+* inventory guarantees.
+
+Voting must not compromise auction correctness.
+
+---
+
+# 113. CUSTOMER CREDIT LANGUAGE
+
+Use precise language.
+
+Preferred:
+
+```text
+Credits
+Credit Balance
+Credit Package
+Highest Bid (Credits)
+Consumed Credits
+Purchased Credits
+```
+
+Avoid:
+
+```text
+Credit Money
+Auction Price
+Cash Value of Every Credit
+```
+
+unless the exact context is explicitly explaining the lot-based valuation.
+
+Credits are not inherently GHS.
+
+---
+
+# 114. STORE WALLET LANGUAGE
+
+Store Wallet is not:
+
+* cash withdrawal;
+* a bank balance;
+* a credit refund;
+* a guaranteed compensation mechanism.
+
+It is a platform cash-value ledger usable according to the current Store Wallet rules.
+
+Do not tell customers that losing bids were "refunded" when Store Wallet value is issued.
+
+---
+
+# 115. NO AUTOMATIC FINANCIAL REPAIR
+
+Reconciliation tools are diagnostic unless explicitly designed as controlled financial workflows.
+
+A command that detects:
+
+```text
+balance mismatch
+```
+
+must not automatically overwrite the balance.
+
+A command that detects:
+
+```text
+missing reward
+```
+
+must not automatically grant it unless the command is explicitly defined as the authoritative reward processor.
+
+A command that detects:
+
+```text
+refund mismatch
+```
+
+must not invent a refund.
+
+---
+
+# 116. PAYMENT / REFUND TERMINOLOGY
+
+Never say:
+
+> "Refund successful"
+
+until the provider confirms terminal success.
+
+Never say:
+
+> "Payment failed"
+
+when Paystack actually confirmed payment and fulfilment merely failed.
+
+Use:
+
+> Paid + fulfilment blocked
+
+where that is the true state.
+
+---
+
+# 117. DATABASE CONSTRAINTS
+
+Prefer database constraints for hard invariants where practical.
+
+Examples include:
+
+* uniqueness;
+* incompatible state combinations;
+* valid numeric boundaries;
+* idempotency keys.
+
+Application validation and database constraints should complement one another.
+
+Do not rely solely on UI validation for business integrity.
+
+---
+
+# 118. MIGRATION SAFETY
+
+Before modifying a migration:
+
+1. determine whether it has already been applied;
+2. inspect production/staging relevance;
+3. determine whether a new migration is safer;
+4. preserve historical migration intent;
+5. test against MariaDB.
+
+Never rewrite an applied migration merely to make the file look cleaner.
+
+---
+
+# 119. PERFORMANCE
+
+Optimize only where the evidence supports it.
+
+Prioritize:
+
+* bounded queries;
+* appropriate indexes;
+* avoiding N+1 queries;
+* transaction scope;
+* lock scope;
+* concurrency safety;
+* provider call limits.
+
+Do not prematurely introduce distributed systems.
+
+Correctness comes before theoretical throughput.
+
+---
+
+# 120. CONCURRENCY
+
+Auction and inventory concurrency is a correctness problem.
+
+When two customers attempt to acquire the same unit:
+
+* lock the authoritative resource;
+* determine the legitimate winner;
+* record the result transactionally;
+* preserve verified payment state for losing payment races;
+* never rely on request arrival order alone.
+
+Test concurrent scenarios explicitly.
+
+---
+
+# 121. DATABASE PROJECTIONS
+
+Projection fields are useful for performance.
+
+They are not automatically authoritative.
+
+When a projection disagrees with ledger/domain history:
+
+* investigate;
+* report;
+* determine root cause;
+* repair only through an explicit, auditable process.
+
+Never hide discrepancies by rewriting projections without understanding the cause.
+
+---
+
+# 122. CURRENT STAGE 20 BASELINE
+
+Stage 20 baseline commit:
+
+```text
+0bafe97
+Stage 20 — Hostinger MariaDB compatibility baseline
+```
+
+The current stable branch is:
+
+```text
+main
+```
+
+Repository:
+
+```text
+https://github.com/majcreatives/as-is-commerce.git
+```
+
+Stage 20's primary infrastructure focus includes:
+
+* MariaDB compatibility;
+* PHP 8.4 compatibility;
+* deployment correctness;
+* preserving established financial/auction invariants.
+
+Do not treat Stage 20 as permission to redesign the business engine.
+
+---
+
+# 123. DEVELOPMENT COMMANDS
+
+Before completion, normally run:
+
+```bash
+./vendor/bin/pint
+./vendor/bin/phpstan analyse --memory-limit=512M
+php artisan test
+```
+
+Use the project's actual configured commands if they differ.
+
+For targeted work, run focused tests first, then the broader suite.
+
+---
+
+# 124. GIT DIFF REVIEW
+
+Before committing:
+
+```bash
+git status
+git diff
+git diff --stat
+```
+
+Review:
+
+* unexpected files;
+* accidental secrets;
+* debug statements;
+* unrelated formatting;
+* generated files;
+* migration changes;
+* environment files;
+* test changes;
+* deleted files.
+
+Never blindly commit all modified files.
+
+---
+
+# 125. COMPLETION REPORT
+
+A completion report should state:
+
+### Changed
+
+What was actually modified.
+
+### Why
+
+The business/technical reason.
+
+### Tests
+
+Exactly which tests were run.
+
+### Verification
+
+Whether local/staging/manual verification occurred.
+
+### Database
+
+Whether migrations/schema changes occurred.
+
+### Deployment
+
+Whether staging was deployed.
+
+### Remaining
+
+Any known limitation or unverified behavior.
+
+Do not hide uncertainty.
+
+---
+
+# 126. WHEN TO STOP AND ASK
+
+Stop and ask for clarification when ambiguity affects:
+
+* money;
+* credits;
+* bidding;
+* auction winners;
+* inventory ownership;
+* payment state;
+* refunds;
+* Store Wallet;
+* authorization;
+* security;
+* database integrity;
+* architecture;
+* destructive operations.
+
+Do not invent a business rule merely because implementation would be easier.
+
+---
+
+# 127. WHEN NOT TO ASK
+
+Do not stop for trivial implementation choices where the existing architecture clearly determines the answer.
+
+Examples:
+
+* variable naming;
+* normal formatting;
+* obvious Laravel conventions;
+* test naming;
+* extracting a helper where behavior is unchanged.
+
+Use existing project conventions.
+
+---
+
+# 128. GOLDEN RULES
+
+If an agent remembers nothing else, remember these:
+
+1. **The server decides.**
+2. **The ledger is authoritative.**
+3. **Every financial movement has an auditable ledger entry.**
+4. **Never mutate balances directly.**
+5. **Credit and cash are separate.**
+6. **Money is integer minor units.**
+7. **Bids use explicit credit amounts chosen by the bidder.**
+8. **Highest valid credit bid wins.**
+9. **Never reintroduce Last Bidder Standing.**
+10. **Never call the highest credit bid an auction price.**
+11. **Consumed bidding credits are permanently consumed.**
+12. **Buy Now is GHS commerce, not a credit auction.**
+13. **Auction settlement is separately configured and frozen.**
+14. **Lot valuation is deterministic and reproducible.**
+15. **A bid cannot exist without successful credit consumption.**
+16. **Inventory changes go through InventoryService.**
+17. **Payment is authoritative only after server-side Paystack verification.**
+18. **A verified Paid order remains Paid even when fulfilment becomes impossible.**
+19. **A payment conflict must not be silently converted into a failure.**
+20. **Store Wallet is not a credit refund.**
+21. **Store Wallet currently applies to catalogue checkout only.**
+22. **Refunds are separate financial events.**
+23. **Notifications never determine business state.**
+24. **Polling remains authoritative for auctions.**
+25. **Broadcasting is an enhancement, not a commerce dependency.**
+26. **Do not trust the browser.**
+27. **Do not invent missing business rules.**
+28. **Do not silently repair financial discrepancies.**
+29. **Do not claim work that was not performed.**
+30. **Do not deploy production without explicit approval.**
+31. **Do not commit secrets.**
+32. **Do not perform destructive Git operations without approval.**
+33. **Prefer minimal, reversible changes.**
+34. **Preserve existing architecture unless a change is explicitly required.**
+35. **When documentation conflicts with current implementation, investigate before changing behavior.**
+
+---
+
+# 129. FINAL AGENT CHECKLIST
+
+Before declaring a task complete, confirm:
+
+## Understanding
+
+* [ ] Read this AGENTS.md.
+* [ ] Inspected current implementation.
+* [ ] Inspected relevant tests.
+* [ ] Inspected migrations/schema where applicable.
+* [ ] Checked current Git state.
+
+## Business correctness
+
+* [ ] No auction rule was silently changed.
+* [ ] No financial rule was silently changed.
+* [ ] No credit/cash concepts were conflated.
+* [ ] No hidden charge was introduced.
+* [ ] No inventory invariant was bypassed.
+* [ ] No payment verification was bypassed.
+* [ ] No refund was invented.
+* [ ] No Store Wallet rule was expanded accidentally.
+
+## Technical correctness
+
+* [ ] Transactions used where required.
+* [ ] Locks used where required.
+* [ ] Idempotency preserved.
+* [ ] MariaDB compatibility considered.
+* [ ] No N+1 query introduced.
+* [ ] No unnecessary infrastructure added.
+* [ ] No secrets exposed.
+
+## Testing
+
+* [ ] Relevant focused tests pass.
+* [ ] Broader test suite run where appropriate.
+* [ ] Pint passes.
+* [ ] PHPStan passes where appropriate.
+* [ ] Concurrency tested where relevant.
+* [ ] Retry/idempotency tested where relevant.
+
+## Git
+
+* [ ] Diff reviewed.
+* [ ] No unrelated files included.
+* [ ] No secrets included.
+* [ ] Commit is meaningful.
+* [ ] Push performed only when appropriate.
+
+## Staging
+
+* [ ] Deployment performed if required.
+* [ ] Migration verified.
+* [ ] Application boot verified.
+* [ ] Relevant UI verified.
+* [ ] Relevant business flow manually verified where required.
+
+---
+
+# 130. FINAL PRINCIPLE
+
+As-Is-Commerce is a financial commerce system first and a gamified marketplace second.
+
+The system must remain:
+
+* server-authoritative;
+* financially auditable;
+* concurrency-safe;
+* inventory-safe;
+* payment-safe;
+* idempotent;
+* explicit;
+* testable;
+* understandable;
+* deployable on the actual hosting environment.
+
+**Do not sacrifice correctness for convenience.**
+
+**Do not sacrifice financial integrity for UI behavior.**
+
+**Do not invent business rules.**
+
+**Do not silently change locked architecture.**
+
+When uncertain about a business-critical decision:
+
+> **Stop, inspect, and ask.**

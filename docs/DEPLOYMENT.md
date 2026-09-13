@@ -19,18 +19,24 @@ and no Reverb. Nothing in this runbook assumes a VPS.
 | Cron | auction clock, checkouts, refund reconciliation | hPanel scheduled tasks, UTC |
 | HTTPS | webhooks, secure cookies, generated URLs | free hPanel SSL |
 
-Node.js is **build-time only**: `npm run build` on a developer machine, then
-deploy `public/build/` with the application. The server never runs Node.
+Node.js is **build-time only**: the deployable is produced by the GitHub Actions
+release workflow, which runs `npm run build` on a clean runner. `public/build/`
+ships inside the release zip. The server never runs Node.
 
 ## 2. Sequence
 
-Completed on a developer machine, before upload:
+**GitHub is in the loop.** The deployable is never built ad hoc on a developer
+machine and never edited on the server. It is produced by the
+`build-deploy.yml` workflow from a pushed `stage*` tag and attached to the
+corresponding GitHub Release. The developer machine and the server both consume
+that artifact.
+
+Produced by GitHub Actions, before anything is uploaded:
 
 1. `composer install --no-dev --optimize-autoloader` (deterministic: lockfile).
 2. `npm ci && npm run build` — produces `public/build/`.
-3. `./vendor/bin/pint` and `./vendor/bin/phpstan analyse` from the repo root.
-4. `php artisan test` (requires the `as_is_commerce_testing` schema).
-5. `php -l` any file touched by this release.
+3. Optional quality gates can be added to the workflow (Pint, PHPStan, tests)
+   without changing this sequence.
 
 Completed on the server (SSH):
 
@@ -39,7 +45,9 @@ Completed on the server (SSH):
    and let `public_html` hold the contents of `public/`, with `index.php`
    requiring the bootstrap one level up. **Never** put `.env` in the web root.
 2. Point the document root at `public/`.
-3. `composer install --no-dev --optimize-autoloader --no-interaction`.
+3. `composer install --no-dev --optimize-autoloader --no-interaction` — only
+   needed if `vendor/` is not already present; the release zip from the
+   workflow ships it.
 4. Create `.env` from `.env.example`; generate `APP_KEY` with
    `php artisan key:generate`. Never commit `.env`; never paste secrets into a
    support ticket.

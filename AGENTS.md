@@ -6,7 +6,7 @@
 **Product:** Gamified Credit-Based E-Commerce Auction Marketplace
 **Market:** Ghana
 **Currency:** GHS / GH₵
-**Current Stage:** Stage 20
+**Current Stage:** Stage 20.5B
 **Stable Branch:** `main`
 **Repository:** `https://github.com/majcreatives/as-is-commerce.git`
 **Stage 20 Baseline Commit:** `0bafe97` — `Stage 20 — Hostinger MariaDB compatibility baseline`
@@ -89,6 +89,30 @@ Current environment:
 Redis, Reverb, Horizon, persistent workers, courier integrations, and other infrastructure must not be introduced merely because they may be useful later.
 
 Use the infrastructure currently supported by the target deployment.
+
+---
+
+# 2.5. REMAINING ROADMAP
+
+The agreed plan for work after Stage 20 lives in:
+
+```text
+docs/ROADMAP.md
+```
+
+It is the single source of truth for what comes next — the phases and the
+stage-by-stage table from 20.5B (Hostinger staging deployment) through 30
+(post-launch monitoring) and 31+ (growth, UX, gamification). It does not relax
+any rule in this file.
+
+A stage is complete only when its gate and exit criteria in `docs/ROADMAP.md`
+have been met and verified. Do not silently skip a gate.
+
+**GitHub is in the loop.** Every change is committed to `main` and pushed to
+`origin/main` before anything is deployed. Deployables are produced by the
+GitHub Actions release workflow from a pushed tag — never built ad hoc on a
+developer machine and never edited on the server. Staging is for verification
+and must never become the source of application logic.
 
 ---
 

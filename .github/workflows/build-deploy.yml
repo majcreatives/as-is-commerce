@@ -1,0 +1,115 @@
+name: Build deployable release
+
+# Produces the deployable package for a Hostinger staging/production move.
+#
+# GITHUB IS IN THE LOOP. Every change lands on `origin/main` first; nothing is
+# built ad hoc on a developer machine and nothing is edited on the server. This
+# workflow builds the application on a clean runner and attaches the resulting
+# zip to a GitHub Release. The server downloads that zip; it never runs Node
+# and never compiles the front-end itself.
+#
+# Triggers:
+#   - workflow_dispatch: build from a given branch/tag on demand.
+#   - push of a `stage*` tag: the normal deploy path (e.g. `stage20.5b.1`).
+#
+# Pushing to `main` alone does NOT build. An explicit tag is the deploy
+# decision and stays as a permanent, versioned record.
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'stage*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-deployable-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          tools: composer
+
+      - name: Install production dependencies
+        run: composer install --no-dev --optimize-autoloader --no-interaction --no-progress
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install front-end dependencies
+        run: npm ci
+
+      - name: Build front-end assets
+        run: npm run build
+
+      - name: Assemble deployable package
+        shell: bash
+        run: |
+          set -euo pipefail
+          pkg="/tmp/as-is-commerce-package"
+          rm -rf "$pkg"
+          mkdir -p "$pkg"
+
+          # The deployable is the clean checkout plus production dependencies
+          # and built assets — never a git repo, never tests, never local or
+          # derived state, and never any environment file.
+          rsync -a \
+            --include '.env.example' \
+            --exclude '.env' \
+            --exclude '.env.*' \
+            --exclude '.git' \
+            --exclude '.github' \
+            --exclude 'node_modules' \
+            --exclude 'tests' \
+            --exclude '_ide_helper.php' \
+            --exclude 'storage/logs/*' \
+            --exclude 'storage/framework/cache/data/*' \
+            --exclude 'storage/framework/sessions/*' \
+            --exclude 'storage/framework/views/*' \
+            --exclude 'storage/*.key' \
+            --exclude 'public/storage' \
+            --exclude 'public/hot' \
+            ./ "$pkg/"
+
+          tag="${GITHUB_REF_NAME:-manual}"
+          artifact="as-is-commerce-${tag}.zip"
+          ( cd "$pkg" && zip -qr "/tmp/$artifact" . )
+
+          echo "artifact_path=/tmp/$artifact" >> "$GITHUB_ENV"
+          echo "artifact_name=$artifact" >> "$GITHUB_ENV"
+
+      - name: Publish GitHub Release (tag builds)
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create "$GITHUB_REF_NAME" "$artifact_path" \
+            --title "As-Is-Commerce $GITHUB_REF_NAME" \
+            --notes "Deployable built by GitHub Actions from \`$GITHUB_SHA\`.
+
+Download the zip, extract it on the server, create \`.env\` from \`.env.example\`,
+and follow the server-side steps in \`docs/STAGING_20_5B.md\`." \
+            --repo "$GITHUB_REPOSITORY"
+
+      - name: Upload artifact (manual builds)
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.artifact_name }}
+          path: ${{ env.artifact_path }}
+          retention-days: 14

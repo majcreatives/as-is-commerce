@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Domain\Auction\Actions;
 
-use App\Domain\Auction\Contracts\AuctionLossCompensation;
 use App\Domain\Auction\Contracts\SettlementHandoff;
 use App\Domain\Auction\Services\AuctionLifecycle;
 use App\Enums\AuctionStatus;
@@ -22,10 +21,13 @@ use Illuminate\Support\Facades\DB;
  * payable order against a unit that had already gone back on sale -- a
  * customer could pay for something the platform had just resold.
  *
- * NO CREDITS COME BACK. The winner's bid credits were consumed when the bids
- * were placed and stay consumed. Forfeiting is the loss of the right to buy,
- * not a reversal of the bidding. The frozen `forfeit_policy` records what the
- * auction was created under; nothing here invents a policy beyond it.
+ * NO CREDITS COME BACK, AND NO STORE WALLET IS ISSUED. The winner's bid
+ * credits were consumed when the bids were placed and stay consumed.
+ * Forfeiting is the loss of the right to buy, not a reversal of the bidding.
+ * Nobody ended up with the product, so no qualifying losing bidder receives
+ * Store Wallet value either (AGENTS.md §45): Store Wallet is issued only when
+ * another customer acquires the product. The frozen `forfeit_policy` records
+ * what the auction was created under; nothing here invents a policy beyond it.
  *
  * Idempotent: an auction that has already forfeited is not in
  * `PendingSettlement` any more and is returned untouched, so a sweep running
@@ -36,7 +38,6 @@ final class ForfeitAuction
     public function __construct(
         private readonly AuctionLifecycle $lifecycle,
         private readonly SettlementHandoff $settlement,
-        private readonly AuctionLossCompensation $compensation,
     ) {}
 
     public function handle(Auction $auction, ?User $actor = null): Auction
@@ -60,15 +61,7 @@ final class ForfeitAuction
                 'The auction settlement deadline passed without payment.',
             );
 
-            $forfeited = $this->lifecycle->forfeit($locked, $actor);
-
-            // Nobody ended up with the product. Every bidder -- the forfeited
-            // winner included -- gets the value of their purchased credits
-            // back as Store Wallet credit. The credits themselves stay
-            // consumed, exactly as before.
-            $this->compensation->compensateLosers($forfeited, null);
-
-            return $forfeited;
+            return $this->lifecycle->forfeit($locked, $actor);
         });
 
         // After commit, and only when this call did the forfeiting: repeated

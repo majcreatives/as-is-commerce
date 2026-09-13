@@ -179,6 +179,33 @@ it('returns no credits when a winner forfeits', function (): void {
     expect(creditWalletFor($winner)->fresh()->balance)->toBe(750);
 });
 
+/*
+ * Nobody acquired the product when the winner forfeits, so no qualifying
+ * bidder receives Store Wallet value (AGENTS.md §45). The loser's consumed
+ * purchased credits were spent on the attempt; they are recorded, and the
+ * platform owes nothing merely because the winner did not pay.
+ */
+it('issues no Store Wallet when a winner forfeits', function (): void {
+    $auction = liveAuction();
+    $loser = customerWithPurchasedCredits(1_000, 10_000);
+    $winner = bidder(1_000);
+    placeBid($auction, $loser, 200);
+    placeBid($auction, $winner, 500);
+
+    $this->close->handle($auction, force: true);
+
+    // The loser is compensated for the loss -- a real acquirer won -- even
+    // though the winner will forfeit; that issuance stands. The forfeit itself
+    // must not compensate anyone a second time, the winner included.
+    expect(storeWalletBalance($loser)->isPositive())->toBeTrue();
+
+    $this->travel(2)->hours();
+    app(ForfeitAuction::class)->handle($auction->fresh());
+
+    expect(storeWalletBalance($loser)->toDecimalString())->toBe('20.00')
+        ->and(storeWalletBalance($winner)->isZero())->toBeTrue();
+});
+
 it('forfeits once when run repeatedly', function (): void {
     $auction = liveAuction();
     placeBid($auction, bidder(500), 100);
@@ -276,6 +303,24 @@ it('returns no credits when an auction is cancelled', function (): void {
     app(CancelAuction::class)->handle($auction, 'Withdrawn.');
 
     expect(creditWalletFor($bidder)->fresh()->balance)->toBe(700);
+});
+
+/*
+ * Cancellation with no acquiring customer issues no Store Wallet either
+ * (AGENTS.md §45). A bidder who spent purchased credits on the attempt gets
+ * neither credits nor cash value back; deciding whether the platform owes
+ * anything for stopping an auction is a deliberate business decision, not
+ * something this action may infer.
+ */
+it('issues no Store Wallet when an auction is cancelled', function (): void {
+    $auction = liveAuction();
+    $bidder = customerWithPurchasedCredits(1_000, 10_000);
+    placeBid($auction, $bidder, 200);
+
+    app(CancelAuction::class)->handle($auction, 'Withdrawn.');
+
+    expect(creditWalletFor($bidder)->fresh()->balance)->toBe(800)
+        ->and(storeWalletBalance($bidder)->isZero())->toBeTrue();
 });
 
 // -------------------------------------------------- Activation and closing

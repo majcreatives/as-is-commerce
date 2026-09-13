@@ -11,8 +11,9 @@ class DatabaseSeeder extends Seeder
     /**
      * Seeds only the reference data the application requires to function.
      *
-     * No demo users, products, auctions, balances or transactions are created
-     * here or anywhere else in this project.
+     * No demo users, auctions, balances or transactions are created here.
+     * The catalog (categories, brands, products with initial stock) is
+     * representative development data, created by CatalogSeeder.
      */
     public function run(): void
     {

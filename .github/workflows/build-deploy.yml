@@ -100,10 +100,7 @@ jobs:
           set -euo pipefail
           gh release create "$GITHUB_REF_NAME" "$artifact_path" \
             --title "As-Is-Commerce $GITHUB_REF_NAME" \
-            --notes "Deployable built by GitHub Actions from \`$GITHUB_SHA\`.
-
-Download the zip, extract it on the server, create \`.env\` from \`.env.example\`,
-and follow the server-side steps in \`docs/STAGING_20_5B.md\`." \
+            --notes "Deployable built by GitHub Actions from $GITHUB_SHA. Download the zip, extract it on the server, create .env from .env.example, and follow the server-side steps in docs/STAGING_20_5B.md." \
             --repo "$GITHUB_REPOSITORY"
 
       - name: Upload artifact (manual builds)

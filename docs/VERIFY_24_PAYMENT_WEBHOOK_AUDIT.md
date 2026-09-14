@@ -378,8 +378,8 @@ Record per-flow PASS / FAIL with the verifying query/output.
 
 | Flow | Result |
 |---|---|
-| A Webhook signature + dedupe | A1 PASS (purchase 7, single Processed row, 1 credit grant, 2 cash entries) · A2 PASS (replay → 200 duplicate, no new row/grant) · A3 PENDING |
-| B Initialization + callback | |
+| A Webhook signature + dedupe | **PASS** — A1 (purchase 7, single Processed row, 1 credit grant, 2 cash entries) · A2 (replay → 200 duplicate, no new row/grant) · A3 (unsigned 401, wrong secret 401, tampered-after-signing 401, signed replay 200; no rows stored) |
+| B Initialization + callback | B1 PASS (order 21 both, frozen amount 549766 == attempt 6, Paystack page abandoned → no charge, unit still held) · B2 PENDING |
 | C Payment conflict | |
 | D Late payment | |
 | E Failed payment (+ pending note) | |

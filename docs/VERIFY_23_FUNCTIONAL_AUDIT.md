@@ -21,6 +21,11 @@ lifecycles.
 > outstanding checkout and transition the auction only, issuing no Store
 > Wallet (commit `5b8248e`), with regression tests. Verification below runs
 > against that corrected build (`stage23.1`).
+>
+> **Resolved on staging.** Forfeit + Relist and Admin cancel were verified
+> against the corrected behavior (build deployed as `stage23.2`/`stage23.3`,
+> both containing `5b8248e`): see Flow 4 below — `loss_rows => 0` in both
+> flows, with a real `Release` movement on forfeit.
 
 ---
 
@@ -202,10 +207,17 @@ Record per-flow PASS / FAIL with the verifying query/output.
 | 3b Closing | skipped by default config — seeded `closing_window_seconds=0`, Live → PendingSettlement directly (documented). CLOSING not yet observed; needs an operator-created windowed ruleset |
 | 3c Bidding | PASS — 16 accepted bids (users 2/3 alternating), each with `credit_transaction_id` set and lot consumption == bid amount; amounts rose 10→135; bid #16 (135, user 2) = `highest_bid_id`. 3000ms interval frozen in snapshot; discrete sub-3000ms rejection attempt not separately exercised this run |
 | 3d Winner/settlement/compensation | PASS — `closure:highest_bid`; winner user 2 (Adom Nas) at 135 credits (`winning_bid_id:16` = `highest_bid_id`); `settlement_due_at` set; settlement order `AIC-O-20260913-DPJKPLULVX` source `auction_win` total 10000 now **Paid** (17:00:34); auction `settled`; winner credit wallet 600→147 (453 consumed, matches bids); loser user 3 wallet 500→120 (380 consumed); loser Store Wallet `auction_loss_compensation` **3420 minor = floor(380×4500/500)** key `auction-loss:1:3` single row; winner excluded (no `auction-loss:1:2`); free-credit contribution 0 (lot 4 source `purchased`, paid 380 / free 0); Store Wallet ledger sum == `balance_minor` MATCH (then applied, see Flow 5) |
-| 4 No-bid / cancel / forfeit / relist / Buy Now | No-bid close PASS — auction `2` (Volta V3 Smartphone 64GB) started live, 0 bids, tick after `ends_at` → `unsold`, `closure_reason=no_bids`, no winner, no settlement order, no `auction-loss` Store Wallet; inventory reservation **released** (`release` tx, reserved 1→0, on-hand 7); transitions `draft → live → unsold`. **Buy Now PASS** — auction `3` (Kwaku Studio Over-Ear Headphones) live with 1 accepted bid (user 3, 50 credits); user 2 clicked Buy Now → `closure:buy_now`, `buy_now_user_id:2`, `winner_user_id`/`winning_bid_id` null; order `AIC-O-20260913-NTN51KIT90` `paid` 65000, payment success (provider ref `AIC-P-20260913-RJRE2D6WO1Z2QSOK`, tx `6555137095`, channel card); user 3 compensated `450 minor = floor(50×4500/500)` key `auction-loss:3:3`; buyer had no own bid credits so Buy Now discount 0 (correct); inventory reservation → sale (reserved 2→1; residual reserved unit belongs to unrelated checkout `AIC-O-20260913-SH0GBI1GKP`). **Forfeit/Cancel correction** — see discrepancy note above (commit `5b8248e`); awaiting `stage23.1` deploy before running forfeit+relist and admin-cancel on staging |
+| 4 No-bid / cancel / forfeit / relist / Buy Now | No-bid close PASS — auction `2` (Volta V3 Smartphone 64GB) started live, 0 bids, tick after `ends_at` → `unsold`, `closure_reason=no_bids`, no winner, no settlement order, no `auction-loss` Store Wallet; inventory reservation **released** (`release` tx, reserved 1→0, on-hand 7); transitions `draft → live → unsold`. **Buy Now PASS** — auction `3` (Kwaku Studio Over-Ear Headphones) live with 1 accepted bid (user 3, 50 credits); user 2 clicked Buy Now → `closure:buy_now`, `buy_now_user_id:2`, `winner_user_id`/`winning_bid_id` null; order `AIC-O-20260913-NTN51KIT90` `paid` 65000, payment success (provider ref `AIC-P-20260913-RJRE2D6WO1Z2QSOK`, tx `6555137095`, channel card); user 3 compensated `450 minor = floor(50×4500/500)` key `auction-loss:3:3`; buyer had no own bid credits so Buy Now discount 0 (correct); inventory reservation → sale (reserved 2→1; residual reserved unit belongs to unrelated checkout `AIC-O-20260913-SH0GBI1GKP`). **Forfeit (7b) PASS (corrected build)** — auction `8` closed on the clock with 1 valid bid (winner user 3), settlement order `AIC-O-20260914-HHOVSYLN2B` opened `pending_payment` (`settlement_due_at` under a 1-minute test ruleset); once the deadline passed, `auctions:tick` → **`forfeited 1`**: auction `8` `forfeited` / `closure_reason=forfeited`, settlement order `cancelled`, inventory `Release` movement (`quantity_delta 1`, reason "Winner did not settle in time.", reserved released), and **zero** `auction-loss:8:%` Store Wallet rows with no bidder balance change — pre-fix code compensated every bidder including the forfeited winner, post-fix nobody. **Relist (7b) PASS** — auction `8` status `relisted`; transition `forfeited → relisted`, reason `Relisted as auction #9.`; replacement created as a new Draft (auction `9`). **Admin cancel (7c) PASS** — auction `9` `cancelled` / `closure_reason=cancelled`, **zero** `auction-loss:9:%` Store Wallet rows |
 | 5 Store Wallet apply/release/freeze/conflict | **PASS (Stage 23 scope)** — compensation → apply → release → paid-freeze all verified. Applied: `store-wallet:applied:order:5` (−450, order `AIC-O-20260913-KGGLSZJAFX` 220000 → payable 219550 pending_payment). **Release PASS**: cancelled via checkout page ("Cancel this checkout", reached at `/checkout/AIC-O-20260913-KGGLSZJAFX` — order route binds by `order_number`, not id) → `store-wallet:released:order:5` (+450), balance back to 450; inventory reservation released. **Paid-order freeze PASS**: raw `UPDATE orders SET total_minor=1` on paid order id 2 → DB trigger `orders_frozen_after_payment` SQLSTATE 45000, row unchanged. Note: cancelled order keeps its `pending` payment attempt (attempts are append-only history; order no longer accepts payment). Payment-conflict is Stage 24 |
 
-Verdict: **PASS / FAIL / NEEDS REVIEW**
+**7d regression note (recorded as covered):** normal close compensation was
+verified earlier in this audit (Flow 3d, auction `1`: loser user 3 received
+`3420 minor = floor(380×4500/500)` key `auction-loss:1:3`, winner excluded), and
+the local regression suite for the `5b8248e` fix is green (full suite 2,008
+passed on `main`). The forfeit/cancel change removed issuance only where there
+is no acquiring customer; compensation on a normal close is untouched.
+
+Verdict: **PASS**
 
 ---
 
@@ -214,3 +226,12 @@ Verdict: **PASS / FAIL / NEEDS REVIEW**
 - **PASS all** → Stage 23 gate closes; Stage 24 (payment/webhook audit) opens.
 - **Any FAIL or blocked item** → do not proceed. Record evidence, triage the
   discrepancy (never silently repair financial/auction data), and return.
+
+**Stage 23 gate: CLOSED (2026-09-14).** All flows PASS on the corrected build
+(`stage23.1` → `stage23.3`). Flow 3b (CLOSING status) remains a documented
+default-config skip — the seeded `closing_window_seconds = 0` transitions
+Live → PendingSettlement directly; CLOSING is optionally observable later with
+an operator-created windowed ruleset. Auction `7` (tests) forfeits harmlessly
+when its own 60-minute deadline lapses and needs no action. Stage 24
+(payment/webhook audit — initialization/verify edge paths, webhook signatures,
+duplicate events, payment conflicts, late payments) opens next.

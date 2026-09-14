@@ -214,42 +214,48 @@ reference resolves to "not found".
 
 ---
 
-## Flow C — Payment conflict (two customers, one unit)
+## Flow C — Payment conflict (two customers fighting for one auctioned unit)
 
 Goal: when two legitimate customers both pay for the last unit, the losing
 order stays **Paid + fulfilment blocked** and is surfaced to admin — never
 reframed as a payment failure, never auto-refunded.
 
-1. Pick a product with exactly one unit of available stock (adjust stock via
-   `InventoryService` on staging or use a freshly listed product with
-   stock 1).
-2. Customer A and Customer B each reach the Paystack test checkout for that
-   product (both order rows `PendingPayment`, both attempts pending).
-3. Pay both with the test card — first verification wins the unit; the second
-   is verified successfully but the unit is gone.
+Why auctioned-product Buy Now: on plain catalogue checkout the reservation
+refuses the second customer up front (tested, `CheckoutConcurrencyTest`), so
+no conflict exists to prove. On an *auctioned* product both customers may open
+a Buy Now checkout — the auction already holds the unit — and the race is
+decided at payment, which is exactly where it belongs.
+
+1. Create (or run) a **live auction** on a product with **Buy Now enabled** and
+   exactly one unit (stock such that only the auctioned unit is at stake).
+2. Customer A opens a Buy Now checkout on that live auction's product.
+3. Customer B opens a Buy Now checkout on the same live auction's product.
+4. Pay **both** orders with the test card at the Paystack checkout for each
+   order — each order carries no reservation, because the auction already
+   holds the unit.
 
 | Check | Expectation |
 |---|---|
-| Winner order | `Paid` + `Processing/Fulfilled` path via `FulfilmentHandoff` |
-| Loser order | `Paid` with `fulfilment_blocked_reason` set; payment attempt `Success`; listed in admin (OrderPaymentIndex blocked queue) and Exception Centre |
-| Inventory | on-hand/reserved reflect exactly one sale |
-| Money | both payments real, neither auto-refunded (refunds are a separate manual decision) |
+| First order paid | `Paid`, proceeds to normal fulfilment |
+| Auction | closes via Buy Now (`closure_reason = buy_now`, `Settled`), winner/sale fields consistent |
+| Second order paid | `Paid` with `fulfilment_blocked_reason` set ("already been bought" family); attempt `Success`; visible in admin OrderPaymentIndex blocked queue + Exception Centre (`fulfilment_blocked`) |
+| Inventory | exactly **one** `Sale` movement; on-hand reflects one unit gone |
+| Money | both payments real, neither auto-refunded |
 
 Verifier:
 
 ```bash
 /opt/alt/php84/usr/bin/php artisan tinker --execute="
-\$orders = App\Models\Order::latest('id')->take(2)->get();
-foreach (\$orders as \$o) {
-  dump([\$o->order_number, \$o->status->value, \$o->fulfilment_blocked_reason, \$o->successfulPayment()?->status->value]);
+foreach (App\Models\Order::where('endedAnAuction', true)->orWhere('fulfilment_blocked_reason','!=',null)->get() as \$o) {
+  dump([\$o->order_number, \$o->status->value, \$o->fulfilment_blocked_reason, \$o->payments()->count()]);
 }
 "
 ```
 
-Same principle in the auction forms already covered locally: Buy Now vs
-auction-close race, and webhook/callback racing a single fulfilment — the
-staging re-run here is the two-checkout conflict, which is the money-moving
-shape.
+Same principle in the shapes already covered locally: two customers racing a
+catalogue unit without an auction, and Buy Now racing auction settlement — the
+staging re-run here is the auctioned-product Buy Now conflict, which is the
+money-moving shape.
 
 ---
 
@@ -379,7 +385,7 @@ Record per-flow PASS / FAIL with the verifying query/output.
 | Flow | Result |
 |---|---|
 | A Webhook signature + dedupe | **PASS** — A1 (purchase 7, single Processed row, 1 credit grant, 2 cash entries) · A2 (replay → 200 duplicate, no new row/grant) · A3 (unsigned 401, wrong secret 401, tampered-after-signing 401, signed replay 200; no rows stored) |
-| B Initialization + callback | B1 PASS (order 21 both, frozen amount 549766 == attempt 6, Paystack page abandoned → no charge, unit still held) · B2 PENDING |
+| B Initialization + callback | **PASS** — B1 (frozen 549766 == attempt, Paystack-page abandon → no charge, unit held) · B2 (order paid, success 549766, Stock Wallet 234 applied → payable only; revisit → no double effect) · B3 (purchase 8 callback: fulfilled, 1 grant/2 cash, revisit → still 1) |
 | C Payment conflict | |
 | D Late payment | |
 | E Failed payment (+ pending note) | |

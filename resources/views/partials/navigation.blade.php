@@ -7,7 +7,9 @@
     // The most recent checkout that is still payable right now. A customer who
     // abandons the checkout page but has not paid yet needs a way back into it,
     // so when one exists the header shows a cart pointing at that order.
-    // Bound to a single indexed row because this runs on every page.
+    // Bound to a single indexed row, with the item quantity summed, because
+    // this runs on every page. The badge shows how many items that checkout
+    // holds, not a sum of separate carts -- there is only ever one.
     $activeCheckout = auth()->user()
         ?->orders()
         ->awaitingPayment()
@@ -16,6 +18,7 @@
                 ->orWhere('payment_due_at', '>', now());
         })
         ->latest('id')
+        ->withSum('items as cart_count', 'quantity')
         ->first();
 
     // The account menu, grouped the way somebody looks for things: what is
@@ -119,10 +122,17 @@
                 @if ($activeCheckout)
                     <a href="{{ route('checkout.show', $activeCheckout) }}"
                        class="inline-flex items-center rounded-md p-2 text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
-                       aria-label="Return to your checkout">
-                        <svg class="size-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 10.5V6a3.75 3.75 0 1 0-7.5 0v4.5m11.356-1.993 1.263 12A1.125 1.125 0 0 1 19.75 22H4.25a1.125 1.125 0 0 1-1.12-1.243l1.264-12A1.125 1.125 0 0 1 5.513 7.5h12.974c.576 0 1.059.435 1.119 1.007Z" />
-                        </svg>
+                       aria-label="Return to your checkout"
+                       title="You have {{ $activeCheckout->cart_count }} {{ Str::plural('item', $activeCheckout->cart_count) }} to check out">
+                        <span class="relative inline-flex">
+                            <svg class="size-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 10.5V6a3.75 3.75 0 1 0-7.5 0v4.5m11.356-1.993 1.263 12A1.125 1.125 0 0 1 19.75 22H4.25a1.125 1.125 0 0 1-1.12-1.243l1.264-12A1.125 1.125 0 0 1 5.513 7.5h12.974c.576 0 1.059.435 1.119 1.007Z" />
+                            </svg>
+                            <span class="absolute -right-1.5 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-600 px-1 text-[0.65rem] font-bold leading-none text-white ring-2 ring-white"
+                                  aria-hidden="true">
+                                {{ $activeCheckout->cart_count > 99 ? '99+' : $activeCheckout->cart_count }}
+                            </span>
+                        </span>
                     </a>
                 @endif
 
@@ -276,6 +286,10 @@
                                 class="block"
                                 :active="request()->routeIs('checkout.show')">
                         Return to checkout
+                        <span class="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-600 px-1 text-[0.65rem] font-bold leading-none text-white"
+                              aria-hidden="true">
+                            {{ $activeCheckout->cart_count > 99 ? '99+' : $activeCheckout->cart_count }}
+                        </span>
                     </x-nav-link>
                 @endif
 

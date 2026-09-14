@@ -118,32 +118,41 @@ printed):
 \$event = App\Models\PaymentWebhookEvent::latest('id')->first();
 \$payload = \$event->payload;
 \$json = json_encode(\$payload);
+\$before = App\Models\PaymentWebhookEvent::count();
 
-// No signature header -> 401, nothing stored.
-dump(['unsigned' => Http::withHeaders(['Content-Type' => 'application/json'])->post(route('webhooks.paystack'), \$json)->status()]);
+// (1) No signature header -> 401, nothing stored.
+dump(['unsigned' => Http::asJson()->post(route('webhooks.paystack'), \$payload)->status()]);
 
-// Valid HMAC over the SAME body -> 200 (duplicate or processed).
-\$sig = hash_hmac('sha512', \$json, (string) config('paystack.secret_key'));
-dump(['signed' => Http::asJson()->withHeaders(['X-Paystack-Signature' => \$sig])->post(route('webhooks.paystack'), \$payload)->status()]);
-
-// Purposely wrong secret -> 401.
+// (2) Signed with the wrong secret -> 401.
 \$bad = hash_hmac('sha512', \$json, 'not-the-secret');
-dump(['wrong-secret' => Http::asJson()->withHeaders(['X-Paystack-Signature' => \$bad])->post(route('webhooks.paystack'), \$payload)->status()]);
+dump(['wrong_secret' => Http::asJson()->withHeaders(['X-Paystack-Signature' => \$bad])->post(route('webhooks.paystack'), \$payload)->status()]);
 
-// Tampered body after signing -> 400/401; the point is it is never processed.
+// (3) Tampered body signed with the ORIGINAL signature (attacker cannot
+//     re-sign) -> 401; the tampered payload is never processed.
 \$tampered = json_decode(\$json, true);
 if (\is_array(\$tampered)) { \$tampered['data']['reference'] = 'AIC-P-TAMPERED'; }
-\$sig2 = hash_hmac('sha512', json_encode(\$tampered), (string) config('paystack.secret_key'));
-dump(['tampered' => Http::asJson()->withHeaders(['X-Paystack-Signature' => \$sig2])->post(route('webhooks.paystack'), \$tampered)->status()]);
+\$tamperedJson = json_encode(\$tampered);
+\$origSig = hash_hmac('sha512', \$json, (string) config('paystack.secret_key'));
+dump(['tampered_after_signing' => Http::asJson()->withHeaders(['X-Paystack-Signature' => \$origSig])->post(route('webhooks.paystack'), \$tampered)->status()]);
+
+// (4) Correctly re-signed identical body -> 200 duplicate, no new row.
+\$sig = hash_hmac('sha512', \$json, (string) config('paystack.secret_key'));
+dump(['signed_replay' => Http::asJson()->withHeaders(['X-Paystack-Signature' => \$sig])->post(route('webhooks.paystack'), \$payload)->status()]);
+
+// The 401s must not store anything: count unchanged.
+dump(['events_before' => \$before, 'events_after' => App\Models\PaymentWebhookEvent::count()]);
 "
 ```
+
+Run the same probes by keeping a reference to the tampered payload in memory:
 
 | Check | Expectation |
 |---|---|
 | unsigned | `401`, no row stored |
 | wrong secret | `401`, no row stored |
-| tampered | not processed (400/401/duplicate), no financial effect |
+| tampered after signing | `401`, no row stored, no financial effect |
 | signed replay | `200` duplicate, single row, single effect |
+| events_before vs events_after | equal (nothing stored by the 401s) |
 
 ---
 
@@ -356,7 +365,7 @@ Record per-flow PASS / FAIL with the verifying query/output.
 
 | Flow | Result |
 |---|---|
-| A Webhook signature + dedupe | |
+| A Webhook signature + dedupe | A1 PASS (purchase 7, single Processed row, 1 credit grant, 2 cash entries) · A2 PASS (replay → 200 duplicate, no new row/grant) · A3 PENDING |
 | B Initialization + callback | |
 | C Payment conflict | |
 | D Late payment | |

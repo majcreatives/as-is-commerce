@@ -168,7 +168,20 @@ the callback only ever reports what the server verifies.
    reference is `AIC-P-{date}-{16}` and returns an `authorization_url` that
    redirects in test mode.
 2. Cancel checkout in the browser before paying → order still `PendingPayment`,
-   one `Initiated/Pending` attempt, no inventory movement yet.
+   one `Initiated/Pending` attempt; the unit is **held** (`holds_reservation`,
+   `stock_reserved +1` via `OrderLifecycle::reserveUnit`) but not sold.
+
+Verifier:
+
+```bash
+/opt/alt/php84/usr/bin/php artisan tinker --execute="
+\$o = App\Models\Order::where('status','pending_payment')->latest('id')->first();
+dump([\$o?->order_number, \$o?->status->value, \$o?->holds_reservation, \$o?->payable_minor, \$o?->total_minor]);
+dump(\$o?->payments()->latest('id')->first()?->only('status','provider_reference','amount_minor'));
+\$inv = App\Models\InventoryTransaction::latest('id')->first();
+dump([\$inv?->type->value, \$inv?->quantity_delta, \$inv?->stock_reserved_after, \$inv?->reason]);
+"
+```
 
 ### B2. Callback before / after settlement
 

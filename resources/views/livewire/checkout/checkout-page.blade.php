@@ -206,6 +206,14 @@
                         @endif
                     </p>
 
+                    @if ($order->store_wallet_applied_minor > 0)
+                        <p class="mt-2 text-xs text-slate-500">
+                            Your Store Wallet covers
+                            <strong><x-money :amount="$order->storeWalletApplied()" /></strong>
+                            of this bill.
+                        </p>
+                    @endif
+
                     <p class="mt-2 text-xs text-slate-500">
                         Your order is confirmed only once we have verified the payment with Paystack
                         ourselves — not when your browser returns.

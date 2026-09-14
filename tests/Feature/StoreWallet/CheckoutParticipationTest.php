@@ -305,6 +305,35 @@ it('does not commit a release for an order that never applied value', function (
         ->and(StoreWalletTransaction::count())->toBe(0);
 });
 
+// ---------------------------------------------- What the checkout page says
+
+it('tells the customer what the Store Wallet covers on the bill', function (): void {
+    $product = Product::factory()->active()->pricedAt(550_000)->create();
+    app(InventoryService::class)->initialStock($product, 1);
+
+    $buyer = userWithRole('customer');
+    fundStoreWallet($buyer, 300);
+
+    $order = buyNowCheckout($buyer, $product);
+
+    $this->actingAs($buyer)
+        ->get(route('checkout.show', $order))
+        ->assertOk()
+        ->assertSee('Your Store Wallet covers');
+});
+
+it('says nothing about the Store Wallet when none was applied', function (): void {
+    $product = Product::factory()->active()->pricedAt(550_000)->create();
+    app(InventoryService::class)->initialStock($product, 1);
+
+    $order = buyNowCheckout(userWithRole('customer'), $product);
+
+    $this->actingAs($order->user)
+        ->get(route('checkout.show', $order))
+        ->assertOk()
+        ->assertDontSee('Your Store Wallet covers');
+});
+
 // -------------------------------------------- One balance, several checkouts
 
 it('never spends the same value twice across checkouts', function (): void {

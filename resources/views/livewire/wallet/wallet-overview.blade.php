@@ -1,7 +1,7 @@
 <div>
     <x-page-header
         title="Wallet"
-        description="Your bidding credits and account balance." />
+        description="Your bidding credits and Store Wallet." />
 
     {{-- Balances. These are real figures read from the ledger, so a new
          account correctly shows zero rather than a placeholder. --}}
@@ -24,11 +24,13 @@
         </x-card>
 
         <x-card>
-            <p class="text-sm font-medium text-slate-500">Account balance</p>
+            <p class="text-sm font-medium text-slate-500">Store Wallet</p>
             <p class="mt-1 text-3xl font-bold tabular-nums text-slate-900">
-                {{ settings()->getString('currency_symbol', 'GH₵') }} {{ $cashWallet->balance()->format() }}
+                {{ settings()->getString('currency_symbol', 'GH₵') }} {{ $storeWallet->balance()->format() }}
             </p>
-            <p class="mt-1 text-xs text-slate-500">{{ $cashWallet->currency }}</p>
+            <p class="mt-1 text-xs text-slate-500">
+                Purchasing power for eligible purchases — not cash, not a credit refund.
+            </p>
         </x-card>
     </div>
 
@@ -36,7 +38,7 @@
     <div class="mb-4 flex flex-wrap gap-1 border-b border-slate-200 pb-3" role="tablist">
         @foreach ([
             'credits' => 'Credit history',
-            'cash' => 'Account history',
+            'store_wallet' => 'Store Wallet history',
             'lots' => 'Credit batches',
         ] as $key => $label)
             <button type="button"
@@ -103,13 +105,13 @@
         </x-card>
     @endif
 
-    @if ($tab === 'cash')
+    @if ($tab === 'store_wallet')
         <x-card :padded="false">
-            @if ($cashTransactions->isEmpty())
+            @if ($storeWalletTransactions->isEmpty())
                 <div class="p-6">
                     <x-empty-state
-                        title="No account activity yet"
-                        description="Payments and refunds will be listed here once purchasing opens." />
+                        title="No Store Wallet activity yet"
+                        description="When you earn Store Wallet value from bids, it will appear here with the date and the reason." />
                 </div>
             @else
                 <div class="overflow-x-auto">
@@ -123,7 +125,7 @@
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100">
-                            @foreach ($cashTransactions as $transaction)
+                            @foreach ($storeWalletTransactions as $transaction)
                                 <tr>
                                     <td class="whitespace-nowrap px-4 py-3 text-slate-500">
                                         {{ $transaction->created_at->timezone(settings()->getString('display_timezone', 'UTC'))->format('j M Y, H:i') }}
@@ -134,8 +136,8 @@
                                             <span class="block text-xs text-slate-500">{{ $transaction->description }}</span>
                                         @endif
                                     </td>
-                                    <td class="px-4 py-3 text-right font-semibold tabular-nums">
-                                        {{ $transaction->signedAmount() }}
+                                    <td class="px-4 py-3 text-right font-semibold tabular-nums {{ $transaction->isCredit() ? 'text-emerald-700' : 'text-slate-900' }}">
+                                        {{ ($transaction->isCredit() ? '+' : '-') . $transaction->absoluteAmount()->format() }}
                                     </td>
                                     <td class="px-4 py-3 text-right tabular-nums text-slate-500">
                                         {{ $transaction->balanceAfter()->format() }}
@@ -146,8 +148,8 @@
                     </table>
                 </div>
 
-                @if ($cashTransactions->hasPages())
-                    <div class="border-t border-slate-100 p-4">{{ $cashTransactions->links() }}</div>
+                @if ($storeWalletTransactions->hasPages())
+                    <div class="border-t border-slate-100 p-4">{{ $storeWalletTransactions->links() }}</div>
                 @endif
             @endif
         </x-card>

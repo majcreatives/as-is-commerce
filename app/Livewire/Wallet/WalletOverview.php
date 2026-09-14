@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace App\Livewire\Wallet;
 
-use App\Domain\Cash\Services\CashLedgerService;
 use App\Domain\Credit\Services\CreditLedgerService;
-use App\Models\CashTransaction;
+use App\Domain\StoreWallet\Services\StoreWalletLedgerService;
 use App\Models\CreditLot;
 use App\Models\CreditTransaction;
+use App\Models\StoreWalletTransaction;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\View\View;
@@ -24,8 +24,8 @@ use Livewire\WithPagination;
  * Read-only. Buying credits requires payment processing, which belongs to a
  * later stage, so nothing here can change a balance.
  *
- * Balances shown are real: a new account genuinely holds zero credits and
- * GH0.00, and that is what it displays.
+ * Balances shown are real: a new account genuinely holds zero credits and no
+ * Store Wallet value, and that is what it displays.
  */
 #[Layout('components.layouts.app')]
 #[Title('Wallet')]
@@ -43,21 +43,21 @@ class WalletOverview extends Component
 
     public function render(
         CreditLedgerService $credits,
-        CashLedgerService $cash,
+        StoreWalletLedgerService $store,
     ): View {
         $user = auth()->user();
 
         $creditWallet = $credits->walletFor($user);
-        $cashWallet = $cash->walletFor($user);
+        $storeWallet = $store->walletFor($user);
 
         return view('livewire.wallet.wallet-overview', [
             'creditWallet' => $creditWallet,
-            'cashWallet' => $cashWallet,
+            'storeWallet' => $storeWallet,
             'spendableCredits' => $creditWallet->spendableBalance(),
             'expiringSoon' => $this->expiringSoon($creditWallet->id),
             'lots' => $this->activeLots($creditWallet->id),
             'creditTransactions' => $this->creditTransactions($creditWallet->id),
-            'cashTransactions' => $this->cashTransactions($cashWallet->id),
+            'storeWalletTransactions' => $this->storeWalletTransactions($storeWallet->id),
         ]);
     }
 
@@ -99,12 +99,12 @@ class WalletOverview extends Component
     }
 
     /**
-     * @return LengthAwarePaginator<int, CashTransaction>
+     * @return LengthAwarePaginator<int, StoreWalletTransaction>
      */
-    private function cashTransactions(int $walletId): LengthAwarePaginator
+    private function storeWalletTransactions(int $walletId): LengthAwarePaginator
     {
-        return CashTransaction::where('cash_wallet_id', $walletId)
+        return StoreWalletTransaction::where('store_wallet_id', $walletId)
             ->orderByDesc('id')
-            ->paginate(15, pageName: 'cash');
+            ->paginate(15, pageName: 'store');
     }
 }

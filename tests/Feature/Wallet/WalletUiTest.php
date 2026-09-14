@@ -2,10 +2,7 @@
 
 declare(strict_types=1);
 
-use App\Domain\Cash\Services\CashLedgerService;
 use App\Domain\Credit\Services\CreditLedgerService;
-use App\Domain\Shared\Money\Money;
-use App\Enums\CashTransactionType;
 use App\Enums\CreditTransactionType;
 use App\Livewire\Wallet\WalletOverview;
 use App\Models\User;
@@ -17,7 +14,6 @@ beforeEach(function (): void {
 
     $this->customer = userWithRole('customer');
     $this->ledger = app(CreditLedgerService::class);
-    $this->cash = app(CashLedgerService::class);
 });
 
 // ------------------------------------------------------------------ Access
@@ -50,8 +46,8 @@ it('shows empty states rather than invented activity', function (): void {
     Livewire::actingAs($this->customer)
         ->test(WalletOverview::class)
         ->assertSee('No credit activity yet')
-        ->set('tab', 'cash')
-        ->assertSee('No account activity yet')
+        ->set('tab', 'store_wallet')
+        ->assertSee('No Store Wallet activity yet')
         ->set('tab', 'lots')
         ->assertSee('No credit batches');
 });
@@ -105,18 +101,14 @@ it('does not warn when nothing is expiring', function (): void {
         ->assertDontSee('expiring within a month');
 });
 
-it('shows the real cash balance and history', function (): void {
-    $this->cash->credit(
-        $this->cash->walletFor($this->customer),
-        CashTransactionType::Deposit,
-        Money::fromDecimalString('150.00'),
-    );
+it('shows the real Store Wallet balance and history', function (): void {
+    fundStoreWallet($this->customer, 15_000);
 
     Livewire::actingAs($this->customer)
         ->test(WalletOverview::class)
         ->assertSee('150.00')
-        ->set('tab', 'cash')
-        ->assertSee('Deposit');
+        ->set('tab', 'store_wallet')
+        ->assertSee('Auction credit value');
 });
 
 // ------------------------------------------------------------- Separation

@@ -8,8 +8,7 @@
      credits are in the ledger, possibly already spent, and a status change
      would not take them back. --}}
 
-<div>
-    <x-admin.nav />
+<x-admin.shell>
 
     <x-page-header
         title="Referrals"
@@ -213,4 +212,4 @@
         never cash, are never paid out, and cannot be transferred between customers. Nothing on this
         screen can grant them.
     </p>
-</div>
+</x-admin.shell>

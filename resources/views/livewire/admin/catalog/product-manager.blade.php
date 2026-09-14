@@ -1,5 +1,4 @@
-<div>
-    <x-admin.nav />
+<x-admin.shell>
 
     <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <x-page-header
@@ -216,4 +215,4 @@
     @if ($products->hasPages())
         <div class="mt-4">{{ $products->links() }}</div>
     @endif
-</div>
+</x-admin.shell>

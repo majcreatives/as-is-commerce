@@ -4,8 +4,7 @@
      are frozen or derived, and offering a control that always failed would be
      worse than not offering one. --}}
 
-<div>
-    <x-admin.nav />
+<x-admin.shell>
 
     <div class="mb-6 flex flex-wrap items-center gap-2">
         <x-badge :classes="$auction->status->badgeClasses()">{{ $auction->status->label() }}</x-badge>
@@ -507,4 +506,4 @@
             @endcan
         </div>
     </div>
-</div>
+</x-admin.shell>

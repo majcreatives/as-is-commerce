@@ -1,5 +1,4 @@
-<div>
-    <x-admin.nav />
+<x-admin.shell>
 
     <x-page-header
         title="Settings"
@@ -68,4 +67,4 @@
             @endcan
         </form>
     </div>
-</div>
+</x-admin.shell>

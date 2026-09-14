@@ -1,5 +1,4 @@
-<div>
-    <x-admin.nav />
+<x-admin.shell>
 
     <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <x-page-header
@@ -314,4 +313,4 @@
             @endif
         </x-card>
     @endcan
-</div>
+</x-admin.shell>

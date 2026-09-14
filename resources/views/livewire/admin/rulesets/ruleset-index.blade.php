@@ -1,5 +1,4 @@
-<div>
-    <x-admin.nav />
+<x-admin.shell>
 
     <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <x-page-header
@@ -138,4 +137,4 @@
     @if ($rulesets->hasPages())
         <div class="mt-4">{{ $rulesets->links() }}</div>
     @endif
-</div>
+</x-admin.shell>

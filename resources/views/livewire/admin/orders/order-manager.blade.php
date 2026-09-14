@@ -1,8 +1,7 @@
 {{-- Every order, for staff. Read-only: there is no control here that changes
      an amount, and none anywhere that marks an order paid. --}}
 
-<div>
-    <x-admin.nav />
+<x-admin.shell>
 
     <x-page-header
         title="Orders"
@@ -171,4 +170,4 @@
             <div class="border-t border-slate-100 px-5 py-4">{{ $orders->links() }}</div>
         @endif
     </x-card>
-</div>
+</x-admin.shell>

@@ -5,8 +5,7 @@
      what was paid before touching anything — dispatching the wrong package off
      a list is exactly the mistake a manual process makes. --}}
 
-<div>
-    <x-admin.nav />
+<x-admin.shell>
 
     <x-page-header
         title="Fulfilment"
@@ -161,4 +160,4 @@
         Deliveries are handled by hand. Nothing here talks to a courier, and no reference on this
         screen can be looked up anywhere outside this platform.
     </p>
-</div>
+</x-admin.shell>

@@ -5,8 +5,7 @@
      stops being true, and marking one handled without handling it would defeat
      the only purpose this screen has. --}}
 
-<div>
-    <x-admin.nav />
+<x-admin.shell>
 
     <x-page-header
         title="Exceptions"
@@ -124,4 +123,4 @@
         This screen detects and reports. It repairs nothing, and there is no way to dismiss an
         entry: each one disappears when the situation behind it is actually resolved.
     </p>
-</div>
+</x-admin.shell>

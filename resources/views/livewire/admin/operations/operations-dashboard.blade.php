@@ -9,8 +9,7 @@
      this administrator may not open is not rendered, so nothing on the page is
      a link to a 403. --}}
 
-<div>
-    <x-admin.nav />
+<x-admin.shell>
 
     <x-page-header
         title="Operations"
@@ -179,4 +178,4 @@
         cached, and nothing on this screen changes anything &mdash; each card links to the place
         that owns the records behind it.
     </p>
-</div>
+</x-admin.shell>

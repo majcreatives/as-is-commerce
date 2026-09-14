@@ -4,8 +4,7 @@
      order paid. Those are frozen or unreachable by design, and a control that
      always failed would be worse than none. --}}
 
-<div>
-    <x-admin.nav />
+<x-admin.shell>
 
     <div class="mb-6 flex flex-wrap items-center gap-2">
         <x-badge :classes="$order->status->badgeClasses()">{{ $order->status->label() }}</x-badge>
@@ -715,4 +714,4 @@
             </x-card>
         </div>
     </div>
-</div>
+</x-admin.shell>

@@ -3,8 +3,7 @@
      Finding somebody, not browsing everybody. Read-only: nothing on this screen
      changes an account, a balance or an order. --}}
 
-<div>
-    <x-admin.nav />
+<x-admin.shell>
 
     <x-page-header
         title="Customers"
@@ -85,4 +84,4 @@
             <div class="border-t border-slate-100 px-5 py-4">{{ $customers->links() }}</div>
         @endif
     </x-card>
-</div>
+</x-admin.shell>

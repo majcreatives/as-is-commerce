@@ -5,8 +5,7 @@
      when the provider says it did, and a failure stays visible because it is
      part of what happened. --}}
 
-<div>
-    <x-admin.nav />
+<x-admin.shell>
 
     <x-page-header
         title="Refunds &amp; recovery"
@@ -213,4 +212,4 @@
         A refund returns cedis only. Auction bid credits are consumed permanently when a bid is
         accepted and are never restored, and a refund puts no stock back on sale.
     </p>
-</div>
+</x-admin.shell>

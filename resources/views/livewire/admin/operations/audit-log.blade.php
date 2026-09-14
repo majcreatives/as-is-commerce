@@ -5,8 +5,7 @@
      delete control and no bulk action on this page: an audit trail an
      administrator can tidy is not an audit trail. --}}
 
-<div>
-    <x-admin.nav />
+<x-admin.shell>
 
     <x-page-header
         title="Audit log"
@@ -132,4 +131,4 @@
         Entries are never edited or removed, and nothing on this screen could do either.
         A correction is a new action with its own entry.
     </p>
-</div>
+</x-admin.shell>

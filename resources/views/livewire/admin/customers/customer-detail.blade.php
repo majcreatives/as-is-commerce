@@ -16,8 +16,7 @@
     $timezone = settings()->getString('display_timezone', 'UTC');
 @endphp
 
-<div>
-    <x-admin.nav />
+<x-admin.shell>
 
     <div class="mb-6">
         <a href="{{ route('admin.customers.index') }}" wire:navigate
@@ -375,4 +374,4 @@
         This screen only reads. Refunding, retrying a delivery, adjusting credits and every other
         action live on the pages that own those records, behind the permissions that govern them.
     </p>
-</div>
+</x-admin.shell>

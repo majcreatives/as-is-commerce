@@ -1,5 +1,4 @@
-<div>
-    <x-admin.nav />
+<x-admin.shell>
 
     <x-page-header
         title="Inventory"
@@ -166,4 +165,4 @@
             <div class="border-t border-slate-100 p-4">{{ $movements->links() }}</div>
         @endif
     </x-card>
-</div>
+</x-admin.shell>

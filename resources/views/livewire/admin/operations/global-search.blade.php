@@ -4,8 +4,7 @@
      that governs that kind of record, and every link goes to a page that checks
      its own. Searching is not a way around authorization. --}}
 
-<div>
-    <x-admin.nav />
+<x-admin.shell>
 
     <x-page-header
         title="Search"
@@ -179,4 +178,4 @@
             @endif
         @endforeach
     @endif
-</div>
+</x-admin.shell>

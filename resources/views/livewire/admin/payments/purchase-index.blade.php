@@ -1,5 +1,4 @@
-<div>
-    <x-admin.nav />
+<x-admin.shell>
 
     <x-page-header
         title="Credit purchases"
@@ -98,4 +97,4 @@
     @if ($purchases->hasPages())
         <div class="mt-4">{{ $purchases->links() }}</div>
     @endif
-</div>
+</x-admin.shell>

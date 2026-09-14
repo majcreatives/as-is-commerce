@@ -1,5 +1,4 @@
-<div>
-    <x-admin.nav />
+<x-admin.shell>
 
     <x-page-header
         title="Payment events"
@@ -81,4 +80,4 @@
     @if ($events->hasPages())
         <div class="mt-4">{{ $events->links() }}</div>
     @endif
-</div>
+</x-admin.shell>

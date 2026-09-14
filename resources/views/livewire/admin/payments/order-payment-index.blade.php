@@ -6,8 +6,7 @@
      is stuck, the answer is to re-run verification from the order, never to
      assert an outcome from a browser. --}}
 
-<div>
-    <x-admin.nav />
+<x-admin.shell>
 
     <x-page-header
         title="Payments"
@@ -122,4 +121,4 @@
         This screen reads. An order becomes paid only when a payment is verified with the provider
         server-to-server, and there is no control here or anywhere else that asserts money arrived.
     </p>
-</div>
+</x-admin.shell>

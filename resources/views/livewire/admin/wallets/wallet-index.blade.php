@@ -1,5 +1,4 @@
-<div>
-    <x-admin.nav />
+<x-admin.shell>
 
     <x-page-header
         title="Wallets"
@@ -65,4 +64,4 @@
     @if ($users->hasPages())
         <div class="mt-4">{{ $users->links() }}</div>
     @endif
-</div>
+</x-admin.shell>

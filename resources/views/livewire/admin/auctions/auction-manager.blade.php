@@ -5,8 +5,7 @@
      different figures for different things, and seeing both at once is what
      stops one being typed in place of the other. --}}
 
-<div>
-    <x-admin.nav />
+<x-admin.shell>
 
     <x-page-header
         title="Auctions"
@@ -227,4 +226,4 @@
             <div class="border-t border-slate-100 px-5 py-4">{{ $auctions->links() }}</div>
         @endif
     </x-card>
-</div>
+</x-admin.shell>

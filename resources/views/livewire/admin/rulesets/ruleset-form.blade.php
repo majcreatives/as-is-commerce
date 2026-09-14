@@ -1,5 +1,4 @@
-<div>
-    <x-admin.nav />
+<x-admin.shell>
 
     <x-page-header
         :title="$isEditing ? 'Edit draft ruleset' : 'New auction ruleset'"
@@ -220,4 +219,4 @@
             </p>
         @endunless
     </form>
-</div>
+</x-admin.shell>

@@ -3,8 +3,7 @@
      Read-only. There is no control here to edit, resend or delete a
      notification, and none to reach the business event behind one. --}}
 
-<div>
-    <x-admin.nav />
+<x-admin.shell>
 
     <x-page-header
         title="Notifications"
@@ -112,4 +111,4 @@
             <div class="border-t border-slate-100 px-5 py-4">{{ $notifications->links() }}</div>
         @endif
     </x-card>
-</div>
+</x-admin.shell>

@@ -386,12 +386,12 @@ Record per-flow PASS / FAIL with the verifying query/output.
 |---|---|
 | A Webhook signature + dedupe | **PASS** — A1 (purchase 7, single Processed row, 1 credit grant, 2 cash entries) · A2 (replay → 200 duplicate, no new row/grant) · A3 (unsigned 401, wrong secret 401, tampered-after-signing 401, signed replay 200; no rows stored) |
 | B Initialization + callback | **PASS** — B1 (frozen 549766 == attempt, Paystack-page abandon → no charge, unit held) · B2 (order paid, success 549766, Stock Wallet 234 applied → payable only; revisit → no double effect) · B3 (purchase 8 callback: fulfilled, 1 grant/2 cash, revisit → still 1) |
-| C Payment conflict | |
-| D Late payment | |
-| E Failed payment (+ pending note) | |
-| F Triggers / secrets / reconciliation | |
+| C Payment conflict | **PASS** — auction 10 settled/buy_now; winner `WVGA4BJ6VU` paid clean (attempt 8 success); loser `XMQS6ADA4C` paid + `already been bought outright` blocked (attempt 9 success); exactly one sale; no auto-refund; product `0/0` |
+| D Late payment | **PASS** — attempt 6 paid after `YAWA5A3AH3` cancelled: attempt success, order stays cancelled + blocked (`verified after … [cancelled]`), no sale (`2/2`), wallet released once, webhook processed. Expired/forfeit/double-pay shapes covered by `LatePaymentPolicyTest` |
+| E Failed payment (+ pending note) | **PASS** — crafted signed `charge.failed` 200/processed; order → payment_failed (from pending only), release +1 "Payment failed.", no wallet applied. Async-pending state covered by `PaymentCallbackTest` (explicit, not silent) |
+| F Triggers / secrets / reconciliation | **PASS** — triggers refuse `total_minor`/`amount_minor` writes (`45000` both); `secret_hits=0`; every `charge.success` Processed + resolved to a distinct attempt/purchase, 0 unresolved. Visual admin/Exception Centre checks were done by the operator |
 
-Verdict: **PASS / FAIL / NEEDS REVIEW**
+Verdict: **PASS** — Stage 24 gate closed 2026-09-14/15. Next: **Stage 25 (scheduler/cron/operations audit)**.
 
 ---
 

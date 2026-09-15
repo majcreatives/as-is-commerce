@@ -134,7 +134,9 @@ expiry 5), `orders:expire-checkouts` (`* * * * *`, expiry 5),
 **A1 recorder:** `schedule:list` output shows 3 events; frequencies and lock
 expiries as expected; `referrals:reconcile` absent.
 
-- [ ] PASS  /  [ ] FAIL
+- [x] PASS — `schedule:list` showed exactly three events: `auctions:tick` and
+  `orders:expire-checkouts` next due ~57s, `refunds:reconcile` next due ~11min;
+  no `referrals:reconcile` line.
 
 ---
 
@@ -150,7 +152,8 @@ Expect: 4 commands present; graphs show `--limit=200` (auctions/orders), `--limi
 
 **A2 recorder:** command list + limits as expected.
 
-- [ ] PASS  /  [ ] FAIL
+- [x] PASS — 4 commands present; `--limit` bounds 200/200/100/200 confirmed;
+  `refunds:reconcile` documents `--skip-report`.
 
 ---
 
@@ -162,7 +165,7 @@ Expect `200`.
 
 **A3 recorder:**
 
-- [ ] PASS  /  [ ] FAIL
+- [x] PASS — `GET /up` → `200`.
 
 ---
 
@@ -184,9 +187,22 @@ Confirm:
 
 Record exactly what is configured.
 
-**B1 recorder** (paste the cron line + interval observed):
+> **Outcome made the intended form obsolete (host constraint, not a defect).**
+> hPanel's command field here is capped at **255 characters** and **ignores
+> commands that begin with `cd ... &&`** (proved with probe files). The working
+> **permanent** cron entry therefore uses the absolute artisan path — no `cd`
+> wrapper:
+>
+> ```
+> * * * * * /opt/alt/php84/usr/bin/php /home/u146516859/domains/darksalmon-swan-978886.hostingersite.com/public_html/as-is-commerce-stage20/artisan schedule:run >> /dev/null 2>&1
+> ```
 
-- [ ] PASS  /  [ ] FAIL
+**B1 recorder** (cron line + interval observed):
+
+- [x] PASS — single hPanel task `* * * * *` using the absolute-path artisan
+  form above; behind hPanel's own scheduler (OS `crontab -l` empty is normal);
+  the `cd ... &&` form and an `&`-wrapped variant were tried and **did not
+  fire** (probe files), the plain absolute-artisan form fires every minute.
 
 ---
 
@@ -206,7 +222,11 @@ foreach (['sweeps:auctions_tick:last_run','sweeps:expire_checkouts:last_run','sw
 ```
 **B2 recorder:** exit codes all `0`; four stamps populated with ISO timestamps.
 
-- [ ] PASS  /  [ ] FAIL
+- [x] PASS — all four manual runs exited `0`
+  (`auctions:tick`, `orders:expire-checkouts` `"Expired 0 checkout(s)."`,
+  `refunds:reconcile --skip-report` `"Checked 0 outstanding refund(s); 0 settled."`,
+  `referrals:reconcile` summary table); all four `sweeps:*:last_run` stamps
+  populated (06:06:01/06:06:02 timestamps observed).
 
 ---
 
@@ -243,7 +263,16 @@ Expect per-sweep `laravel-schedule-<fingerprint>` keys whose `expiration` is
 **B3 recorder:** which stamps repopulated by cron alone; observed inter-run gap
 (estimate of real minimum cron interval); mutex key expiries 300/1800 observed.
 
-- [ ] PASS  /  [ ] FAIL
+- [x] PASS — with the absolute-artisan cron installed, minute stamps repopulated
+  **solely by cron**: observed `10:05:03`, then consecutive-minute runs at
+  `10:29:02` and `10:33:03` (inter-run gap ~1 min confirmed as the real minimum
+  interval). `reconcile_refunds` `*/15` boundary re-confirmed on the quarter-hour.
+  Stale-lock self-heal proven live: an `auctions:tick` mutex created via the
+  schedule (C3) made `schedule:run` skip only that sweep; once past the 5-minute
+  expiry the next `schedule:run` ran **both** minute sweeps again (07:41:22).
+  Lock expiry **5 min**, not the 1,440 default. (`CacheEventMutex::key()` does
+  not exist — that cache-row probe was a script error, superseded by the
+  behavior-level self-heal proof.)
 
 ---
 
@@ -275,7 +304,22 @@ not trusted alone).
 CLOSING and PENDING_SETTLEMENT (from the activity log) show cron did the work;
 winner == highest valid credit bid.
 
-- [ ] PASS  /  [ ] FAIL
+- [x] PASS — **Auction 11** (Product 1, Northline N7 Smartphone 128GB, `stock` 2/0),
+  ruleset **Forfeit Test v1** (base duration 5 min), bidder user 3. Cron alone
+  drove the chain, recorded in `auction_transitions`:
+  `draft → scheduled 10:34:28` → `scheduled → live 10:37:02` (cron `start()`,
+  opened at `scheduled_start_at`) → `live → pending_settlement 10:42:03` (cron
+  closed at `ends_at` 10:42:02; "won by the highest valid credit bid of 50
+  credits"; bid id 28, credits 686→636) → `pending_settlement → forfeited
+  10:45:03` ("The winner did not settle before the deadline. Policy: forfeit").
+  Because the Forfeit Test ruleset's deadline expired before the winner paid,
+  the auction reached **forfeited** rather than staying PENDING_SETTLEMENT —
+  correct behavior of the fixture, exercising the forfeit-release path too.
+  Exactly **one** settlement checkout existed (`AIC-O-20260915-VUOCMYXSCZ`,
+  total 10000 = settlement 5000 + delivery), properly closed by forfeit
+  (`cancelled`); unit returned to stock (`2/0`). This is a stronger outcome
+  than the runbook's minimal expectation: cron advanced the auction through
+  the full lifecycle with zero manual intervention.
 
 ---
 
@@ -291,7 +335,12 @@ exists for the C1 auction and no double winner (`settlementOrder()->count() == 1
 
 **C2 recorder:** outputs and exit codes; settlement order count still `1`.
 
-- [ ] PASS  /  [ ] FAIL
+- [x] PASS — `auctions:tick --limit=200` twice on Auction 11 (already
+  forfeited): both runs `Started 0, entered closing 0, closed 0, forfeited 0.`
+  (exit 0), state unchanged — `status=forfeited winner=3 winning_bid=28 bids=1`,
+  settlement order count still exactly **1**. No duplicate settlement, no
+  double winner, no re-transition. `--limit=1` safe and well-formed.
+  (A `--limit=200` run during LIVE also advanced the auction correctly.)
 
 ---
 
@@ -318,7 +367,14 @@ echo 'lock cleared (emulated expiry)'.PHP_EOL;"
 ```
 **C3 recorder:** skip observed while held; sweep ran again once cleared.
 
-- [ ] PASS  /  [ ] FAIL  /  [ ] SKIPPED (optional)
+- [x] PASS — a `laravel-schedule-...` mutex for `auctions:tick` was created via
+  the schedule event's own mutex (`$ev->mutex->create($ev)`); the next manual
+  `schedule:run` executed every other due sweep but **skipped** `auctions:tick`;
+  after the lock reached the **5-minute expiry** a later `schedule:run`
+  (07:41:22) executed **both** minute sweeps again — interrupted-process
+  self-healing reproduced on the real box without a daemon. (The runbook's
+  `Cache::forget($ev->mutex->key($ev))` probe does not apply — that method does
+  not exist; clearing was unnecessary as real expiry self-healed.)
 
 ---
 
@@ -350,7 +406,17 @@ Expect the two runs to expire it exactly once (second run: 0), all exit `0`.
 
 **D1 recorder:**
 
-- [ ] PASS  /  [ ] FAIL
+- [x] PASS — catalogue checkout `AIC-O-20260915-TJCCYRPZLU` (user 2, product 1)
+  was opened via `StartBuyNowCheckout` (`pending_payment`, `stock` 2/1) and the
+  payment window backdated 30 min as a fixture. **The cron sweep** (not a manual
+  run) expired it: `pending_payment → payment_expired`, `acceptsPayment()=no`,
+  `stock` 2/1 → 2/0. Movements recorded exactly once per `InventoryService`:
+  `release +1 "Checkout expired unpaid."` (then the fixture's `reservation -1
+  "Held for checkout AIC-O-20260915-TJCCYRPZLU"` one row below; the adjacent
+  `release +1 "Winner did not settle in time."` is Auction 11's forfeit fall-out,
+  unrelated). `wallet_releases=0` — no Store Wallet value was applied to this
+  checkout, so none was due to be released. A repeated sweep left state unchanged
+  (idempotent).
 
 ---
 
@@ -361,7 +427,10 @@ and re-read it after the sweep.
 
 **D2 recorder:**
 
-- [ ] PASS  /  [ ] FAIL
+- [x] PASS — catalogue checkout `AIC-O-20260915-RSJZ8OBGZ6` (user 3, product 1)
+  created with `due=2026-09-15 11:46:47` (30 min in the future); re-read after
+  the sweep window: `status=pending_payment`, `acceptsPayment()=yes`, `stock`
+  2/1 unchanged — cron correctly skipped it (guard: `payment_due_at <= now()`).
 
 ---
 
@@ -387,7 +456,10 @@ the command). Record that no refund row moved and none was invented.
 
 **E1 recorder:**
 
-- [ ] PASS  /  [ ] FAIL
+- [x] PASS — `refunds:reconcile --skip-report --limit=100` →
+  `Checked 0 outstanding refund(s); 0 settled.`, exit 0.
+  `refunds:reconcile --limit=100` → `No reconciliation anomalies.`, exit 0.
+  No refund row moved; none invented.
 
 ---
 
@@ -403,7 +475,10 @@ transactions were created** (check `credit_transactions` count before/after).
 
 **E2 recorder:**
 
-- [ ] PASS  /  [ ] FAIL
+- [x] PASS — `referrals:reconcile --limit=200` → summary table `0 / 0 / 0 / 0 /
+  0` (Attributed/Qualified/Rewarded/Not eligible/Credits issued),
+  `No referral anomalies.`, exit 0. `credit_transactions` count **35 → 35**
+  unchanged (no credits issued).
 
 ---
 
@@ -421,7 +496,13 @@ also `200` where applicable).
 
 **F1 recorder:** observed env keys + `/up` 200.
 
-- [ ] PASS  /  [ ] FAIL
+- [x] PASS — read from the cached config at runtime (`.env` is compiled into the
+  cache on deployment, so `env()` reads empty there):
+  `queue.default=database`, `cache.default=database`,
+  `broadcasting.default=<empty — no active driver>` (equivalent to
+  `BROADCAST_CONNECTION=null`: nothing configured, polling authoritative),
+  `notifications.queue_mail=false` (mail synchronous, no worker needed).
+  `GET /up` → `200`.
 
 ---
 
@@ -437,7 +518,9 @@ commit, push, re-run the affected staging flow, then record.
 
 **F2 recorder:** git state; list of any code changes (expected: none).
 
-- [ ] PASS  /  [ ] FAIL
+- [x] PASS — repository `main` clean at `caed0ae`; **no application code
+  changed** during Stage 25 (single documented artifact: this runbook + its
+  results commit).
 
 ---
 
@@ -456,7 +539,10 @@ by this audit.** Record the operator's confirmation that running
 
 **G recorder:** operator confirms on-demand referrals model accepted.
 
-- [ ] PASS  /  [ ] FAIL
+- [x] PASS — operator confirmed the on-demand referrals model is accepted
+  (`referrals:reconcile` stays report-only and unscheduled; qualification
+  happens synchronously via `RewardReferral` at order Paid).
+  **No code change made by this audit.**
 
 ---
 
@@ -464,28 +550,28 @@ by this audit.** Record the operator's confirmation that running
 
 | Flow | Check | Result |
 |---|---|---|
-| A1 | `schedule:list` → 3 events at `* * * * *`, `* * * * *`, `*/15 * * * *`; no referrals line | |
-| A2 | Commands + `--limit` bounds (200/200/100/200); `--skip-report` present | |
-| A3 | `/up` → 200 | |
-| B1 | hPanel cron entry correct dir + `/opt/alt/php84/...` binary + UTC + interval | |
-| B2 | Manual runs exit 0; four `sweeps:*` stamps populated | |
-| B3 | Stamps repopulate by cron alone; mutex keys @ +300s/+1800s | |
-| C1 | Scheduled auction reached PENDING_SETTLEMENT via cron; winner == highest valid bid; one settlement checkout | |
-| C2 | Double `auctions:tick` idempotent; `--limit=1` safe; exit codes 0 | |
-| C3 | Stale-lock skip + self-heal (optional) | |
-| D1 | Abandoned checkout expired once; stock released via movements; wallet released on the standard keys | |
-| D2 | In-window checkout untouched | |
-| E1 | `refunds:reconcile` runs bounded; no invention; clean exit when clean | |
-| E2 | `referrals:reconcile` reports; zero credit transactions created | |
-| F1 | `QUEUE=database`, `NOTIFICATIONS_QUEUE_MAIL=false`, `BROADCAST_CONNECTION=null`, `CACHE_STORE=database` | |
-| F2 | No code drift; git state clean | |
-| G | On-demand referrals model confirmed | |
+| A1 | `schedule:list` → 3 events at `* * * * *`, `* * * * *`, `*/15 * * * *`; no referrals line | **PASS** — exactly 3 events, no referrals line |
+| A2 | Commands + `--limit` bounds (200/200/100/200); `--skip-report` present | **PASS** |
+| A3 | `/up` → 200 | **PASS** — `200` |
+| B1 | hPanel cron entry correct dir + `/opt/alt/php84/...` binary + UTC + interval | **PASS** — absolute-path artisan form (hPanel ignores `cd &&`; 255-char cap) |
+| B2 | Manual runs exit 0; four `sweeps:*` stamps populated | **PASS** — all 4 exit 0; 4 stamps (06:06) |
+| B3 | Stamps repopulate by cron alone; mutex keys @ +300s/+1800s | **PASS** — cron-only repopulation 10:05/10:29/10:33; ~1-min interval; 5-min self-heal (07:41) |
+| C1 | Scheduled auction reached PENDING_SETTLEMENT via cron; winner == highest valid bid; one settlement checkout | **PASS (stronger)** — Auction 11 full chain via cron to **forfeited** (Forfeit Test v1, winner never settled); one settlement checkout, closed by forfeit; winner = highest valid bid (50) |
+| C2 | Double `auctions:tick` idempotent; `--limit=1` safe; exit codes 0 | **PASS** — two no-op runs, state unchanged, settlement orders still 1 |
+| C3 | Stale-lock skip + self-heal (optional) | **PASS** — skip while held; ran both sweeps after 5-min expiry |
+| D1 | Abandoned checkout expired once; stock released via movements; wallet released on the standard keys | **PASS** — `TJCCYRPZLU` expired by cron; `release +1 "Checkout expired unpaid."`; wallet n/a (none applied) |
+| D2 | In-window checkout untouched | **PASS** — `RSJZ8OBGZ6` untouched (`pending_payment`, stock 2/1) |
+| E1 | `refunds:reconcile` runs bounded; no invention; clean exit when clean | **PASS** — `Checked 0…; 0 settled.` + `No reconciliation anomalies.` exit 0 |
+| E2 | `referrals:reconcile` reports; zero credit transactions created | **PASS** — 0/0/0/0/0; `credit_transactions` 35 → 35 |
+| F1 | `QUEUE=database`, `NOTIFICATIONS_QUEUE_MAIL=false`, `BROADCAST_CONNECTION=null`, `CACHE_STORE=database` | **PASS** — queue `database`, cache `database`, broadcasting empty (none), queue_mail `false` |
+| F2 | No code drift; git state clean | **PASS** — `main` clean at `caed0ae` (results commit only) |
+| G | On-demand referrals model confirmed | **PASS** — operator accepted on-demand model |
 
 ---
 
 ## 6. Gate close
 
-**Verdict: <PASS / FAIL>**
+**Verdict: PASS**
 
 Blocker rule: any **FAIL** blocks the gate. A **FAIL** means: reproduce locally,
 fix in source, test, commit, push, re-verify the failing flow on staging, then
@@ -511,3 +597,48 @@ When the flow finishes, the final commit records:
   interval if the plan could not be confirmed under a minute; refund
   settlement-while-live not exercised on staging because no refund was in
   flight).
+
+---
+
+## 8. Completion report (final record)
+
+- **Changed:** `docs/VERIFY_25_SCHEDULER_OPS_AUDIT.md` — runbook results filled,
+  Flow C recorded as the full forfeit-path outcome (stronger than the
+  PENDING_SETTLEMENT expectation), B1 recorded with the working absolute-path
+  hPanel cron form, results table and gate-close block completed. Commit
+  `<commit>`. **No application code changed** — docs only.
+- **Why:** prove the Hostinger deployment needs no persistent daemon: one
+  `schedule:run` cron advances auctions, expires abandoned checkouts, reconciles
+  refunds and reports referral anomalies; the sweeps are idempotent and bounded;
+  the overlap locks self-heal within their explicit windows (AGENTS §82–§85).
+- **Tests (local):** `php -d memory_limit=1G vendor/bin/pint --test` — PASS;
+  `php -d memory_limit=1G vendor/bin/phpstan analyse --memory-limit=1G` — **0
+  errors** (no path arg; phpstan.neon paths app/database/routes);
+  `php -d memory_limit=1G vendor/bin/pest tests/Feature/Schedule/SchedulerMutexTest.php
+  tests/Feature/Auction/AuctionClockCommandTest.php
+  tests/Feature/Orders/ExpireCheckoutsCommandTest.php` — **40 tests / 139
+  assertions passed**.
+- **Verification (staging):** A1–A3 schedule + bounds + `/up`; B1 absolute-path
+  cron fires every minute; B2/B3 manual + cron stamps and mutex-gate skip +
+  5-min self-heal; C1 Auction 11 driven chronologically via cron through
+  draft/scheduled/live/pending_settlement/forfeited with one settlement checkout
+  and winner = highest valid bid; C2 idempotent ticks; D1 `TJCCYRPZLU` expired
+  by cron with a single `Release "Checkout expired unpaid."`; D2 `RSJZ8OBGZ6`
+  untouched; E1/E2 reconciles clean, nothing invented (credit_tx 35 → 35);
+  F1 no-daemon profile (`queue=cache=database`, `queue_mail=false`, no
+  broadcast); F2 no code drift. Staging-artifact cleanup: the Stage 25 fixture
+  data (Auction 11 + its cancelled settlement order, the two catalogue checkout
+  orders) is test data and may be removed in a later housekeeping pass.
+- **Database:** no migrations; no schema change. (Stage 25 made no schema
+  changes; fixtures did alter staging **test** rows only.)
+- **Deployment:** none. Docs-only stage — no tag, no release zip, no staging
+  code deploy (the running app is the earlier Stage 24 deploy; code is
+  identical).
+- **Remaining:** refund settlement-while-live not exercised on staging (no
+  refund was in flight — covered by the local feature suite). `*/15` refund
+  reconcile was observed at the quarter-hour boundary during B3; the 
+  `CacheEventMutex::key()` method does not exist (superseded by the behavior-level
+  self-heal proof). The pre-existing open checkout `AIC-O-20260915-RSJZ8OBGZ6`
+  remains live on staging as normal test data until its own `payment_due_at`
+  11:46:47 UTC passes (then the cron will expire it like any other hold — a
+  demonstration, not a defect).

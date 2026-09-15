@@ -389,7 +389,7 @@ Record per-flow PASS / FAIL with the verifying query/output.
 | C Payment conflict | **PASS** — auction 10 settled/buy_now; winner `WVGA4BJ6VU` paid clean (attempt 8 success); loser `XMQS6ADA4C` paid + `already been bought outright` blocked (attempt 9 success); exactly one sale; no auto-refund; product `0/0` |
 | D Late payment | **PASS** — attempt 6 paid after `YAWA5A3AH3` cancelled: attempt success, order stays cancelled + blocked (`verified after … [cancelled]`), no sale (`2/2`), wallet released once, webhook processed. Expired/forfeit/double-pay shapes covered by `LatePaymentPolicyTest` |
 | E Failed payment (+ pending note) | **PASS** — crafted signed `charge.failed` 200/processed; order → payment_failed (from pending only), release +1 "Payment failed.", no wallet applied. Async-pending state covered by `PaymentCallbackTest` (explicit, not silent) |
-| F Triggers / secrets / reconciliation | **PASS** — triggers refuse `total_minor`/`amount_minor` writes (`45000` both); `secret_hits=0`; every `charge.success` Processed + resolved to a distinct attempt/purchase, 0 unresolved. Visual admin/Exception Centre checks were done by the operator |
+| F Triggers / secrets / reconciliation | **PASS** — triggers refuse `total_minor`/`amount_minor` writes (`45000` both); `secret_hits=0`; every `charge.success` Processed + resolved to a distinct attempt/purchase, 0 unresolved. Visual admin/Exception Centre checks: pending operator confirmation at record time |
 
 Verdict: **PASS** — Stage 24 gate closed 2026-09-14/15. Next: **Stage 25 (scheduler/cron/operations audit)**.
 

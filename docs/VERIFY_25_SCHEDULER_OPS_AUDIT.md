@@ -578,7 +578,7 @@ fix in source, test, commit, push, re-verify the failing flow on staging, then
 re-open the gate block below.
 
 **Gate closed:** `VERIFY_25_SCHEDULER_OPS_AUDIT` — `main` at
-`<commit>` on `<date>` — all flows PASS. Next: **Stage 26** per `docs/ROADMAP.md`.
+`a40e55f` on 15 Sep 2026 — all flows PASS. Next: **Stage 26** per `docs/ROADMAP.md`.
 
 ---
 
@@ -606,7 +606,7 @@ When the flow finishes, the final commit records:
   Flow C recorded as the full forfeit-path outcome (stronger than the
   PENDING_SETTLEMENT expectation), B1 recorded with the working absolute-path
   hPanel cron form, results table and gate-close block completed. Commit
-  `<commit>`. **No application code changed** — docs only.
+  `a40e55f`. **No application code changed** — docs only.
 - **Why:** prove the Hostinger deployment needs no persistent daemon: one
   `schedule:run` cron advances auctions, expires abandoned checkouts, reconciles
   refunds and reports referral anomalies; the sweeps are idempotent and bounded;

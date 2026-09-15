@@ -402,8 +402,8 @@ Blocker rule: any **FAIL** blocks the gate. A **FAIL** means: reproduce locally,
 fix in source, test, commit, push, re-verify the failing flow on staging, then
 re-open the gate block below.
 
-**Gate closed:** `VERIFY_26_SECURITY_CONFIG_AUDIT` — `main` at `<commit>` on
-`<date>` — all flows PASS. Next: **Stage 27** per `docs/ROADMAP.md`.
+**Gate closed:** `VERIFY_26_SECURITY_CONFIG_AUDIT` — `main` at
+`52f22c3` on 15 Sep 2026 — all flows PASS. Next: **Stage 27** per `docs/ROADMAP.md`.
 
 ---
 
@@ -428,7 +428,7 @@ When the flow finishes, the final commit records:
 - **Changed:** `docs/VERIFY_26_SECURITY_CONFIG_AUDIT.md` — runbook results filled
   for Flows A–H, the one staging environment fix recorded
   (`SESSION_SECURE_COOKIE=true`), results table + gate-close + completion report
-  completed. Commits: runbook `ad6255f`, this record `<commit>`. **No
+  completed. Commits: runbook `ad6255f`, this record `52f22c3`. **No
   application code changed** — docs only. Staging change: `.env`
   `SESSION_SECURE_COOKIE=true` followed by `config:clear && config:cache`
   (an environment step, exactly the kind Stage 22 already performed).

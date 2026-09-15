@@ -3,7 +3,7 @@
         <div>
             <x-logo />
             <p class="mt-2 max-w-sm text-sm text-slate-500">
-                A credit-based auction marketplace built for Ghana. Prices in GH&#8373;.
+                An e-commerce store for Ghana, with a gamified credit auction channel. Prices in GH&#8373;.
             </p>
         </div>
 

@@ -1,9 +1,10 @@
 # As-Is-Commerce
 
-A credit-based auction marketplace for the Ghanaian market. Users buy virtual
-bidding credits and commit them as bids on live auctions. **The highest valid
-credit bid wins** when an auction closes — unless a customer buys the product
-outright first, which ends the auction immediately.
+A full e-commerce store for the Ghanaian market with a gamified auction
+channel layered on top. Users buy products outright in cedis — and, for the
+products that carry one, compete for the same goods with virtual bidding
+credits. **The highest valid credit bid wins** when an auction closes — unless
+a customer buys the product outright first, which ends the auction immediately.
 
 All monetary values are in Ghana Cedis (GH₵) and are stored as integer minor
 units (pesewas). Never as floating point.

@@ -254,23 +254,27 @@ it('shows a live auction figure on a product card', function (): void {
 
 // ------------------------------------------------------------- The homepage
 
-it('shows a guest both paths', function (): void {
+it('shows a guest a shop-first front page with the auction way in', function (): void {
     $this->get(route('home'))
         ->assertOk()
-        ->assertSee('Shop products')
+        ->assertSee('The shop, first.')
+        ->assertSee('Shop now')
         ->assertSee('Explore auctions')
         // The disclosure that matters, on the front page.
         ->assertSee('not returned if you do not win');
 });
 
-it('shows real auctions on the homepage or none at all', function (): void {
+it('surfaces a live auction inline on its product card instead of a band', function (): void {
     $this->get(route('home'))
         ->assertOk()
-        ->assertSee('No auctions running right now');
+        ->assertSee('In the shop');
 
     liveAuction(product: Product::factory()->active()->create(['name' => 'Homepage Item']));
 
-    $this->get(route('home'))->assertOk()->assertSee('Homepage Item');
+    $this->get(route('home'))
+        ->assertOk()
+        ->assertSee('Homepage Item')
+        ->assertSee('Auction open — no bids yet');
 });
 
 it('makes no promise about savings or winning', function (): void {

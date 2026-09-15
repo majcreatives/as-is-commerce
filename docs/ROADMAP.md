@@ -52,6 +52,24 @@ work today. Nothing in this roadmap relaxes any rule in `AGENTS.md`.
 | **30** | Post-launch monitoring/reconciliation | Very High | Wallets, credits, refunds and referrals reconciled; exceptions actioned; financial invariants re-verified; discrepancies reported, not silently repaired |
 | **31+** | Growth, UX, gamification and optimization | Variable | Each feature separately approved before implementation. Ideas already deferred here: admin left-side navigation, product image gallery (multiple images, first as featured), and editable auction end dates (a business decision, not an implementation choice) |
 
+## Reference-model reframe (recorded, not a stage change)
+
+The business model is a **full e-commerce store with a gamified auction
+channel**, not an auction marketplace with a Buy Now fallback. Two work items
+live under this frame and are not stages in the table above; each is verified
+separately before the next:
+
+- **P1 — Reference-model positioning.** Copy, labels and homepage structure
+  state the store first; live auctions surface inline on their product cards
+  (no standalone homepage auction band); admin navigation frames catalogue
+  before commerce. No schema, no business-logic change. Baseline:
+  `docs/REFERENCE_MODEL.md`; runbook: `docs/VERIFY_28_REFERENCE_MODEL_P1.md`.
+- **P2 — Auction-channel eligibility gate.** A product-level opt-in flag
+  (`products.auction_eligible`, default false) decides which inventory admin
+  may move into the auction channel; auction creation enforces it. Distinct,
+  separately approved after production prep so it never reshapes Stage 27's
+  launch surface.
+
 ## Context this roadmap does not change
 
 The four deferred items above were raised and deliberately set aside so the

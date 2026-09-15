@@ -30,11 +30,12 @@ use Illuminate\Support\Facades\Log;
  * Terminating it any earlier would let an abandoned checkout kill a live
  * auction that other people are still bidding in.
  *
- * NOTHING CALLS THIS YET, AND THAT IS DELIBERATE. Taking the Buy Now payment
- * through Paystack belongs to a later stage. Wiring a customer button straight
- * to this action would be fabricating a payment success, so the customer
- * interface quotes the price and stops there. What exists here is the domain
- * and concurrency architecture that stage will attach to.
+ * NOTHING CALLS THIS FROM A BUTTON, AND THAT IS DELIBERATE. The action is
+ * reached from a verified Paystack payment: {@see FulfillOrderPayment} invokes
+ * it whenever a Buy Now order carries an `auction_id`. Wiring a customer button
+ * straight to this action would be fabricating a payment success, so the
+ * customer interface quotes the price and stops there. What exists here is the
+ * domain and concurrency architecture that payment path attaches to.
  *
  * THE FIRST COMPLETED PURCHASE WINS. Every attempt locks the auction row
  * before it looks at the status. The first one through changes it to Settled

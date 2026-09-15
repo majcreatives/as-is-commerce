@@ -3,7 +3,7 @@
 # As-Is-Commerce — Universal AI Agent Development Protocol
 
 **Project:** As-Is-Commerce
-**Product:** Gamified Credit-Based E-Commerce Auction Marketplace
+**Product:** Gamified E-Commerce Marketplace with a Credit Auction Channel
 **Market:** Ghana
 **Currency:** GHS / GH₵
 **Current Stage:** Stage 23

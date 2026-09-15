@@ -1,6 +1,6 @@
 # Engineering conventions — As-Is-Commerce
 
-A credit-based auction marketplace for Ghana. Read `README.md` for setup.
+A full e-commerce store for Ghana with a gamified credit auction channel. Read `README.md` for setup.
 This file records the rules that are not obvious from the code.
 
 ## Current stage

@@ -32,8 +32,9 @@ use Illuminate\Support\Facades\Log;
  * enforced here, and again by database CHECK constraints for any path that
  * bypasses this class.
  *
- * Reservation, Release and Sale exist and are tested, but nothing calls them
- * yet: they belong to the Buy Now checkout, which is a later stage.
+ * Reservation, Release and Sale are the shop and auction acquisition paths:
+ * checkout holds and releases units through them, and auction publish,
+ * settlement and Buy Now completion move the same ledger.
  */
 class InventoryService
 {

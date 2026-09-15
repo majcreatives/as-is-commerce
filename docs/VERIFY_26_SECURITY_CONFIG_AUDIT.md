@@ -138,7 +138,10 @@ Expect the Laravel "environment" section showing `APP_ENV=staging`,
 
 **B1–B3 recorder:**
 
-- [ ] PASS  /  [ ] FAIL
+- [x] PASS — `APP_ENV=staging`, `APP_DEBUG=false` (config `app.debug` boolean
+  `false`). Drivers: `queue=database`, `cache=database`, `session=database`,
+  `mail=log`, `log=stack`. `session.secure=true` after the env fix below.
+  `config:cache` in use (/up 200; `.env` not re-read per request).
 
 ---
 
@@ -174,7 +177,11 @@ only — Stage 24 audited the payload handling.)
 
 **C1–C3 recorder:**
 
-- [ ] PASS  /  [ ] FAIL
+- [x] PASS — C1: `/definitely-not-a-route-xyz` → `404`, body grep for
+  `stack trace|app/Providers|/home/u146516859|PAYSTACK|DATABASE|APPDIR` = **0**.
+  C2: JSON error envelope `{"message":"The route api/... could not be found."}`
+  — no exception class/path/stack. C3: `grep -c` over `storage/logs/*.log` for
+  `sk_(test|live)_[a-z0-9]{20,}|PAYSTACK_SECRET_KEY=|DB_PASSWORD=` = **0**.
 
 ---
 
@@ -207,7 +214,17 @@ Expect `https://darksalmon-swan-978886.hostingersite.com` (scheme `https`).
 
 **D1–D3 recorder:**
 
-- [ ] PASS  /  [ ] FAIL
+- [x] PASS — D1: `GET /up` and `/` over HTTPS → `HTTP/2 200`, no TLS error
+  (`cache-control: no-cache, private`; no `Strict-Transport-Security` header
+  present — **recorded observation**; `x-powered-by: PHP/8.4.21` present —
+  standard host header, recorded as observation). D2: `http://... /` →
+  `301 Moved Permanently` → `Location: https://...` (Hostinger `platform:
+  hostinger` header). Session cookie flags after the fix (verified from inside
+  the app): `as-is-commerce-session` `secure=true httponly=true samesite=lax`;
+  `XSRF-TOKEN` `secure=true samesite=lax`. **Fix applied on staging:** staging
+  `.env` gained `SESSION_SECURE_COOKIE=true` (was unset → cookies not `Secure`
+  over TLS), then `config:clear && config:cache`, `/up` 200 re-confirmed.
+  D3: `APP_URL=https://darksalmon-swan-978886.hostingersite.com`.
 
 ---
 
@@ -240,7 +257,14 @@ instead record the code-level proof and one URL-level proof:
 
 **E1–E3 recorder:**
 
-- [ ] PASS  /  [ ] FAIL
+- [x] PASS — E1: unauth `/admin` → `302 /login`; unauth `/dashboard` → `302
+  /login`. E2: authenticated **customer** session to `/admin` →
+  `403 User does not have the right roles` (Spatie `role:admin|super_admin`
+  middleware; per-route `can:*` also enforced server-side in
+  `routes/web.php`). E3: POST `/webhooks/paystack` with bogus HMAC →
+  `401`, payload not processed; only CSRF exemption remains `webhooks/paystack`
+  (`bootstrap/app.php`); HMAC enforcement proven earlier by
+  `PaystackWebhookTest` + Stage 24 record.
 
 ---
 
@@ -262,7 +286,12 @@ inspected (no re-run needed — evidence already staged in 23/25).
 
 **F1–F2 recorder:**
 
-- [ ] PASS  /  [ ] FAIL
+- [x] PASS — F1 (staging, query log): `ProductDiscoveryQuery::paginate([], 20)`
+  → **4 queries / 7 rows** — page-level batched read, no N+1.
+  F2 (source): `OperationsSearch` bounded in every direction —
+  `MAX_LENGTH=64`, min 2 chars, `PER_TYPE=10` `->limit()` per group, phone
+  normalized to E.164 before matching; scheduler sweeps carry Stage 25
+  `--limit` caps (200/200/100/200).
 
 ---
 
@@ -298,7 +327,16 @@ email does not silently vanish to `/dev/null`).
 
 **G1–G2 recorder:**
 
-- [ ] PASS  /  [ ] FAIL
+- [x] PASS — posture recorded explicitly, no channel invented. Staging:
+  `mail=log` (emails land in `storage/logs` — synchronous, not silent),
+  `users_with_verified_phone=0`. Source: no OTP routes in `routes/`; no
+  password-reset routes; `EnsurePhoneIsVerified` middleware is defined but
+  applied to **nothing**; `UnconfiguredOtpChannel::send()` throws
+  `OtpChannelNotConfigured` (fail-explicit); `phone_verified_at` /
+  `email_verified_at` stored but no verification flow ships. This is the
+  recorded Stage 22 gap — the business decides later (an OTP transport/
+  provider) before any gated action requiring a verified phone; **not silently
+  "fixed" by this audit**.
 
 ---
 
@@ -318,7 +356,13 @@ maintenance file absent, `/up` and `/health` both healthy. Record.
 
 **H1–H3 recorder:**
 
-- [ ] PASS  /  [ ] FAIL
+- [x] PASS — H1: `<meta name="csrf-token" content="...">` present on `/login`
+  (grep = 1); classic POST forms carry `@csrf` (`navigation.blade.php`); only
+  `webhooks/paystack` is CSRF-exempt. H2: database-backed sessions;
+  `http_only=true`, `same_site=lax`, `secure=true` (now) verified off the real
+  emitted cookies; lifetime 120. H3: no Debugbar/Telescope/Clockwork in
+  `composer.lock` (0 matches); `/health` → `{"status":"ok","database":"ok"}`;
+  `/up` → 200.
 
 ---
 
@@ -326,29 +370,33 @@ maintenance file absent, `/up` and `/health` both healthy. Record.
 
 | Flow | Check | Result |
 |---|---|---|
-| A | Repository hygiene: no `.env` in history; no `sk_*` literals; `.env.example` placeholders | |
-| B1 | `APP_ENV=staging`, `APP_DEBUG=false` effective on staging | |
-| B2 | Drivers: queue/cache/session `database`; cookie secure over TLS; mail/log channels | |
-| B3 | Config cached; `/up` healthy | |
-| C1 | Public 404 generic, no leak markers in HTML | |
-| C2 | JSON error envelope without internals; no `debug` HTML block | |
-| C3 | Log scan: zero `sk_*` / secret-key lines | |
-| D1 | HTTPS 200 over valid TLS; redirect & HSTS headers recorded | |
-| D2 | HTTP → HTTPS redirect; cookie `Secure`+`HttpOnly`+`SameSite` | |
-| D3 | `APP_URL` https origin | |
-| E1 | Unauthenticated `/admin`+`/dashboard` redirect to login | |
-| E2 | Customer session to `/admin` → 403; role/can middleware server-side | |
-| E3 | Only webhook CSRF-exempt; HMAC enforced (403 on bad signature) | |
-| F1 | Homepage query bounded (query-log spot-check) | |
-| F2 | Admin search + sweep limits bounded (Stage 23/25 anchors) | |
-| G | OTP/email/password-reset posture explicit; mail flows somewhere real | |
-| H | CSRF on forms; cookie flags; no debug tooling; health ok | |
+| A | Repository hygiene: no `.env` in history; no `sk_*` literals; `.env.example` placeholders | **PASS** — 0 `.env` commits; 0 `sk_(test/live)_` matches; `.env.example` all placeholders + warnings |
+| B1 | `APP_ENV=staging`, `APP_DEBUG=false` effective on staging | **PASS** — `staging` / `false` |
+| B2 | Drivers: queue/cache/session `database`; cookie secure over TLS; mail/log channels | **PASS** (after fix) — `database` ×3, `mail=log`, `log=stack`, `session.secure=true` |
+| B3 | Config cached; `/up` healthy | **PASS** — config cached, `/up` 200 |
+| C1 | Public 404 generic, no leak markers in HTML | **PASS** — 404; body leak grep = 0 |
+| C2 | JSON error envelope without internals; no `debug` HTML block | **PASS** — `{"message":"The route ... could not be found."}` |
+| C3 | Log scan: zero `sk_*` / secret-key lines | **PASS** — count = 0 |
+| D1 | HTTPS 200 over valid TLS; redirect & HSTS headers recorded | **PASS** (obs.) — HTTP/2 200, valid TLS; **no HSTS** (recorded observation) |
+| D2 | HTTP → HTTPS redirect; cookie `Secure`+`HttpOnly`+`SameSite` | **PASS** (after fix) — 301 to https; cookie `secure=true httponly=true samesite=lax` |
+| D3 | `APP_URL` https origin | **PASS** — `https://darksalmon-swan-978886.hostingersite.com` |
+| E1 | Unauthenticated `/admin`+`/dashboard` redirect to login | **PASS** — both → 302 `/login` |
+| E2 | Customer session to `/admin` → 403; role/can middleware server-side | **PASS** — observed `403 User does not have the right roles` |
+| E3 | Only webhook CSRF-exempt; HMAC enforced (403 on bad signature) | **PASS** — bad sig → `401`, unprocessed; single CSRF exemption |
+| F1 | Homepage query bounded (query-log spot-check) | **PASS** — 4 queries / 7 rows |
+| F2 | Admin search + sweep limits bounded (Stage 23/25 anchors) | **PASS** — `OperationsSearch` caps 64/10/2 + E.164; sweep limits 200/200/100/200 |
+| G | OTP/email/password-reset posture explicit; mail flows somewhere real | **PASS** — posture recorded; `mail=log`, 0 verified phones, gap deferred |
+| H | CSRF on forms; cookie flags; no debug tooling; health ok | **PASS** — csrf meta + `@csrf`; flags verified; no Debugbar; `/health`+`/up` ok |
+
+**One environment fix (no code change):** staging `.env` set
+`SESSION_SECURE_COOKIE=true` (was unset → cookies not flagged `Secure` over
+TLS) and re-cached; verified `secure=true` on the emitted session cookie.
 
 ---
 
 ## 7. Gate close
 
-**Verdict: <PASS / FAIL>**
+**Verdict: PASS**
 
 Blocker rule: any **FAIL** blocks the gate. A **FAIL** means: reproduce locally,
 fix in source, test, commit, push, re-verify the failing flow on staging, then
@@ -372,3 +420,55 @@ When the flow finishes, the final commit records:
   only, unless a code defect was found and fixed).
 - **Remaining:** any limitation or unverified behavior, and any explicitly
   recorded decision (e.g. the OTP/email gap's owner and deferred stage).
+
+---
+
+## 9. Completion report (final record)
+
+- **Changed:** `docs/VERIFY_26_SECURITY_CONFIG_AUDIT.md` — runbook results filled
+  for Flows A–H, the one staging environment fix recorded
+  (`SESSION_SECURE_COOKIE=true`), results table + gate-close + completion report
+  completed. Commits: runbook `ad6255f`, this record `<commit>`. **No
+  application code changed** — docs only. Staging change: `.env`
+  `SESSION_SECURE_COOKIE=true` followed by `config:clear && config:cache`
+  (an environment step, exactly the kind Stage 22 already performed).
+- **Why:** prove the running Hostinger deployment does not leak configuration,
+  credentials or internals and that the relied-upon security behaviors
+  (authorization, bounded queries, explicit OTP/email posture) are real: the
+  Stage 26 Very High gate per `docs/ROADMAP.md`.
+- **Tests (local):** `php -d memory_limit=1G vendor/bin/pint --test` — PASS;
+  `php -d memory_limit=1G vendor/bin/phpstan analyse --memory-limit=1G` — **0
+  errors**; `php -d memory_limit=1G vendor/bin/pest tests/Feature/Auth/LoginTest.php
+  tests/Feature/AuthorizationTest.php tests/Feature/Payments/PaystackWebhookTest.php
+  tests/Feature/Orders/OrderWebhookTest.php` — **57 tests / 185 assertions
+  passed**.
+- **Verification (staging+local):** repo hygiene scans (0 `.env` commits, 0
+  `sk_*` literals, `.env.example` placeholders); B staging config (`staging`,
+  `debug=false`, drivers `database`/`log`/`stack`); C error/log hygiene (generic
+  404, clean JSON envelope, zero secret-shaped log lines); D TLS/HTTPS (HTTP/2
+  200, http→https 301, cookie `Secure+HttpOnly+SameSite=Lax` after the env fix,
+  `APP_URL` https); E authorization (302 to login unauth, **403** for customer
+  on `/admin`, webhook bad-sig 401 unprocessed); F bounded queries (4 queries / 7
+  rows on the catalogue read; `OperationsSearch` caps + E.164); G OTP/email
+  posture recorded explicitly (`mail=log`, 0 verified phones, gap deferred);
+  H CSRF meta + `@csrf`, cookie flags, no debug tooling in `composer.lock`,
+  `/health` `{"status":"ok","database":"ok"}` + `/up` 200.
+- **Database:** no migrations; no schema change.
+- **Deployment:** none. Docs-only stage — no tag, no release zip. The running
+  app code is unchanged from the Stage 24/25 deploy; staging received only the
+  `.env` cookie-secure setting + config re-cache.
+- **Remaining / recorded decisions:**
+  - **OTP/email/password-reset gap (Stage 22, re-recorded):** no OTP route or
+    transport ships; `EnsurePhoneIsVerified` applied to nothing;
+    `OtpChannelNotConfigured` fails explicitly; email is `log` and synchronous.
+    A verify-phone decision (provider/transport) is required by the business
+    **before any gated customer action needs a verified phone** (e.g. credits/
+    bids). Not fixed silently here.
+  - **No `Strict-Transport-Security` header** on staging responses (Hostinger-
+    level setting; not in this stage's gate list) — recorded as an observation
+    for Stage 27 (production domain prep).
+  - **`x-powered-by: PHP/8.4.21`** header present (default host behavior) —
+    recorded observation; can be suppressed at Stage 27 if desired.
+  - Login/register GET routes are unthrottled (only the `Login::submit`
+    action is rate-limited to 5 attempts) — recorded observation, acceptable at
+    this stage.

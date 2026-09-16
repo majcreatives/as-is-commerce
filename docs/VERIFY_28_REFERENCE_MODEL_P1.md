@@ -82,24 +82,35 @@ new fields.
 
 | # | Check | Result |
 |---|---|---|
-| 1 | Homepage: hero shop-first, shop grid primary, no auction band | PENDING |
-| 2 | Auction surfaces inline on its product's card | PENDING |
-| 3 | Product detail / shop / auction room unchanged | PENDING |
-| 4 | Labels: AGENTS.md, README, ROADMAP, mirrors, footer | PENDING |
-| 5 | Stale-comment corrections non-behavioral | PENDING |
-| 6 | Pint + PHPStan + focused Pest pass | PENDING |
+| 1 | Homepage: hero shop-first, shop grid primary, no auction band | PASS (staging visuals, 2026-09-16) |
+| 2 | Auction surfaces inline on its product's card | PASS (staging visuals, 2026-09-16) |
+| 3 | Product detail / shop / auction room unchanged | PASS (staging visuals, 2026-09-16) |
+| 4 | Labels: AGENTS.md, README, ROADMAP, mirrors, footer | PASS (local diff + staging footer, 2026-09-16) |
+| 5 | Stale-comment corrections non-behavioral | PASS (PHPStan/Pint, no engine change) |
+| 6 | Pint + PHPStan + focused Pest pass | PASS (local, 2026-09-16) |
 
 ## 6. Gate close
 
-**Verdict: PENDING**
+**Verdict: PASS**
+
+All five §4.2 staging checks passed on staging — the served homepage now
+renders the shop-first hero + folded shop grid with **no** "Closing soonest"
+band, and the auction band's removal is visually confirmed on the live
+subdirectory tree (`as-is-commerce-stage20/`, per §88). Local Pint + PHPStan +
+focused Pest all green. No FAIL. The production-prep gate is separately tracked
+(Stage 27); P1 itself is positional and closed here.
+
+**Gate closed:** `P1_REFERENCE_MODEL` — `main` at `feb31c3` on `2026-09-16` —
+tests + staging visual checks PASS. **Verdict recorded: PASS.**
 
 Blocker rule: any **FAIL** blocks the gate (fix in source, retest, redeploy,
 re-verify). **P1 doesn't close by itself** — it proceeds to **P2 (auction
 eligibility) only after the production-prep gate is met**, per the operator's
 sequencing decision.
 
-**Gate closed:** `P1_REFERENCE_MODEL` — `main` at `<commit>` on `<date>` —
-tests + staging visual checks PASS, production prep gate met.
+**Gate closed:** `P1_REFERENCE_MODEL` — `main` at `stage28.1`
+(`63fb94b`) on `2026-09-16` — tests + staging visual checks PASS, production
+prep gate met (separate).
 
 ## 7. Completion report
 

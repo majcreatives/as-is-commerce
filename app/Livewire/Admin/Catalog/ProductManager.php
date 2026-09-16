@@ -67,6 +67,12 @@ class ProductManager extends Component
 
     public string $price = '';
 
+    // The auction channel is opt-in per product. This checkbox is the
+    // administrator's explicit statement of intent. It is deliberately a
+    // separate flag from status and price: cataloguing a product, and giving it
+    // a Buy Now price, grants nothing about the auction channel on its own.
+    public bool $auction_eligible = false;
+
     public function mount(): void
     {
         $this->authorize('products.view');
@@ -86,7 +92,7 @@ class ProductManager extends Component
     {
         $this->authorize('products.create');
 
-        $this->reset('editingId', 'sku', 'name', 'slug', 'short_description', 'description', 'brand_id', 'price');
+        $this->reset('editingId', 'sku', 'name', 'slug', 'short_description', 'description', 'brand_id', 'price', 'auction_eligible');
         $this->condition = 'new';
         $this->category_id = Category::query()->active()->value('id');
         $this->showForm = true;
@@ -110,6 +116,7 @@ class ProductManager extends Component
         $this->brand_id = $product->brand_id;
         $this->condition = $product->condition->value;
         $this->price = $product->buyNowPrice()->toDecimalString();
+        $this->auction_eligible = (bool) $product->auction_eligible;
         $this->showForm = true;
     }
 
@@ -136,6 +143,10 @@ class ProductManager extends Component
             'condition' => ['required', Rule::enum(ProductCondition::class)],
             // A decimal string validated by shape, so no float is involved.
             'price' => ['required', 'string', 'regex:/^\d{1,12}(\.\d{1,2})?$/'],
+            // A deliberate administrator decision. Unchecked (false) by
+            // default, which is exactly the channel's rule: nothing gets
+            // auctionable just by existing.
+            'auction_eligible' => ['required', 'boolean'],
         ], [
             'sku.regex' => 'A SKU may contain letters, numbers, hyphens and underscores only.',
             'slug.regex' => 'A slug may contain lowercase letters, numbers and hyphens only.',
@@ -160,6 +171,7 @@ class ProductManager extends Component
             'category_id' => $validated['category_id'],
             'brand_id' => $validated['brand_id'],
             'condition' => $validated['condition'],
+            'auction_eligible' => $validated['auction_eligible'],
             'buy_now_price_minor' => $priceMinor,
             'currency' => $currency,
         ];

@@ -79,6 +79,11 @@ class Product extends Model
         'buy_now_price_minor',
         'currency',
         'image_path',
+        // A deliberate, explicit opt-in. Nothing is auctionable because it just
+        // exists; an administrator has to mark it so. The initial stock-taking,
+        // product transitions and a future platform-owned catalogue all share
+        // this single flag.
+        'auction_eligible',
     ];
 
     /**
@@ -90,6 +95,7 @@ class Product extends Model
             'condition' => ProductCondition::class,
             'status' => ProductStatus::class,
             'buy_now_price_minor' => 'integer',
+            'auction_eligible' => 'boolean',
             'stock_on_hand' => 'integer',
             'stock_reserved' => 'integer',
             'published_at' => 'datetime',

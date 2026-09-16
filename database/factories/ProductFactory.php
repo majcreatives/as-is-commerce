@@ -38,6 +38,15 @@ class ProductFactory extends Factory
             'status' => ProductStatus::Draft,
             'buy_now_price_minor' => 550_000,
             'currency' => 'GHS',
+            // The auction channel is opt-in in production: the database column
+            // defaults to false and CreateAuction refuses products that were
+            // never marked eligible. The factory reverts that deliberate default
+            // for one reason only -- every auction test, including the ~450 that
+            // build auctions through the liveAuction() funnel, fabricates its
+            // product through this factory, and none of them is testing the
+            // eligibility gate. Denial of the gate is covered by the explicit
+            // auctionIneligible() state, used by the tests that are.
+            'auction_eligible' => true,
             // Stock starts at zero and is moved only by the inventory
             // service, the same path production uses.
             'stock_on_hand' => 0,
@@ -81,6 +90,20 @@ class ProductFactory extends Factory
     public function withoutBrand(): static
     {
         return $this->state(fn (array $attributes): array => ['brand_id' => null]);
+    }
+
+    /**
+     * Deliberately withhold the auction channel.
+     *
+     * The auction channel is opt-in in production: products are only
+     * auctionable after an administrator explicitly marks them eligible, and
+     * CreateAuction refuses anything never so marked. This state reverts the
+     * factory's deliberate default so the eligibility gate can be tested
+     * head-on.
+     */
+    public function auctionIneligible(): static
+    {
+        return $this->state(fn (array $attributes): array => ['auction_eligible' => false]);
     }
 
     /**

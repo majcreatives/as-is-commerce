@@ -88,10 +88,17 @@ it('has no credit column on the product table', function (): void {
         ->map(fn (string $c): string => strtolower($c))
         ->all();
 
-    foreach (['credit', 'bid', 'wallet', 'auction'] as $forbidden) {
+    foreach (['credit', 'bid', 'wallet'] as $forbidden) {
         expect(collect($columns)->filter(fn (string $c): bool => str_contains($c, $forbidden))->all())
             ->toBe([], "products should have no column containing [{$forbidden}]");
     }
+
+    // The one deliberate exception: `auction_eligible` is the product's own
+    // opt-in to the auction distribution channel. It is a boolean membership
+    // flag on the catalogue item -- not a credit, bid, or wallet concept -- and
+    // nothing else auction-related may leak onto the products table.
+    $auctionColumns = collect($columns)->filter(fn (string $c): bool => str_contains($c, 'auction'))->values()->all();
+    expect($auctionColumns)->toBe(['auction_eligible'], 'products should have no auction column beyond the deliberate auction_eligible opt-in');
 });
 
 it('keeps the platform-owned inventory rule after the auction stage', function (): void {

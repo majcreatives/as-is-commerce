@@ -185,11 +185,20 @@ class AuctionManager extends Component
     }
 
     /**
+     * The products an auction may be created for: the ones an administrator
+     * has explicitly opted into the auction channel.
+     *
+     * Eligibility is its own, deliberate column -- not "does it have a status" --
+     * so the picker itself upholds the gate and an auction can never be
+     * launched for a product nobody marked as auctionable. The opt-in is set on
+     * the product under Catalog; an auction does not stamp it on.
+     *
      * @return Collection<int, Product>
      */
     public function products(): Collection
     {
         return Product::query()
+            ->where('auction_eligible', true)
             ->whereIn('status', [ProductStatus::Active, ProductStatus::Draft, ProductStatus::OutOfStock])
             ->orderBy('name')
             ->get();

@@ -61,6 +61,17 @@
                         </select>
                     </x-field>
 
+                    <div class="sm:col-span-2">
+                        <x-field label="Opt in to the auction channel" name="auction_eligible"
+                                 hint="Unchecked by default. Catalog stock stays buy-now only until you deliberately mark a product eligible to be listed for auction.">
+                            <label class="flex items-center gap-2 text-sm text-slate-700">
+                                <input type="checkbox" id="auction_eligible" wire:model.live="auction_eligible"
+                                       class="rounded border-slate-300 text-brand-700 focus:ring-brand-600">
+                                <span>Eligible to be auctioned</span>
+                            </label>
+                        </x-field>
+                    </div>
+
                     <x-field label="Buy Now price" name="price" :error="$errors->first('price')"
                              hint="In cedis, for example 5500.00. This is the product's own price and has no relationship to credits.">
                         <x-input id="price" inputmode="decimal" placeholder="5500.00" wire:model="price"

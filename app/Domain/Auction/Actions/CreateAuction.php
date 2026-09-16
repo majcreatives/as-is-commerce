@@ -109,5 +109,16 @@ final class CreateAuction
                 'An archived product cannot be auctioned.'
             );
         }
+
+        // The auction channel has its own gate on top of the catalogue's. A
+        // product has to have been explicitly opted in -- `auction_eligible`
+        // is a deliberate administrator decision, never a side effect of the
+        // product existing. Anything not opted in is refused here, before a
+        // single ledger row or reservation moves.
+        if (! $product->auction_eligible) {
+            throw InvalidAuctionRules::because(
+                'This product is not marked as eligible for the auction channel.'
+            );
+        }
     }
 }

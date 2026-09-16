@@ -62,6 +62,28 @@ it('refuses to auction an archived product', function (): void {
     ))->toThrow(InvalidAuctionRules::class, 'archived product');
 });
 
+it('refuses to auction a product that was never marked auction-eligible', function (): void {
+    // The auction channel is opt-in: the database column defaults to false and
+    // only an explicit administrator decision flips it. A product created by
+    // the as-shipped default cannot be auctioned.
+    expect(fn (): Auction => $this->create->handle(
+        Product::factory()->auctionIneligible()->create(),
+        AuctionRuleset::factory()->active()->create(),
+        Money::fromMinor(10_000),
+    ))->toThrow(InvalidAuctionRules::class, 'not marked as eligible for the auction channel');
+});
+
+it('refuses an archived product with the archive gate even when the product is also marked auction-eligible', function (): void {
+    // The archived gate runs first -- eligibility to the auction channel is
+    // never a way to resurrect a retired product. The factory default keeps
+    // the product auction_eligible true here on purpose.
+    expect(fn (): Auction => $this->create->handle(
+        Product::factory()->archived()->create(),
+        AuctionRuleset::factory()->active()->create(),
+        Money::fromMinor(10_000),
+    ))->toThrow(InvalidAuctionRules::class, 'archived product');
+});
+
 // ---------------------------------------------------------------- Snapshot
 
 it('freezes the complete ruleset into the auction', function (): void {

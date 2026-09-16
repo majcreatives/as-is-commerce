@@ -59,6 +59,15 @@ new fields.
 
 ### Staging (per AGENTS §108 — visual, not inferred)
 
+> **Deploy target — read before touching the shell (operator).** This staging
+> host serves the app through an `.htaccess` rewrite (§88) that forwards every
+> request into an **application subdirectory** (`as-is-commerce-stage20/public/`)
+> — **not the docroot root**. The app path is
+> `.../public_html/as-is-commerce-stage20` (§87/§88). Deploy the `stage*`
+> release zip **into that subdirectory** so the rewrite actually serves the new
+> tree — see `docs/DEPLOY_STAGE23_2.md` for the exact local steps and zip
+> naming (`as-is-commerce-stage23.2.zip`).
+
 1. Deploy the pushed `stage*` tag via the GitHub Actions release zip (operator).
 2. Homepage `/`: hero states the shop first; "In the shop" grid is the primary
    section; **no** "Closing soonest" band; a live-auctioned product shows the

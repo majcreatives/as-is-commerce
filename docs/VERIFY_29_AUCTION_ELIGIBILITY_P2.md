@@ -78,24 +78,28 @@ and auction creation refuses any product that was never marked eligible.
 | 1 | Migration `products.auction_eligible` default `false` + CHECK | PASS (staging 2026-09-16 — `SHOW COLUMNS`: `auction_eligible` `tinyint(1)` default `'0'`; migration ran 30ms) |
 | 2 | Pint + PHPStan clean | PASS (local, 2026-09-16) |
 | 3 | Focused + full Auction suite + Catalog/UI 354 + 166 tests | PASS (local, 2026-09-16) |
-| 4 | Staging: checkbox present, default unchecked (admin browser) | PENDING — operator visual check |
-| 5 | Staging: picker lists only opted-in products (admin browser) | PENDING — operator visual check |
+| 4 | Staging: checkbox present, default unchecked (admin browser) | PASS (operator visual confirmation, 2026-09-16) |
+| 5 | Staging: picker lists only opted-in products (admin browser) | PASS (operator visual confirmation, 2026-09-16) |
 | 6 | Staging: backend refusal for non-opted-in product | PASS (staging 2026-09-16 — draft, non-opted-in product refused by `CreateAuction`: "This product is not marked as eligible for the auction channel.") |
 
 ## 6. Gate close
 
-**Verdict:** PASS on implementation + engine gate (staging, 2026-09-16). The new
-column, the migration, and the authoritative `CreateAuction` refusal are
-verified on staging; deployed tree confirmed (code markers present, zip
-SHA-256 matched the GitHub Release digest). The two **visual** admin-browser
-checks (#4 checkbox default, #5 picker filter) remain OPEN for the operator's
-eye per `AGENTS.md` §108 — they are UI presentation, already covered in local
-Pest suites; the gate closes only when an operator confirms them on the served
-admin.
+**Verdict: PASS.**
+
+All six checks are green: the new column + migration, the local suites, and on
+staging both the authoritative `CreateAuction` refusal and the two operator
+visual confirmations (admin Product form "Opt in to the auction channel"
+checkbox present and unchecked by default; the auction-creation picker offers
+only opted-in products). Deployed tree confirmed (code markers present; zip
+SHA-256 matched the GitHub Release digest). No FAIL.
+
+**Gate closed:** `P2_AUCTION_ELIGIBILITY` — deployed `stage29.1` (build from
+`d33aab1`) on `2026-09-16`; docs recorded at `main` `01b0e5b`. **Verdict
+recorded: PASS.**
 
 Blocker rule: any **FAIL** blocks the gate (fix in source, retest, redeploy,
-re-verify). P2 closes with staging + the operator visual confirmations, per the
-operator's sequencing decision.
+re-verify). P2 closes here; it proceeds to the separately-gated P3 (cart) only
+once that work item is approved.
 
 ## 7. Completion report
 
@@ -103,13 +107,13 @@ operator's sequencing decision.
 - **Why:** the auction channel is opt-in (`docs/REFERENCE_MODEL.md` §4.3);
   cataloging a product grants nothing about the auction channel on its own.
 - **Tests:** exact suites in §4.1.
-- **Verification:** local PASS; staging — migration/column + engine refusal PASS
-  (2026-09-16); admin-browser visual checks pending operator.
+- **Verification:** local PASS; staging — migration/column, engine refusal and
+  the two operator visual confirmations all PASS (2026-09-16).
 - **Database:** new additive migration (default `false`), MariaDB-friendly;
   applied on staging.
 - **Deployment:** `stage29.1` tag → GitHub Actions release zip (SHA-256
   verified) → extracted into the served app subdir; caches rebuilt; smoke
   checks green.
-- **Remaining:** operator confirms the admin checkbox default and the product
-  picker filter in the browser (Rows #4/#5), then records gate-close; P3 cart
-  is a separate, later work item.
+- **Remaining:** none for P2. Optional hygiene: remove staging backups
+  (`as-is-commerce-stage20.bak-29.1`, `.env.bak-stage29.1`, `temp-stage29.1`)
+  after the next deploy. P3 cart is a separate, later work item.

@@ -169,7 +169,7 @@ class CheckoutPage extends Component
         return view('livewire.checkout.checkout-page', [
             'addresses' => auth()->user()->addresses()->get(),
             'pricing' => $this->order->pricing(),
-            'item' => $this->order->item(),
+            'items' => $this->order->items()->with('order')->get(),
         ])->title('Checkout '.$this->order->order_number);
     }
 }

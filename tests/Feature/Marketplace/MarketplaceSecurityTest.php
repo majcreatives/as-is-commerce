@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Domain\Catalog\Services\InventoryService;
+use App\Domain\Orders\Actions\PlaceCartOrder;
 use App\Enums\ProductStatus;
 use App\Livewire\Account\Dashboard;
 use App\Livewire\Auctions\AuctionRoom;
@@ -11,6 +12,7 @@ use App\Livewire\Delivery\OrderTracking;
 use App\Livewire\Orders\OrderDetail;
 use App\Models\Auction;
 use App\Models\Bid;
+use App\Models\Cart;
 use App\Models\Order;
 use App\Models\Product;
 use Livewire\Livewire;
@@ -57,14 +59,15 @@ it('lets a guest read an auction but not bid on it', function (): void {
     expect(Bid::count())->toBe(0);
 });
 
-it('refuses a guest a checkout', function (): void {
+it('refuses a guest adding to a cart', function (): void {
     $product = Product::factory()->active()->withStock(1)->create();
 
     Livewire::test(ProductDetail::class, ['slug' => $product->slug])
-        ->call('buyNow')
+        ->call('addToCart')
         ->assertForbidden();
 
-    expect(Order::count())->toBe(0);
+    expect(Order::count())->toBe(0)
+        ->and(Cart::count())->toBe(0);
 });
 
 // -------------------------------------------------------- Private data
@@ -172,15 +175,24 @@ it('exposes no price or discount a browser could set', function (): void {
 
 it('ignores a fabricated price sent to a checkout', function (): void {
     $product = Product::factory()->active()->pricedAt(550_000)->create();
-    app(InventoryService::class)->initialStock($product, 1);
+    app(InventoryService::class)->initialStock($product, 2);
 
-    Livewire::actingAs(bidder())
+    $buyer = bidder();
+
+    Livewire::actingAs($buyer)
         ->test(ProductDetail::class, ['slug' => $product->slug])
-        // Setting something that does not exist on the component changes
-        // nothing, and the order still prices itself from the product.
-        ->call('buyNow');
+        // The only input the browser may choose is the quantity--there is no
+        // price anywhere on the component for a request to steer--and the
+        // order still prices itself from the product.
+        ->set('quantity', 2)
+        ->call('addToCart');
 
-    expect(Order::query()->latest('id')->first()->subtotal_minor)->toBe(550_000);
+    expect(Cart::query()->forUser($buyer)->firstOrFail()->items->first()->quantity)->toBe(2);
+
+    $order = app(PlaceCartOrder::class)->handle($buyer);
+
+    expect($order->subtotal_minor)->toBe(1_100_000)
+        ->and($order->item()->unit_price_minor)->toBe(550_000);
 });
 
 it('gives a customer no way to change an auction from the marketplace', function (): void {

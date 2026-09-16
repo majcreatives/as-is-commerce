@@ -334,9 +334,9 @@ it('says nothing about the Store Wallet when none was applied', function (): voi
         ->assertDontSee('Your Store Wallet covers');
 });
 
-// -------------------------------------------- One balance, several checkouts
+// ------------------------- One balance, one open catalogue checkout
 
-it('never spends the same value twice across checkouts', function (): void {
+it('never spends the same value twice: a second open checkout is refused', function (): void {
     $first = Product::factory()->active()->pricedAt(550_000)->create();
     $second = Product::factory()->active()->pricedAt(550_000)->create();
     app(InventoryService::class)->initialStock($first, 1);
@@ -346,16 +346,17 @@ it('never spends the same value twice across checkouts', function (): void {
     fundStoreWallet($buyer, 300);
 
     $firstOrder = buyNowCheckout($buyer, $first);
-    $secondOrder = buyNowCheckout($buyer, $second);
 
-    // The first checkout takes the whole balance. The second, reading the
-    // balance the first left behind, applies nothing and owes its full total.
+    // The one-pending-order rule closes the two-checkouts scenario: the
+    // second catalogue checkout is refused before it can plan to spend
+    // anything.
+    expect(fn (): Order => buyNowCheckout($buyer, $second))
+        ->toThrow(InvalidCheckout::class, 'already have an open checkout');
+
+    // Every head of the wallet value a single checkout commits is gone with
+    // the first, and the ledgers match what the projection claims.
     expect($firstOrder->store_wallet_applied_minor)->toBe(300)
         ->and($firstOrder->payable_minor)->toBe(549_700)
-        ->and($secondOrder->store_wallet_applied_minor)->toBe(0)
-        ->and($secondOrder->payable_minor)->toBe(550_000)
-        // What the two orders are owed never exceeds what the wallet held.
-        ->and($firstOrder->payable_minor + $secondOrder->payable_minor)->toBe(1_099_700)
         ->and(storeWalletBalance($buyer)->minor)->toBe(0)
         ->and($this->wallets->verify($this->wallets->walletFor($buyer)))
         ->toMatchArray(['matches' => true, 'projected_minor' => 0, 'ledger_minor' => 0]);

@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 use App\Domain\Auction\Services\BuyNowPricer;
 use App\Domain\Catalog\Services\InventoryService;
+use App\Domain\Orders\Actions\PlaceCartOrder;
 use App\Livewire\Account\Dashboard;
 use App\Livewire\Auctions\AuctionRoom;
 use App\Livewire\Catalog\ProductDetail;
 use App\Models\AuctionRuleset;
 use App\Models\Bid;
+use App\Models\Cart;
 use App\Models\Order;
 use App\Models\Product;
 use Livewire\Livewire;
@@ -34,15 +36,19 @@ it('lets a customer start a checkout from a product page', function (): void {
     $product = Product::factory()->active()->pricedAt(550_000)->create();
     app(InventoryService::class)->initialStock($product, 1);
 
-    Livewire::actingAs(bidder())
+    $buyer = bidder();
+
+    Livewire::actingAs($buyer)
         ->test(ProductDetail::class, ['slug' => $product->slug])
-        ->call('buyNow')
-        ->assertRedirect();
+        ->call('addToCart')
+        ->assertRedirect(route('cart.show'));
 
-    $order = Order::query()->latest('id')->first();
+    // The product page fills the basket; placing it freezes the order the way
+    // the domain does. The browser sent a slug and a page click, nothing else.
+    $order = app(PlaceCartOrder::class)->handle($buyer);
 
-    // The price is the server's, frozen on the order. The browser sent a slug.
     expect($order)->not->toBeNull()
+        ->and(Cart::query()->forUser($buyer)->exists())->toBeFalse()
         ->and($order->total_minor)->toBeGreaterThan(0)
         ->and($order->subtotal_minor)->toBe(550_000);
 });
@@ -70,10 +76,13 @@ it('routes a product with a live auction to the auction', function (): void {
     Livewire::actingAs(bidder())
         ->test(ProductDetail::class, ['slug' => $product->slug])
         ->assertSee('View the auction')
-        ->call('buyNow')
+        // The auction owns the Buy Now path for the unit it is holding, so the
+        // product page sends the customer to the auction instead of the cart.
+        ->call('addToCart')
         ->assertRedirect(route('auctions.show', $auction));
 
-    expect(Order::count())->toBe(0);
+    expect(Order::count())->toBe(0)
+        ->and(Cart::count())->toBe(0);
 });
 
 it('shows no purchase control when nothing can be bought', function (): void {

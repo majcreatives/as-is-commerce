@@ -132,6 +132,89 @@ class CheckoutPricer
     }
 
     /**
+     * Price the whole cart.
+     *
+     * A cart is one pure-catalogue purchase: no auction, no credits consumed,
+     * no per-line discount and no per-line delivery or tax. Each line prices
+     * at its own Buy Now price times its quantity, integer minor units; the
+     * lines are summed into one subtotal; delivery and tax come from settings;
+     * and the buyer's Store Wallet may cover part of the single total but
+     * never all of it (`payable > 0`).
+     *
+     * The browser sends only which product and how many. Every price is read
+     * here from the product rows.
+     *
+     * @param  array<int, array{product: Product, quantity: int}>  $lines
+     */
+    public function forCart(array $lines, User $buyer): CheckoutPricing
+    {
+        if ($lines === []) {
+            throw InvalidCheckout::because('A cart with no lines cannot be priced.');
+        }
+
+        $subtotal = null;
+
+        foreach ($lines as $line) {
+            $product = $line['product'];
+            $quantity = $line['quantity'];
+
+            if ($quantity < 1) {
+                throw InvalidCheckout::because('A cart line must hold at least one unit.');
+            }
+
+            $price = $product->buyNowPrice();
+
+            if (! $price->isPositive()) {
+                throw InvalidCheckout::because('This product has no price.');
+            }
+
+            // Integer arithmetic: quantity times the unit price in minor units.
+            // Money has no scalar multiply, so the multiplication happens here.
+            $lineTotal = Money::fromMinor($price->minor * $quantity, $price->currency);
+
+            $subtotal = $subtotal === null ? $lineTotal : $subtotal->plus($lineTotal);
+        }
+
+        // The guard above means at least one line priced, so `$subtotal` holds
+        // a real Money value here.
+        [$delivery, $taxBps] = $this->settingsCharges($subtotal->currency);
+
+        // First pass prices the bill with no Store Wallet portion, so the
+        // total is known before deciding what the wallet may cover.
+        $base = $this->assemble(
+            source: OrderSource::BuyNow,
+            subtotal: $subtotal,
+            discount: Money::zero($subtotal->currency),
+            delivery: $delivery,
+            taxBps: $taxBps,
+            discountCredits: 0,
+        );
+
+        $applied = $this->storeWallet->applicable($buyer, $base->total);
+
+        $this->storeWallet->assertEligible(
+            source: OrderSource::BuyNow,
+            auctionId: null,
+            applied: $applied,
+            total: $base->total,
+        );
+
+        if ($applied->isPositive()) {
+            return $this->assemble(
+                source: OrderSource::BuyNow,
+                subtotal: $subtotal,
+                discount: Money::zero($subtotal->currency),
+                delivery: $delivery,
+                taxBps: $taxBps,
+                discountCredits: 0,
+                storeWalletApplied: $applied,
+            );
+        }
+
+        return $base;
+    }
+
+    /**
      * Price what an auction winner owes.
      *
      * The subtotal is the auction's own `settlement_amount_minor`, read from

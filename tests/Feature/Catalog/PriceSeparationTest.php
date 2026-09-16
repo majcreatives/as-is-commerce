@@ -92,10 +92,16 @@ it('has no database link between products and the credit system', function (): v
         ->map(fn (string $c): string => strtolower($c))
         ->all();
 
-    foreach (['credit', 'wallet', 'bid', 'auction', 'package'] as $forbidden) {
+    foreach (['credit', 'wallet', 'bid', 'package'] as $forbidden) {
         expect(collect($columns)->filter(fn (string $c): bool => str_contains($c, $forbidden))->all())
             ->toBe([], "products should have no column referring to [{$forbidden}]");
     }
+
+    // One deliberate exception: `auction_eligible` is the product's own opt-in
+    // to the auction channel, a catalog decision with no credit economics on
+    // it. The credit system's columns still do not touch products.
+    expect(collect($columns)->filter(fn (string $c): bool => str_contains($c, 'auction'))->values()->all())
+        ->toBe(['auction_eligible'], 'the only auction column on products is the deliberate auction_eligible opt-in');
 });
 
 it('has no seller or vendor column, because inventory is platform-owned', function (): void {

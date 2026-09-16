@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Livewire\Catalog;
 
+use App\Domain\Catalog\Actions\AddToCart;
 use App\Domain\Marketplace\Queries\ProductDiscoveryQuery;
 use App\Domain\Marketplace\ValueObjects\ListingAvailability;
-use App\Domain\Orders\Actions\StartBuyNowCheckout;
 use App\Models\Product;
 use DomainException;
 use Illuminate\Http\RedirectResponse;
@@ -27,18 +27,26 @@ use Livewire\Component;
  * the catalog alone would tell a customer an item was out of stock while an
  * auction for it was open in the next tab.
  *
- * BUY NOW OPENS A CHECKOUT; IT DOES NOT BUY ANYTHING. The action creates an
- * order at a price the server computes and freezes, and the customer then pays
- * it. Nothing is sold until that payment is verified with the provider, which
- * is why the button says what it does and the page does not claim the product
- * is theirs.
+ * ADDING TO THE CART RESERVES NOTHING. For a product no auction is holding,
+ * the page offers a quantity and "Add to cart". The line is intent with a
+ * durable home; the order and its reservation happen atomically when the
+ * customer places the cart. Nothing is sold until a payment is verified with
+ * the provider.
  *
- * The browser sends a slug. It never sends a price, a quantity or a discount.
+ * The browser sends a slug and a quantity. It never sends a price, a total or
+ * a discount.
  */
 #[Layout('components.layouts.app')]
 class ProductDetail extends Component
 {
     public Product $product;
+
+    /**
+     * How many the customer wants, sent alongside the product when they add
+     * it to their cart. A quantity, nothing more: the price is the product
+     * row's and is never read from the browser.
+     */
+    public int $quantity = 1;
 
     public function mount(string $slug): void
     {
@@ -50,22 +58,21 @@ class ProductDetail extends Component
     }
 
     /**
-     * Open a checkout to buy this product outright.
+     * Put the product on the customer's cart.
      *
-     * Every rule is the domain's, checked against locked rows: whether the
-     * product is purchasable, whether stock is genuinely available, whether
-     * this customer already has a checkout open on it. Nothing this page
-     * rendered is trusted -- somebody may have bought the last one while it
-     * was on screen.
+     * Editing a cart updates intent and nothing else -- no reservation, no
+     * order, no ledger. Quantity is capped at the ledger's available stock
+     * and the line is validated again, against locked rows, when the order is
+     * placed. Nothing this page rendered is trusted; somebody may have bought
+     * the last units while it was on screen.
      */
-    public function buyNow(StartBuyNowCheckout $checkout, ProductDiscoveryQuery $products): ?RedirectResponse
+    public function addToCart(AddToCart $add, ProductDiscoveryQuery $products): ?RedirectResponse
     {
         $this->authorize('checkout.create');
 
-        // An auction holding this product owns the Buy Now path for it: the
-        // price carries the bidder's credit discount and completing it ends
-        // the auction. Sending them to the auction rather than opening a
-        // second, discount-free checkout on the same unit.
+        // An auction holding this product owns the path for it: the price
+        // carries the bidder's credit discount. Send them to the auction
+        // rather than building a second, discount-free line on the same unit.
         $auction = $products->activeAuctionFor($this->product);
 
         if ($auction !== null) {
@@ -73,17 +80,20 @@ class ProductDetail extends Component
         }
 
         try {
-            $order = $checkout->handle(buyer: auth()->user(), product: $this->product->fresh());
+            $add->handle(buyer: auth()->user(), product: $this->product->fresh(), quantity: $this->quantity);
         } catch (DomainException $e) {
             // The domain's own words: they say which rule stopped it, which is
-            // more use than a generic failure to somebody about to spend money.
-            $this->addError('checkout', $e->getMessage());
+            // more use than a generic failure to somebody about to add to a
+            // cart.
+            $this->addError('cart', $e->getMessage());
             $this->product->refresh();
 
             return null;
         }
 
-        return redirect()->route('checkout.show', $order);
+        session()->flash('cart-added', "{$this->product->name} was added to your cart.");
+
+        return redirect()->route('cart.show');
     }
 
     public function render(ProductDiscoveryQuery $products): View

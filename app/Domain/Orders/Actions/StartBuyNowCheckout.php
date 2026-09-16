@@ -5,9 +5,9 @@ declare(strict_types=1);
 namespace App\Domain\Orders\Actions;
 
 use App\Domain\Auction\Services\AuctionLifecycle;
+use App\Domain\Catalog\Actions\AddToCart;
 use App\Domain\Orders\Exceptions\InvalidCheckout;
 use App\Domain\Orders\Services\CheckoutPricer;
-use App\Domain\Orders\Services\OrderLifecycle;
 use App\Domain\Orders\ValueObjects\CheckoutPricing;
 use App\Domain\StoreWallet\Services\StoreWalletCheckout;
 use App\Enums\OrderSource;
@@ -37,12 +37,15 @@ use Illuminate\Support\Str;
  * ends it. Terminating here would let an abandoned checkout kill a live
  * auction that other people were still competing in.
  *
- * THE RESERVATION, AND WHY ONLY SOMETIMES. A plain catalog purchase holds one
- * unit aside while the customer pays, so it cannot be sold from under them --
- * with an explicit deadline, after which the sweep gives it back. An
- * auction-linked checkout holds nothing, because the auction reserved that
- * unit when it was published and it is the same unit being bought. Reserving
- * again would take two units off the shelf for one sale.
+ * THE RESERVATION, AND WHY ONLY SOMETIMES. An auction-linked checkout holds
+ * nothing, because the auction reserved that unit when it was published and it
+ * is the same unit being bought. Reserving again would take two units off the
+ * shelf for one sale. A plain catalogue purchase holds a unit aside while the
+ * customer pays -- but in this stage that rail runs through the cart: the
+ * catalogue path below delegates to {@see PlaceCartOrder}, which builds a
+ * single-line, quantity-one cart order, reserves its unit atomically and
+ * applies the one-pending-order rule. This action's own reservation logic
+ * serves the auction path alone.
  *
  * The order is created before the provider is contacted, so a payment that
  * succeeds at Paystack but fails on the way back to us still has a row to be
@@ -52,9 +55,10 @@ final class StartBuyNowCheckout
 {
     public function __construct(
         private readonly CheckoutPricer $pricer,
-        private readonly OrderLifecycle $orders,
         private readonly AuctionLifecycle $auctions,
         private readonly StoreWalletCheckout $storeWallet,
+        private readonly AddToCart $addToCart,
+        private readonly PlaceCartOrder $placeCart,
     ) {}
 
     /**
@@ -63,12 +67,21 @@ final class StartBuyNowCheckout
      */
     public function handle(User $buyer, Product $product, ?Auction $auction = null): Order
     {
+        // No auction behind it: an ordinary catalogue purchase, which in this
+        // stage is made through the cart so there is one checkout rail. One
+        // line, one unit, placed atomically (reservation + one-pending-order
+        // guard + pricing + Store Wallet all inside PlaceCartOrder).
+        if ($auction === null) {
+            $this->addToCart->handle($buyer, $product, 1);
+
+            return $this->placeCart->handle($buyer);
+        }
+
         return DB::transaction(function () use ($buyer, $product, $auction): Order {
-            // Locked first when there is one, so the eligibility check and the
-            // discount are decided against state nobody else can change until
-            // this commits. Same order as everywhere else: auction, then
-            // product.
-            $lockedAuction = $auction === null ? null : $this->auctions->lock($auction);
+            // Locked first, so the eligibility check and the discount are
+            // decided against state nobody else can change until this commits.
+            // Same order as everywhere else: auction, then product.
+            $lockedAuction = $this->auctions->lock($auction);
 
             $this->assertBuyable($product, $lockedAuction);
             $this->assertNoOpenCheckout($buyer, $product, $lockedAuction);
@@ -83,21 +96,17 @@ final class StartBuyNowCheckout
                 dueAt: $this->deadlineFor($lockedAuction),
             );
 
-            // Only a purchase standing on its own holds stock. An auction
-            // already holds the unit this would buy.
-            if ($lockedAuction === null) {
-                $this->orders->reserveUnit($order, $buyer);
-            }
-
-            // Store Wallet value was part of the bill; take it at checkout so
-            // two checkouts cannot both plan to spend it. Idempotent by key.
-            // Only a plain catalogue purchase may carry any.
+            // An auction-linked checkout holds nothing: the auction already
+            // holds the unit this would buy, and reserving again would take
+            // two units off the shelf for one sale. Store Wallet value was part
+            // of the bill; take it at checkout so two checkouts cannot both
+            // plan to spend it. Idempotent by key.
             //
-            // LOCKED AFTER THE RESERVATION, on purpose: the product row is
-            // this path's step before the wallet, so holding the wallet before
-            // the product would invert the order used everywhere else in the
-            // stage and invite a deadlock with the completion path, which
-            // locks product then wallet.
+            // Only a plain catalogue purchase may carry any, and catalogue
+            // purchases take the cart rail, so this path always locks the
+            // product before the wallet -- the same order used everywhere else
+            // in the stage, so there is no inverted lock order to deadlock
+            // against the completion path, which locks product then wallet.
             $this->storeWallet->commit($order, $buyer, $pricing->storeWalletApplied);
 
             Log::info('Buy Now checkout opened', [
@@ -106,7 +115,7 @@ final class StartBuyNowCheckout
                 'order_number' => $order->order_number,
                 'user_id' => $buyer->id,
                 'product_id' => $product->id,
-                'auction_id' => $lockedAuction?->id,
+                'auction_id' => $lockedAuction->id,
                 // Stated together so the log shows the two are different
                 // quantities: cedis off, and the credits that earned them.
                 'discount_minor' => $pricing->discount->minor,

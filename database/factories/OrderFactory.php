@@ -63,8 +63,19 @@ class OrderFactory extends Factory
     }
 
     /**
+     * Lines to create with the order, as [{product, quantity?, price_minor?}?].
+     * When empty the order gets the default single line at its own subtotal,
+     * which keeps older fakes intact. When set, the order's pricing columns
+     * and snapshot are recomputed to be the sum of those lines, because the
+     * database CHECK constraint refuses an order that does not add up.
+     *
+     * @var list<array{product: Product, quantity?: int, price_minor?: int}>
+     */
+    public array $lines = [];
+
+    /**
      * Build the pricing snapshot from whatever the amounts ended up as, and
-     * attach the single line every order in this stage has.
+     * attach the lines the order was asked for.
      */
     public function configure(): static
     {
@@ -91,21 +102,82 @@ class OrderFactory extends Factory
                 return;
             }
 
-            $product = Product::factory()->active()
-                ->pricedAt($order->subtotal_minor)
-                ->create();
+            $lines = $this->lines !== [] ? $this->lines : [
+                [
+                    'product' => Product::factory()->active()->pricedAt($order->subtotal_minor)->create(),
+                    'quantity' => 1,
+                    'price_minor' => $order->subtotal_minor,
+                    'discount_minor' => $order->discount_minor,
+                ],
+            ];
 
-            $item = new OrderItem;
-            $item->order_id = $order->id;
-            $item->product_id = $product->id;
-            $item->product_name_snapshot = $product->name;
-            $item->sku_snapshot = $product->sku;
-            $item->quantity = 1;
-            $item->unit_price_minor = $order->subtotal_minor;
-            $item->discount_minor = $order->discount_minor;
-            $item->line_total_minor = $order->subtotal_minor - $order->discount_minor;
-            $item->save();
+            $subtotalMinor = 0;
+            $discountMinor = 0;
+
+            foreach ($lines as $line) {
+                $product = $line['product'];
+                $quantity = $line['quantity'] ?? 1;
+                $unitPriceMinor = $line['price_minor'] ?? $product->buyNowPrice()->minor;
+                $lineDiscountMinor = $line['discount_minor'] ?? 0;
+                $lineTotalMinor = ($unitPriceMinor * $quantity) - $lineDiscountMinor;
+
+                $subtotalMinor += $unitPriceMinor * $quantity;
+                $discountMinor += $lineDiscountMinor;
+
+                $item = new OrderItem;
+                $item->order_id = $order->id;
+                $item->product_id = $product->id;
+                $item->product_name_snapshot = $product->name;
+                $item->sku_snapshot = $product->sku;
+                $item->quantity = $quantity;
+                $item->unit_price_minor = $unitPriceMinor;
+                $item->discount_minor = $lineDiscountMinor;
+                $item->line_total_minor = $lineTotalMinor;
+                $item->save();
+            }
+
+            if ($this->lines !== []) {
+                $money = fn (int $minor): Money => Money::fromMinor($minor, $order->currency);
+                $delivery = $order->delivery_minor;
+                $tax = $order->tax_minor;
+
+                $order->forceFill([
+                    'subtotal_minor' => $subtotalMinor,
+                    'discount_minor' => $discountMinor,
+                    'total_minor' => $subtotalMinor - $discountMinor + $delivery + $tax,
+                    'store_wallet_applied_minor' => 0,
+                    'payable_minor' => $subtotalMinor - $discountMinor + $delivery + $tax,
+                ]);
+
+                $order->pricing_snapshot = (new CheckoutPricing(
+                    source: $order->source,
+                    subtotal: $money($subtotalMinor),
+                    discount: $money($discountMinor),
+                    delivery: $money($delivery),
+                    tax: $money($tax),
+                    total: $money($order->total_minor),
+                    discountCredits: $order->discount_credits,
+                    storeWalletApplied: Money::fromMinor(0, $order->currency),
+                    payable: $money($order->payable_minor),
+                ))->toArray();
+
+                $order->save();
+            }
         });
+    }
+
+    /**
+     * Attach specific product lines to the order. Prices are taken from each
+     * product unless a price is given; line totals and the order's pricing
+     * columns and snapshot are recomputed so the order still adds up.
+     *
+     * @param  list<array{product: Product, quantity?: int, price_minor?: int}>  $lines
+     */
+    public function withItems(array $lines): static
+    {
+        $this->lines = $lines;
+
+        return $this;
     }
 
     /**

@@ -40,6 +40,7 @@ use App\Livewire\Auctions\AuctionIndex;
 use App\Livewire\Auctions\AuctionRoom;
 use App\Livewire\Auth\Login;
 use App\Livewire\Auth\Register;
+use App\Livewire\Catalog\CartPage;
 use App\Livewire\Catalog\ProductCatalog;
 use App\Livewire\Catalog\ProductDetail;
 use App\Livewire\Checkout\CheckoutPage;
@@ -145,6 +146,10 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/checkout/callback', CheckoutCallbackController::class)->name('checkout.callback');
 
     Route::get('/checkout/{order}', CheckoutPage::class)->name('checkout.show');
+
+    // The basket. Editing it reserves nothing; placing the order is the moment
+    // stock is set aside, atomically.
+    Route::get('/cart', CartPage::class)->name('cart.show');
 
     Route::get('/orders', OrderIndex::class)->name('orders.index');
     Route::get('/orders/{order}', OrderDetail::class)->name('orders.show');

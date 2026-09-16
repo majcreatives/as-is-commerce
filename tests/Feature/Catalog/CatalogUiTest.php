@@ -117,7 +117,7 @@ it('shows no auction, bid or credit-discount figures', function (): void {
  * Checkout has existed since the orders stage; this page finally offers it.
  * A guest is sent to sign in rather than to a control that would fail.
  */
-it('offers a buy now control on a purchasable product', function (): void {
+it('offers an add-to-cart control on a purchasable product', function (): void {
     $product = Product::factory()->active()->withStock(2)->create();
 
     $this->get("/products/{$product->slug}")
@@ -127,7 +127,8 @@ it('offers a buy now control on a purchasable product', function (): void {
 
     Livewire::actingAs(userWithRole('customer'))
         ->test(ProductDetail::class, ['slug' => $product->slug])
-        ->assertSee('Buy now');
+        ->assertSee('Add to cart')
+        ->assertDontSee('Buy now');
 });
 
 /*

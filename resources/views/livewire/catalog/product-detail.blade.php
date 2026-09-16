@@ -68,7 +68,7 @@
                     @endif
                 </div>
 
-                @error('checkout')
+                @error('cart')
                     <x-alert variant="danger" class="mt-4" role="alert">{{ $message }}</x-alert>
                 @enderror
 
@@ -82,10 +82,24 @@
                         </x-button>
                     @elseif ($availability->canBuyNow)
                         @auth
-                            <x-button wire:click="buyNow" wire:loading.attr="disabled" wire:target="buyNow">
-                                <span wire:loading.remove wire:target="buyNow">Buy now</span>
-                                <span wire:loading wire:target="buyNow">Starting checkout…</span>
-                            </x-button>
+                            <div class="flex flex-wrap items-end gap-3">
+                                <x-field label="Quantity" name="quantity" class="w-28">
+                                    <input type="number" id="quantity" min="1"
+                                           max="{{ $product->availableStock() }}"
+                                           wire:model="quantity"
+                                           class="block w-full rounded-lg border-0 bg-white px-3 py-2 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-inset focus:ring-brand-600 sm:text-sm">
+                                </x-field>
+
+                                <x-button wire:click="addToCart" wire:loading.attr="disabled" wire:target="addToCart">
+                                    <span wire:loading.remove wire:target="addToCart">Add to cart</span>
+                                    <span wire:loading wire:target="addToCart">Adding…</span>
+                                </x-button>
+                            </div>
+
+                            <p class="mt-3 text-xs text-slate-500">
+                                Adding to your cart keeps it aside for you; it is reserved only when
+                                you place the order.
+                            </p>
                         @else
                             <x-button href="{{ route('login') }}" wire:navigate>Sign in to buy</x-button>
                         @endauth

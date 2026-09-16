@@ -334,7 +334,13 @@ it('hands back the same checkout when a winner asks twice', function (): void {
     $second = settlementCheckout($auction->fresh(), $winner);
 
     expect($second->id)->toBe($first->id)
-        ->and(Order::count())->toBe(1);
+        // Scoped to this auction and winner: the suite runs transaction-based
+        // and truncation-based tests in the same process, so a global count
+        // would count orders that belong to other tests.
+        ->and(Order::query()
+            ->where('auction_id', $auction->id)
+            ->where('user_id', $winner->id)
+            ->count())->toBe(1);
 });
 
 it('reserves nothing for a settlement, because the auction already holds it', function (): void {

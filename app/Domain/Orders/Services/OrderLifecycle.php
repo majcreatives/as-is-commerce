@@ -10,9 +10,11 @@ use App\Domain\StoreWallet\Services\StoreWalletCheckout;
 use App\Enums\OrderStatus;
 use App\Events\OrderStatusChanged;
 use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\OrderTransition;
 use App\Models\User;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -230,34 +232,38 @@ class OrderLifecycle
     // ------------------------------------------------------------ Inventory
 
     /**
-     * Hold one unit aside for this checkout.
+     * Hold stock aside for this checkout.
      *
-     * Only for a purchase with no auction behind it. An auction-linked order
-     * holds nothing: the auction reserved the unit when it was published, and
-     * that same unit is the one being bought.
+     * Every line's quantity is reserved for its product. Only for a purchase
+     * with no auction behind it. An auction-linked order holds nothing: the
+     * auction reserved the unit when it was published, and that same unit is
+     * the one being bought.
      */
     public function reserveUnit(Order $order, ?User $actor = null): void
     {
-        $item = $order->item();
+        $items = $this->itemsFor($order);
 
-        if ($item === null) {
+        if ($items->isEmpty()) {
             throw InvalidOrderTransition::because('An order with no items cannot reserve stock.');
         }
 
-        $this->inventory->reserve(
-            product: $item->product,
-            quantity: $item->quantity,
-            reference: $order,
-            reason: "Held for checkout {$order->order_number}.",
-            actor: $actor,
-        );
+        foreach ($items as $item) {
+            $this->inventory->reserve(
+                product: $item->product,
+                quantity: $item->quantity,
+                reference: $order,
+                reason: "Held for checkout {$order->order_number}.",
+                actor: $actor,
+            );
+        }
 
         $order->holds_reservation = true;
         $order->save();
     }
 
     /**
-     * Give back the unit this order was holding, if it was holding one.
+     * Give back every reservation this order was holding, if it was holding
+     * one.
      *
      * Checked rather than assumed, and the flag is cleared in the same write,
      * so a second call cannot release a unit twice.
@@ -268,26 +274,28 @@ class OrderLifecycle
             return;
         }
 
-        $item = $order->item();
+        $items = $this->itemsFor($order);
 
-        if ($item === null) {
+        if ($items->isEmpty()) {
             return;
         }
 
-        $this->inventory->release(
-            product: $item->product,
-            quantity: $item->quantity,
-            reference: $order,
-            reason: $reason,
-            actor: $actor,
-        );
+        foreach ($items as $item) {
+            $this->inventory->release(
+                product: $item->product,
+                quantity: $item->quantity,
+                reference: $order,
+                reason: $reason,
+                actor: $actor,
+            );
+        }
 
         $order->holds_reservation = false;
         $order->save();
     }
 
     /**
-     * Turn this order's own reservation into a sale.
+     * Turn this order's own reservations into sales.
      *
      * Used by the Buy Now path when no auction is involved. Auction-linked
      * orders are completed through the auction, which sells the unit it was
@@ -295,25 +303,44 @@ class OrderLifecycle
      */
     public function sellUnit(Order $order, ?User $actor = null): void
     {
-        $item = $order->item();
+        $items = $this->itemsFor($order);
 
-        if ($item === null) {
+        if ($items->isEmpty()) {
             throw InvalidOrderTransition::because('An order with no items cannot record a sale.');
         }
 
-        $this->inventory->recordSale(
-            product: $item->product,
-            quantity: $item->quantity,
-            reference: $order,
-            reason: "Sold on order {$order->order_number}.",
-            actor: $actor,
-        );
+        foreach ($items as $item) {
+            $this->inventory->recordSale(
+                product: $item->product,
+                quantity: $item->quantity,
+                reference: $order,
+                reason: "Sold on order {$order->order_number}.",
+                actor: $actor,
+            );
+        }
 
-        // The reservation has become a sale. The inventory service nets the
+        // Each reservation has become a sale. The inventory service nets the
         // two, so the flag must be cleared or a later release would give back
-        // a unit that has already left.
+        // units that have already left.
         $order->holds_reservation = false;
         $order->save();
+    }
+
+    /**
+     * The order's lines, products eager-loaded, in ascending product-id order.
+     *
+     * A deterministic order means multiple lines lock their product rows in
+     * the same sequence on every call, so concurrent multi-line orders cannot
+     * deadlock each other.
+     *
+     * @return Collection<int, OrderItem>
+     */
+    private function itemsFor(Order $order): Collection
+    {
+        return $order->items()
+            ->orderBy('product_id')
+            ->with('product')
+            ->get();
     }
 
     // ------------------------------------------------------------ Internals

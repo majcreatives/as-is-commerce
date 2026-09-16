@@ -73,21 +73,39 @@
     </x-card>
 
             <x-card title="What you are buying">
-                @if ($item)
-                    <div class="flex items-start justify-between gap-6">
-                        <div>
-                            {{-- The snapshot, not the product's current name. This
-                                 order must describe itself even after the product
-                                 is renamed. --}}
-                            <p class="font-semibold text-slate-900">{{ $item->product_name_snapshot }}</p>
-                            <p class="mt-0.5 text-xs text-slate-500">{{ $item->sku_snapshot }}</p>
-                        </div>
+                <div class="flex items-center justify-between gap-4">
+                    <p class="text-sm text-slate-500">
+                        {{ $items->count() }} {{ Illuminate\Support\Str::plural('item', $items->count()) }}
+                    </p>
+                    <x-badge :classes="$order->source->badgeClasses()">
+                        {{ $order->source->label() }}
+                    </x-badge>
+                </div>
 
-                        <x-badge :classes="$order->source->badgeClasses()">
-                            {{ $order->source->label() }}
-                        </x-badge>
+                @foreach ($items as $item)
+                    <div class="{{ $loop->first ? '' : 'mt-4 border-t border-slate-100 pt-4' }}">
+                        <div class="flex items-start justify-between gap-4">
+                            <div>
+                                {{-- The snapshot, not the product's current name. This
+                                     order must describe itself even after the product
+                                     is renamed. --}}
+                                <p class="font-semibold text-slate-900">{{ $item->product_name_snapshot }}</p>
+                                <p class="mt-0.5 text-xs text-slate-500">{{ $item->sku_snapshot }}</p>
+                            </div>
+
+                            <div class="shrink-0 text-right">
+                                @if ($item->quantity > 1)
+                                    <p class="text-sm tabular-nums text-slate-600">
+                                        {{ $item->quantity }} &times; <x-money :amount="$item->unitPrice()" />
+                                    </p>
+                                @endif
+                                <p class="font-semibold tabular-nums text-slate-900">
+                                    <x-money :amount="$item->lineTotal()" />
+                                </p>
+                            </div>
+                        </div>
                     </div>
-                @endif
+                @endforeach
 
                 @if ($order->source === App\Enums\OrderSource::AuctionWin)
                     <div class="mt-5 rounded-lg bg-slate-50 p-4 ring-1 ring-inset ring-slate-200">
@@ -250,7 +268,7 @@
                     </p>
                     <p class="mt-2 text-sm text-slate-600">
                         @if ($order->holds_reservation)
-                            One unit is held for you until then. After that it goes back on sale.
+                            Your items are held for you until then. After that they go back on sale.
                         @else
                             After this the checkout closes and you would need to start again.
                         @endif

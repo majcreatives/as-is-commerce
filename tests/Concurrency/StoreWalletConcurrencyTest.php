@@ -3,8 +3,10 @@
 declare(strict_types=1);
 
 use App\Domain\Catalog\Services\InventoryService;
+use App\Domain\Orders\Exceptions\InvalidCheckout;
 use App\Domain\StoreWallet\Services\StoreWalletCheckout;
 use App\Domain\StoreWallet\Services\StoreWalletLedgerService;
+use App\Models\Order;
 use App\Models\Product;
 use App\Models\StoreWalletTransaction;
 use Illuminate\Database\QueryException;
@@ -78,11 +80,13 @@ it('serializes access to a store wallet row across connections', function (): vo
 });
 
 /*
- * The overspend scenario: one balance, two catalogue checkouts, each asking
- * for more than half. Whatever the interleaving, the two orders may commit no
- * more than the wallet held, and the wallet may never go below zero.
+ * The overspend scenario, closed at the order level: one balance and two
+ * catalogue checkouts would each be able to ask for more than half. The
+ * one-pending-order rule refuses the second checkout entirely, so the wallet
+ * cannot be committed to two plans at once -- and the whole wallet value a
+ * single checkout takes is gone with the first.
  */
-it('never lets two checkouts spend the same Store Wallet value', function (): void {
+it('refuses a second catalogue checkout while one is still owed', function (): void {
     $user = userWithRole('customer');
     fundStoreWallet($user, 300);
 
@@ -92,16 +96,15 @@ it('never lets two checkouts spend the same Store Wallet value', function (): vo
     app(InventoryService::class)->initialStock($second, 1);
 
     $firstOrder = buyNowCheckout($user, $first);
-    $secondOrder = buyNowCheckout($user, $second);
 
-    $applied = $firstOrder->store_wallet_applied_minor + $secondOrder->store_wallet_applied_minor;
+    expect(fn (): Order => buyNowCheckout($user, $second))
+        ->toThrow(InvalidCheckout::class, 'already have an open checkout');
 
-    expect($applied)->toBeLessThanOrEqual(300)
-        ->and($firstOrder->payable_minor)->toBeGreaterThan(0)
-        ->and($secondOrder->payable_minor)->toBeGreaterThan(0)
-        ->and(storeWalletBalance($user)->minor)->toBeGreaterThanOrEqual(0)
+    expect($firstOrder->store_wallet_applied_minor)->toBe(300)
+        ->and($firstOrder->payable_minor)->toBe(549_700)
+        ->and(storeWalletBalance($user)->minor)->toBe(0)
         ->and($this->wallets->verify($this->wallets->walletFor($user)))
-        ->toMatchArray(['matches' => true]);
+        ->toMatchArray(['matches' => true, 'projected_minor' => 0, 'ledger_minor' => 0]);
 });
 
 /*

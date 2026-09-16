@@ -68,7 +68,14 @@ separately before the next:
   (`products.auction_eligible`, default false) decides which inventory admin
   may move into the auction channel; auction creation enforces it. Distinct,
   separately approved after production prep so it never reshapes Stage 27's
-  launch surface.
+  launch surface. **Closed 2026-09-16** on `stage29.1` (runbook
+  `docs/VERIFY_29_AUCTION_ELIGIBILITY_P2.md`).
+- **P3 — Shop cart (multi-item, multi-quantity).** The shop behaves as a real
+  e-commerce channel: cart ≠ order, no stock held in the cart, and an atomic
+  all-or-nothing placement that validates and reserves every line, computes the
+  total server-side, honours the one-pending-order rule, and always keeps
+  auction settlement/credit/auction-Buy-Now out of the cart. Planned in
+  `docs/CART_SCOPE_AND_IMPACT.md`; implemented in its own verified step.
 
 ## Context this roadmap does not change
 

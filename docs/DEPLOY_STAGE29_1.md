@@ -132,26 +132,18 @@ database is untouched otherwise.
 3. **Admin → Auctions → create:** the product picker lists only opted-in
    products; a shop-only product is not offered.
 4. **Backend refusal:** a never-opted-in product cannot be auctioned. Since the
-   picker already hides it, this is belt-and-braces — confirm via tinker that
-   `CreateAuction` throws for a non-eligible product, e.g.:
+   picker already hides it, this is belt-and-braces. Local `AuctionCreationTest`
+   covers it head-on; the deployed refusal was verified on staging by a
+   bootstrap script that creates a **draft, `auction_eligible=false` product**
+   and calls `CreateAuction::handle(...)` expecting
+   `InvalidAuctionRules` with `"not marked as eligible for the auction channel"`.
 
-   ```bash
-   /opt/alt/php84/usr/bin/php artisan tinker --execute="
-   \$p = App\Models\Product::factory()->auctionIneligible()->create();
-   try {
-       app(App\Domain\Auction\Actions\CreateAuction::class)->handle(
-           \$p, App\Models\AuctionRuleset::factory()->active()->create(),
-           App\Support\Money::fromMinor(10000),
-       );
-       dump('NOT REFUSED');
-   } catch (App\Domain\Auction\Rules\InvalidAuctionRules \$e) {
-       dump('REFUSED: ' . \$e->getMessage());
-   }
-   "
-   ```
-
-   Expect `REFUSED: This product is not marked as eligible for the auction
-   channel.` (Then clean up the test product.)
+   > Do **not** use `Product::factory()` / `AuctionRuleset::factory()` in
+   > `tinker` here — factory definitions call the `fake()` helper, which is only
+   > loaded by the test framework and is **undefined** in the production
+   > bootstrap (`Call to undefined function Database\Factories\fake()`). Create
+   > the product with `new Product([...])` + `forceFill(...)` instead, and reuse
+   > an existing `active` ruleset.
 
 5. Existing Buy Now/credit/auction flows still behave as before (quick
    spot-check only; the new column is additive and the engine is unchanged).

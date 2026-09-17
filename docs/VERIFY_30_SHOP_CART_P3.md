@@ -102,9 +102,10 @@ stays Paid and blocked-fulfilment when the unit was legitimately taken first.
 | 9 | Staging: place order → one checkout; cart emptied; second placement refused while owed | PENDING (operator visual, signed in) |
 | 10 | Staging: expiry/cancel releases all units | PENDING (operator visual, signed in) |
 | 11 | Staging: existing Buy Now/credit/auction flows unchanged | PENDING (operator visual) |
-| 12 | Stage 30.1 fix: customer order page (owner, HTTP) no longer 500s | PENDING (staging — engine render check PASS, operator click-through pending) |
-| 13 | Stage 30.1 fix: tracking + admin order pages load their relations | PENDING (staging re-verify after `stage30.1` deploy) |
+| 12 | Stage 30.1 fix: customer order page (owner, HTTP) no longer 500s | PASS (staging 2026-09-17 — read-only engine render of order `AIC-O-20260917-GG24KCP1KV` under strict + bare route-binding model; renders 8,054 bytes incl. the **View product** link; no exception) |
+| 13 | Stage 30.1 fix: tracking + admin order pages load their relations | Tracking PASS (staging engine render, no exception); admin screen PASS by code equivalence + local HTTP tests — staging operator click-through pending |
 | 14 | Stage 30.1 regression tests (bare-model relation loads + HTTP renders) | PASS (local, 2026-09-17 — RED before fix proved by temporarily removing the loader) |
+| 15 | Stage 30.1 deploy: zip extracted, `.env` restored, caches rebuilt, health OK, no fresh errors | PASS (staging 2026-09-17 — committed files byte-identical to tag `stage30.1` (SHA-256 match), `migrate --force` nothing to run, `/health` `{"status":"ok",...}`, homepage/products 200, fresh `laravel.log` has no app-facing errors) |
 
 ## 6. Gate close
 
@@ -201,3 +202,23 @@ assumption.
 `stage30.1` tag → GitHub Actions release zip → staged extraction into the app
 subdirectory per `docs/DEPLOY_STAGE30_0.md` (backup the `stage30.0` tree +
 `.env` first). No migration in this release.
+
+### Staging verification (2026-09-17)
+
+- Deployed committed files byte-identical to local HEAD (SHA-256 over the four
+  edited components); caches rebuilt; `migrate --force` → nothing to run;
+  `storage:link` OK; `/health` `{"status":"ok","database":"ok"}`; `/` and
+  `/products` 200 (the "error"/"500" strings flagged by a naive scan are the
+  Livewire snapshot's empty `"errors":[]` and numeric JSON — benign).
+- **Customer order page** (the reported 500): read-only engine render of order
+  `AIC-O-20260917-GG24KCP1KV` under the exact staging conditions (strict
+  lazy-loading ON, `APP_DEBUG=false`, route-binding-style bare model) renders
+  8,054 bytes including the **View product** link — no
+  `LazyLoadingViolationException`. Tracking page renders (9,582 bytes).
+- **Auction room:** verified by local suites + the `mount` load; no staging
+  render possible today because every non-draft auction is `unsold`/`cancelled`
+  (all fetch a 404 room). Re-check when a live/scheduled auction exists.
+- The two `staging.ERROR` lines in the post-deploy log are the throwaway
+  `stage301_auctions.php` probe's own SQL/enum errors (now deleted) — not
+  application failures. Operator click-through of the order/tracking screens
+  remains the final human confirmation.

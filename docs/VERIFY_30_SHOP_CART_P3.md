@@ -91,20 +91,22 @@ stays Paid and blocked-fulfilment when the unit was legitimately taken first.
 
 | # | Check | Result |
 |---|---|---|
-| 1 | Migration `carts` + `cart_items` (MariaDB-compatible) | PENDING (staging) — tables exist locally; migration ran green in tests |
+| 1 | Migration `carts` + `cart_items` (MariaDB-compatible) | PASS (staging 2026-09-16 — `migrate --force` ran `2026_09_16_110000_create_cart_tables` in 859ms; both `Schema::hasTable` checks `true`) |
 | 2 | Pint + PHPStan clean | PASS (local, 2026-09-16) |
 | 3 | Focused cart + affected suites 207 tests | PASS (local, 2026-09-16) |
 | 4 | Full suite chunked | PASS (local, 2026-09-16) |
-| 5 | Staging: product page Add to cart + quantity stepper; auction routes away | PENDING (operator visual) |
-| 6 | Staging: header badge + Return-to-checkout prompt | PENDING (operator visual) |
-| 7 | Staging: cart edit/remove/clear + server preview | PENDING (operator visual) |
-| 8 | Staging: place order → one checkout; cart emptied; second placement refused while owed | PENDING (operator visual) |
-| 9 | Staging: expiry/cancel releases all units | PENDING (operator visual) |
-| 10 | Staging: existing Buy Now/credit/auction flows unchanged | PENDING (operator visual) |
+| 5 | Deploy: zip extracted, `.env` restored, caches rebuilt, health OK | PASS (staging 2026-09-16 — extract per `docs/DEPLOY_STAGE30_0.md`; `/health` `{"status":"ok","database":"ok"}`; homepage/product render the new build, no exception markers; guest product page shows "Sign in to buy", `addToCart` markup in tree) |
+| 6 | Staging: product page Add to cart + quantity stepper; auction routes away | PENDING (operator visual, signed in) |
+| 7 | Staging: header badge + Return-to-checkout prompt | PENDING (operator visual, signed in) |
+| 8 | Staging: cart edit/remove/clear + server preview | PENDING (operator visual, signed in) |
+| 9 | Staging: place order → one checkout; cart emptied; second placement refused while owed | PENDING (operator visual, signed in) |
+| 10 | Staging: expiry/cancel releases all units | PENDING (operator visual, signed in) |
+| 11 | Staging: existing Buy Now/credit/auction flows unchanged | PENDING (operator visual) |
 
 ## 6. Gate close
 
-**Verdict: PENDING** — awaiting staging deploy + operator verification.
+**Verdict: PENDING** — deployment to staging is complete (`stage30.0`, 2026-09-16);
+gate awaits the operator's signed-in visual checks (Results rows #6–#11).
 Blocker rule: any FAIL blocks the gate (fix in source, retest, redeploy,
 re-verify).
 
@@ -115,10 +117,13 @@ re-verify).
   stock; the whole basket is placed atomically as one order; one open
   catalogue checkout per customer (`docs/CART_SCOPE_AND_IMPACT.md`).
 - **Tests:** exact suites in §4.1.
-- **Verification:** local PASS; staging pending operator.
+- **Verification:** local PASS; staging deployed and smoke-checked (migration,
+  tables, health, product/home markup); signed-in visual checks pending
+  operator.
 - **Database:** new additive migration (two new tables); no applied migration
-  edited.
-- **Deployment:** `stage30.0` tag pushed; GitHub Actions release zip built;
-  staging deploy pending operator (`docs/DEPLOY_STAGE30_0.md`).
-- **Remaining:** staging deploy + visual verification below; then close the
-  gate in this doc's Results table.
+  edited. Applied on staging (`create_cart_tables`, 859ms).
+- **Deployment:** `stage30.0` tag → GitHub Actions release zip (SHA-256/zip
+  from the Release, tree verified after extract) → extracted into the served
+  app subdir; `.env` restored; caches rebuilt; smoke checks green.
+- **Remaining:** operator signed-in visual verification (§4.2 items 2–6 /
+  Results rows #6–#11), then close the gate in this doc's Results table.

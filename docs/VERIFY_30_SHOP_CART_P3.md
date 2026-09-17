@@ -102,17 +102,21 @@ stays Paid and blocked-fulfilment when the unit was legitimately taken first.
 | 9 | Staging: place order → one checkout; cart emptied; second placement refused while owed | PENDING (operator visual, signed in) |
 | 10 | Staging: expiry/cancel releases all units | PENDING (operator visual, signed in) |
 | 11 | Staging: existing Buy Now/credit/auction flows unchanged | PENDING (operator visual) |
+| 12 | Stage 30.1 fix: customer order page (owner, HTTP) no longer 500s | PENDING (staging — engine render check PASS, operator click-through pending) |
+| 13 | Stage 30.1 fix: tracking + admin order pages load their relations | PENDING (staging re-verify after `stage30.1` deploy) |
+| 14 | Stage 30.1 regression tests (bare-model relation loads + HTTP renders) | PASS (local, 2026-09-17 — RED before fix proved by temporarily removing the loader) |
 
 ## 6. Gate close
 
 **Verdict: PENDING** — deployment to staging is complete (`stage30.0`, 2026-09-16);
-gate awaits the operator's signed-in visual checks (Results rows #6–#11).
+gate awaits the operator's signed-in visual checks (Results rows #6–#11), and
+now the `stage30.1` hotfix re-verify (rows #12–#13).
 Blocker rule: any FAIL blocks the gate (fix in source, retest, redeploy,
 re-verify).
 
 ## 7. Completion report
 
-- **Changed:** the files in §2.
+- **Changed:** the files in §2, plus the §8 hotfix for the `stage30.1` 500.
 - **Why:** the shop is a real cart → order channel: intent is never held as
   stock; the whole basket is placed atomically as one order; one open
   catalogue checkout per customer (`docs/CART_SCOPE_AND_IMPACT.md`).
@@ -126,4 +130,74 @@ re-verify).
   from the Release, tree verified after extract) → extracted into the served
   app subdir; `.env` restored; caches rebuilt; smoke checks green.
 - **Remaining:** operator signed-in visual verification (§4.2 items 2–6 /
-  Results rows #6–#11), then close the gate in this doc's Results table.
+  Results rows #6–#11), plus sign-off on the `stage30.1` hotfix rows (#12–#13),
+  then close the gate in this doc's Results table.
+
+---
+
+## 8. Incident & hotfix — `stage30.1` (2026-09-17)
+
+### Symptom
+
+After the `stage30.0` deploy, some pages served **`500 | server error`**. The
+staging log (`storage/logs/laravel.log`) held two entries (2026-09-17 00:57 and
+00:58, `userId 2`):
+
+```text
+staging.ERROR: Attempted to lazy load [product] on model [App\Models\OrderItem]
+but lazy loading is disabled.
+(View: .../resources/views/livewire/orders/order-detail.blade.php)
+```
+
+### Root cause
+
+`AppServiceProvider` (`boot()`, line 111) runs `Model::shouldBeStrict(! $this->app->isProduction())`.
+Staging runs `APP_ENV=staging`, so strict lazy-loading is **on**, and any blade
+reading an unloaded relation throws `LazyLoadingViolationException`. The order
+detail screen's **View product** link reads `$item->product`
+(`order-detail.blade.php:238`) while the component never loads it
+(`OrderDetail::render()` only `refresh()`s the route-bound order). Identical
+hazard found in two more order screens (tracking reads `delivery`; admin order
+detail reads `delivery`, `items`, `auction.product`) and in the auction room
+(title/blade read `$auction->product`). Latent since earlier stages — surfaced
+on stage30 because a reachable order flow finally visited the page.
+
+### Fix (commit `1b72467`, tag `stage30.1`)
+
+Load the relations each component's blade reads, at `mount` (covers action
+methods) and after `refresh()` in `render`:
+
+| Component | Loads |
+|---|---|
+| `app/Livewire/Orders/OrderDetail.php` | `items.product` |
+| `app/Livewire/Delivery/OrderTracking.php` | `delivery`, `items` |
+| `app/Livewire/Admin/Orders/OrderDetail.php` | `items`, `delivery`, `auction.product` |
+| `app/Livewire/Auctions/AuctionRoom.php` | `product` |
+
+No business rule, schema, or route change. Strict lazy-loading stays on (its
+purpose is to catch exactly this at development time).
+
+### Tests
+
+- New HTTP-path renders in `OrderUiTest` (customer order, admin auction
+  buy-out, tracking) — assert `200` + the product link.
+- New bare-model relation tests in `OrderUiTest` — render/mount the component
+  with a route-binding-style model and assert every relation its blade reads is
+  loaded. **RED proved pre-fix** (loader temporarily removed → failing
+  assertion), GREEN post-fix.
+- Suites run local: `OrderUiTest` 31, `Delivery` 87, `Marketplace`+`Refunds`
+  164, auction room UI/perf 63 — all PASS; Pint clean; PHPStan 0 errors.
+
+### Note on local vs staging
+
+With strict on, the local request path hydrates these relations before the
+blade runs, so the HTTP tests pass even without the fix there; staging is where
+route binding left the relations unloaded. The bare-model tests encode the
+guarantee deterministically. Docs are written from measured behavior, not from
+assumption.
+
+### Deploy
+
+`stage30.1` tag → GitHub Actions release zip → staged extraction into the app
+subdirectory per `docs/DEPLOY_STAGE30_0.md` (backup the `stage30.0` tree +
+`.env` first). No migration in this release.

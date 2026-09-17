@@ -119,6 +119,14 @@ class AuctionRoom extends Component
         abort_unless($auction->status->isPubliclyVisible(), 404);
 
         $this->auction = $auction;
+
+        // The room and its title read the product (name, description, link).
+        // Loaded up front rather than lazily: route binding hands this
+        // component a bare auction, and strict lazy-loading is on outside
+        // production. Livewire re-hydrates this model from the recorded
+        // snapshot on later requests, so loading once at mount is enough.
+        $this->auction->loadMissing('product');
+
         $this->bidKey = (string) Str::uuid();
     }
 

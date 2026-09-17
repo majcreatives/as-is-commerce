@@ -9,10 +9,12 @@ use App\Livewire\Admin\Orders\OrderDetail as AdminOrderDetail;
 use App\Livewire\Admin\Orders\OrderManager;
 use App\Livewire\Auctions\AuctionRoom;
 use App\Livewire\Checkout\CheckoutPage;
+use App\Livewire\Delivery\OrderTracking;
 use App\Livewire\Orders\OrderDetail;
 use App\Livewire\Orders\OrderIndex;
 use App\Models\Order;
 use App\Models\Product;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Http;
 use Livewire\Livewire;
 
@@ -388,3 +390,115 @@ it('requires a signed-in customer for checkout and orders', function (string $ro
 })->with([
     'orders' => fn (): string => route('orders.index'),
 ]);
+
+/*
+ * Regression: a customer order's "View product" link, the tracking page and
+ * the admin order screen all read relations (items.product, delivery,
+ * auction.product) and must load them explicitly rather than lazily, because
+ * the app runs with strict lazy-loading outside production. The staging
+ * environment trips these renders with LazyLoadingViolationException; the
+ * local request path happens to hydrate the relations before the blade runs,
+ * which hides the bug. These HTTP tests exercise the full routes, and the
+ * bare-model tests below hold the real ordering: with logical loading on, a
+ * component handed a bare model must leave every relation its blade reads
+ * loaded before it returns.
+ */
+it('renders a customer order page over HTTP with the product link loaded', function (): void {
+    $product = Product::factory()->active()->pricedAt(550_000)->create();
+    app(InventoryService::class)->initialStock($product, 1);
+    $buyer = bidder();
+    $order = buyNowCheckout($buyer, $product);
+
+    $this->actingAs($buyer)
+        ->get(route('orders.show', $order))
+        ->assertOk()
+        ->assertSee('View product')
+        ->assertSee($product->name);
+});
+
+it('renders an admin order page over HTTP for an auction buy-out', function (): void {
+    $product = Product::factory()->active()->pricedAt(550_000)->create();
+    $auction = liveAuction(product: $product);
+    // A Buy Now checkout against a live auction: the order links an auction,
+    // and the screen reads auction.product for the comparison price.
+    $order = buyNowCheckout(bidder(), $product, $auction);
+
+    $this->actingAs($this->admin)
+        ->get(route('admin.orders.show', $order))
+        ->assertOk();
+});
+
+it('renders the tracking page over HTTP once a delivery exists', function (): void {
+    $product = Product::factory()->active()->pricedAt(550_000)->create();
+    app(InventoryService::class)->initialStock($product, 1);
+    $buyer = bidder();
+    $order = buyNowCheckout($buyer, $product);
+    payOrder($order);
+
+    $order->refresh()->load('delivery');
+    expect($order->delivery)->not->toBeNull();
+
+    $this->actingAs($buyer)
+        ->get(route('orders.tracking', $order))
+        ->assertOk();
+});
+
+/*
+ * The same bug, held by the shoulders: a component handed a bare model by
+ * HTTP route binding must load every relation its blade reads while logical
+ * loading is still on, rather than leaving the render to trip
+ * LazyLoadingViolationException. Rendered here the way Livewire mounts it,
+ * without the request-path hydration that can hide a missing load.
+ */
+it('loads the item product a customer order page links to', function (): void {
+    $product = Product::factory()->active()->pricedAt(550_000)->create();
+    app(InventoryService::class)->initialStock($product, 1);
+    $buyer = bidder();
+    $order = buyNowCheckout($buyer, $product);
+
+    $bare = $order->newQuery()->whereKey($order->getKey())->first();
+
+    Auth::login($buyer);
+    $component = new OrderDetail;
+    $component->mount($bare);
+    $component->render();
+
+    expect($bare->relationLoaded('items'))->toBeTrue()
+        ->and($bare->items->first()->relationLoaded('product'))->toBeTrue();
+});
+
+it('loads the relations an admin order screen reads', function (): void {
+    $product = Product::factory()->active()->pricedAt(550_000)->create();
+    $auction = liveAuction(product: $product);
+    $order = buyNowCheckout(bidder(), $product, $auction);
+    payOrder($order);
+
+    $bare = $order->newQuery()->whereKey($order->getKey())->first();
+
+    Auth::login($this->admin);
+    $component = new AdminOrderDetail;
+    $component->mount($bare);
+
+    expect($bare->relationLoaded('items'))->toBeTrue()
+        ->and($bare->relationLoaded('delivery'))->toBeTrue()
+        ->and($bare->relationLoaded('auction'))->toBeTrue()
+        ->and($bare->auction->relationLoaded('product'))->toBeTrue();
+});
+
+it('loads the delivery an order tracking screen reads', function (): void {
+    $product = Product::factory()->active()->pricedAt(550_000)->create();
+    app(InventoryService::class)->initialStock($product, 1);
+    $buyer = bidder();
+    $order = buyNowCheckout($buyer, $product);
+    payOrder($order);
+
+    $bare = $order->newQuery()->whereKey($order->getKey())->first();
+
+    Auth::login($buyer);
+    $component = new OrderTracking;
+    $component->mount($bare);
+
+    expect($bare->relationLoaded('items'))->toBeTrue()
+        ->and($bare->relationLoaded('delivery'))->toBeTrue()
+        ->and($bare->delivery)->not->toBeNull();
+});

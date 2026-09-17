@@ -38,6 +38,12 @@ class OrderDetail extends Component
     {
         $this->order->refresh();
 
+        // The page links back to the item's product. Loading it here keeps the
+        // blade from reading the relation lazily: the app runs with strict
+        // lazy-loading outside production, and this order arrived through HTTP
+        // route binding with no relations attached.
+        $this->order->loadMissing('items.product');
+
         return view('livewire.orders.order-detail', [
             'pricing' => $this->order->pricing(),
             'item' => $this->order->item(),

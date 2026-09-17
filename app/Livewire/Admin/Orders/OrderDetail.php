@@ -88,6 +88,13 @@ class OrderDetail extends Component
         $this->authorize('orders.view');
 
         $this->order = $order;
+
+        // Loaded up front, not lazily: the screen (and each delivery/refund
+        // action) reads the item, the delivery and the comparison price from
+        // the linked auction's product. Route binding hands this component an
+        // order with none of those attached, and strict lazy-loading is on
+        // outside production.
+        $this->order->loadMissing(['items', 'delivery', 'auction.product']);
     }
 
     /**
@@ -347,6 +354,7 @@ class OrderDetail extends Component
         FulfilmentEligibility $fulfilment,
     ): View {
         $this->order->refresh();
+        $this->order->loadMissing(['items', 'delivery', 'auction.product']);
 
         $payment = $eligibility->refundablePayment($this->order);
 

@@ -50,6 +50,12 @@ class OrderTracking extends Component
         abort_unless($order->user_id === auth()->id(), 404);
 
         $this->order = $order;
+
+        // The tracking screen reads the delivery itself and the order's item
+        // snapshot, and the "choose address" action touches the delivery too.
+        // Loaded up front so neither the mount nor a later render reads either
+        // relation lazily under strict lazy-loading.
+        $this->order->loadMissing(['delivery', 'items']);
     }
 
     /**
@@ -107,6 +113,7 @@ class OrderTracking extends Component
     public function render(): View
     {
         $this->order->refresh();
+        $this->order->loadMissing(['delivery', 'items']);
 
         $delivery = $this->order->delivery;
 

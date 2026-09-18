@@ -1,8 +1,8 @@
 # P3 — Shop Cart: Scope and Impact
 
-**Status:** PLANNED — scope agreed with the operator; implementation begins on
-operator approval, following the normal commit → tests → `stage*` tag → release
-zip → staging → runbook gate sequence.
+**Status:** SHIPPED — implemented across `stage30.0`→`stage30.3`, deployed to
+staging via the GitHub Actions release zips, and the P3 gate closed on operator
+sign-off 2026-09-18 (see `docs/VERIFY_30_SHOP_CART_P3.md` §6, rows #6–#21).
 
 **Baseline:** `main` `691da47` (P2 gate closed). This document is the planning
 artifact named by `docs/REFERENCE_MODEL.md` §6 for P3. Nothing here relaxes a

@@ -99,26 +99,51 @@ stays Paid and blocked-fulfilment when the unit was legitimately taken first.
 | 3 | Focused cart + affected suites 207 tests | PASS (local, 2026-09-16) |
 | 4 | Full suite chunked | PASS (local, 2026-09-16) |
 | 5 | Deploy: zip extracted, `.env` restored, caches rebuilt, health OK | PASS (staging 2026-09-16 — extract per `docs/DEPLOY_STAGE30_0.md`; `/health` `{"status":"ok","database":"ok"}`; homepage/product render the new build, no exception markers; guest product page shows "Sign in to buy", `addToCart` markup in tree) |
-| 6 | Staging: product page Add to cart + quantity stepper; auction routes away | PENDING (operator visual, signed in) |
-| 7 | Staging: header badge combines basket + owed checkout; no separate Return-to-checkout prompt | PENDING (operator visual, signed in — re-verify after `stage30.2`) |
-| 8 | Staging: cart edit/remove/clear + server preview + **Awaiting payment** card | PENDING (operator visual, signed in — re-verify after `stage30.2`) |
-| 9 | Staging: place order → one checkout; items stay visible as Awaiting payment; second placement refused while owed | PENDING (operator visual, signed in — re-verify after `stage30.2`) |
-| 10 | Staging: expiry/cancel releases all units and clears the awaiting-payment card | PENDING (operator visual, signed in — re-verify after `stage30.2`) |
-| 11 | Staging: existing Buy Now/credit/auction flows unchanged | PENDING (operator visual) |
+| 6 | Staging: product page Add to cart + quantity stepper; auction routes away | PASS (operator visual, signed in, 2026-09-18 — on the `stage30.3` build) |
+| 7 | Staging: header badge combines basket + owed checkout; no separate Return-to-checkout prompt | PASS (operator visual, signed in, 2026-09-18 — one badge covers basket + payable Shop order) |
+| 8 | Staging: cart edit/remove/clear + server preview + owed-order surface | PASS (operator visual, signed in, 2026-09-18 — owed Shop order folds into the editable basket, or shows the **Payment in progress** panel while an attempt is open; see rows #16–#18) |
+| 9 | Staging: place order → one checkout; items stay visible; second placement handled by the fold model | PASS (operator visual, signed in, 2026-09-18 — a second placement now **folds** the pending order back into one new order; supercedes the old refusal) |
+| 10 | Staging: expiry/cancel releases all units and the lines return to the basket | PASS (operator visual, signed in, 2026-09-18 — see row #19) |
+| 11 | Staging: existing Buy Now/credit/auction flows unchanged | PASS (operator visual, signed in, 2026-09-18 — spot-checked auction Buy Now and store-wallet carts; see row #20) |
 | 12 | Stage 30.1 fix: customer order page (owner, HTTP) no longer 500s | PASS (staging 2026-09-17 — read-only engine render of order `AIC-O-20260917-GG24KCP1KV` under strict + bare route-binding model; renders 8,054 bytes incl. the **View product** link; no exception) |
 | 13 | Stage 30.1 fix: tracking + admin order pages load their relations | Tracking PASS (staging engine render, no exception); admin screen PASS by code equivalence + local HTTP tests — staging operator click-through pending |
 | 14 | Stage 30.1 regression tests (bare-model relation loads + HTTP renders) | PASS (local, 2026-09-17 — RED before fix proved by temporarily removing the loader) |
 | 15 | Stage 30.1 deploy: zip extracted, `.env` restored, caches rebuilt, health OK, no fresh errors | PASS (staging 2026-09-17 — committed files byte-identical to tag `stage30.1` (SHA-256 match), `migrate --force` nothing to run, `/health` `{"status":"ok",...}`, homepage/products 200, fresh `laravel.log` has no app-facing errors) |
+| 16 | Stage 30.3: place order → cart page shows the **Payment in progress** panel with **Resume payment** and **Move back to my cart** | PASS (operator visual, signed in, 2026-09-18) |
+| 17 | Stage 30.3: keep shopping after placing → the pending order folds back into **one** editable basket (single **Place order**) | PASS (operator visual, signed in, 2026-09-18) |
+| 18 | Stage 30.3: **Move back to my cart** with an open payment → attempt abandoned, back to the basket | PASS (operator visual, signed in, 2026-09-18) |
+| 19 | Stage 30.3: an expired pending order → its lines restored to the basket | PASS (operator visual, signed in, 2026-09-18) |
+| 20 | Stage 30.3: auction Buy Now + store-wallet-assisted cart behave unchanged | PASS (operator visual, signed in, 2026-09-18) |
+| 21 | Stage 30.3 deploy: release zip extracted, `.env` restored, caches rebuilt, health OK, release code present | PASS (staging 2026-09-18 — `/health` `{"status":"ok","database":"ok"}`, `/up` 200, config/routes/views cached, `FoldShopPurchaseToCart`/`CartRestorer` + Vite manifest present, `migrate --force` nothing to run) |
 
 ## 6. Gate close
 
-**Verdict: PENDING** — deployment to staging is complete (`stage30.0`, 2026-09-16;
-`stage30.1` hotfix, 2026-09-17; `stage30.2` unified-cart iteration, awaiting
-deploy); the gate awaits the operator's signed-in visual checks (Results rows
-#6–#11), re-verified against the `stage30.2` unified-cart behavior (rows
-#7–#10), and the `stage30.1` hotfix rows (#12–#13).
+**Verdict: CLOSED** — for P3 Shop cart (multi-item, multi-quantity), verified
+and signed off by the operator on staging, 2026-09-18, on the `stage30.3`
+build.
+
+Deployment history: `stage30.0` (2026-09-16), `stage30.1` hotfix (2026-09-17,
+rows #12–#13 confirmed), `stage30.2` unified-cart iteration, `stage30.3`
+cart-authoritative fold model (2026-09-18, rows #16–#21). Entry to staging was
+always the GitHub Actions release zip; the §88 subdirectory routing keeps the
+served app at `public_html/as-is-commerce-stage20`.
+
+Gate outcome per `docs/CART_SCOPE_AND_IMPACT.md` §12:
+1. Local suites green (fold suites, Unit, Concurrency, all Feature slices,
+   Pint clean, PHPStan 0 errors) — PASS.
+2. Migration applies cleanly on MariaDB (staging) — PASS (`carts` +
+   `cart_items` on `stage30.0`; no schema change in `stage30.1`–`stage30.3`).
+3. Deployed via `stage30.0`→`stage30.3` tags → GitHub Actions release zip →
+   staging — PASS.
+4. Runbook staging proof (this doc, rows #6–#11 + #16–#20): multi-item
+   order, all-or-nothing, reservation release with lines returning to the
+   cart, Store Wallet on a cart, one-active-order fold-on-grow / move-back,
+   full-basket checkout, payment via Paystack test mode — PASS (operator).
+5. No auction/financial invariant regressed — PASS (local regression suites
+   repeated after the fold model; auction rails untouched by scope decision).
+
 Blocker rule: any FAIL blocks the gate (fix in source, retest, redeploy,
-re-verify).
+re-verify). No FAIL recorded; gate closed.
 
 ## 7. Completion report
 
@@ -130,19 +155,21 @@ re-verify).
   customer-facing cart is the single view of everything still owed.
 - **Tests:** exact suites in §4.1 (208 cart + affected tests, concurrency,
   plus the full suite rerun in chunks — ~1,800 tests across every directory).
-- **Verification:** local PASS; staging deployed and smoke-checked for
-  `stage30.0`/`stage30.1` (migration, tables, health, product/home markup,
-  order-page fix); signed-in visual checks pending operator, re-verified
-  against the `stage30.2` unified cart.
+- **Verification:** local PASS; staging smoke-checks PASS for `stage30.0`/
+  `stage30.1` (migration, tables, health, product/home markup, order-page fix);
+  operator signed-in visual checks PASS on the `stage30.3` build (2026-09-18,
+  rows #6–#11 + #16–#20); gate closed.
 - **Database:** new additive migration (two new tables); no applied migration
   edited. Applied on staging (`create_cart_tables`, 859ms).
-- **Deployment:** `stage30.0`/`stage30.1` tags → GitHub Actions release zip
+- **Deployment:** `stage30.0`→`stage30.3` tags → GitHub Actions release zip
   (SHA-256/zip from the Release, tree verified after extract) → extracted into
   the served app subdir; `.env` restored; caches rebuilt; smoke checks green.
-  `stage30.2` deploy pending after operator review of this iteration.
-- **Remaining:** operator signed-in visual verification (§4.2 items 2–6 /
-  Results rows #6–#11), plus sign-off on the `stage30.1` hotfix rows (#12–#13),
-  then close the gate in this doc's Results table.
+- **Remaining:** none blocking. The only not-yet-seen screen is an in-flight
+  auction's live room on staging (none currently live); the auction-room
+  `stage30.1` lazy-load fix and the fold model's auction exclusion are covered
+  by local suites. Clean up old backups
+  (`as-is-commerce-stage20.bak-*`, `.env.bak-stage*`) after the next deploy
+  confirms the new swap.
 
 ---
 
@@ -293,3 +320,72 @@ subdirectory per `docs/DEPLOY_STAGE30_0.md` (backup the `stage30.1` tree +
 `.env` first). No migration in this release. Operator re-runs the signed-in
 visual checks (Results rows #7–#10) under the new behavior before the gate
 closes.
+
+---
+
+## 10. Iteration — `stage30.3` cart-authoritative fold model (2026-09-18)
+
+### Why
+
+Stage 30.2 still *refused* a second cart placement while a checkout was owed —
+a customer who placed then kept shopping hit a wall. Per the locked operator
+decision #4 in `docs/CART_SCOPE_AND_IMPACT.md`, the model became
+**cart-authoritative**: the Shop may have **one active purchase per customer**,
+and any cart edit, add, or re-placement **folds** a pending Shop order back
+into the cart (releases its reservation and Store Wallet commitment, restores
+its lines), so the next placement is the single order covering everything. The
+folded order stays `Cancelled` history. Auction-linked orders are never folded.
+
+### Operator decisions (recorded)
+
+- The fold is automatic on add/edit/place, **except** while a payment attempt
+  is genuinely in flight — then it refuses unless the customer explicitly
+  chooses **Move back to my cart**, which abandons the attempt first.
+- An awaiting-payment Shop order behaves two ways on the cart page: editable
+  (folded back into the basket) or a **Payment in progress** panel with
+  **Resume payment** and **Move back to my cart** when a payment was
+  initialized.
+- Extending a basket after placement, expiry, or a provider-reported failed
+  charge restores the lines to the cart through the order lifecycle — the
+  basket never disappears with a product the customer didn't finish buying.
+- A payment verified *after* a fold is recorded with its provider facts and
+  flagged `fulfilment_blocked` (§37) — never silently Paid, never thrown away.
+
+### Changed (commit `789d92b`, tag `stage30.3`)
+
+| # | File | Change |
+|---|---|---|
+| 1 | `app/Domain/Orders/Actions/FoldShopPurchaseToCart.php` (new) | Fold a pending Shop order back into the cart: cancel → release reservations → restore lines → release the Store Wallet commitment; in-flight-payment guard + `abandonAttempts` flag for the explicit move-back; no-op when nothing is pending |
+| 2 | `app/Domain/Orders/Services/CartRestorer.php` (new) | Restore an order's item lines onto the customer's cart as intent (quantities accumulate); used by the order lifecycle for a Shop order's unpaid closure |
+| 3 | `app/Models/Order.php` | `isShopOrder()` + `scopePayableShopOrder()` (catalogue, awaiting payment, in-window) |
+| 4 | `app/Domain/Orders/Exceptions/InvalidCheckout.php` | `paymentInProgress()`; the old `alreadyOpen` guard stays for the auction Buy Now path |
+| 5 | `app/Domain/Orders/Services/OrderLifecycle.php` | `cancel`/expire(`PaymentExpired`)/`markPaymentFailed(PaymentFailed)` restore a Shop order's lines via `CartRestorer` inside the same transaction; auction-linked orders never restore |
+| 6 | `app/Domain/Orders/Actions/PlaceCartOrder.php`, `AddToCart.php`, `UpdateCartLine.php` | Cart row `lockForUpdate` first; fold any pending Shop order before reading $lines / mutating; availability re-read after the fold |
+| 7 | `app/Livewire/Catalog/CartPage.php` + `cart-page.blade.php` | `moveBackToCart` (abandon attempts, flash `cart-restored`, redirect); **Payment in progress** panel + alerts |
+| 8 | `app/Livewire/Checkout/CheckoutPage.php` | `render(): View\|RedirectResponse` guard (redirect non-payable Shop checkouts to `/cart`); customer `cancel` maps Shop orders back to `cart.show` |
+| 9 | `resources/views/partials/navigation.blade.php` | Badge/link through the `payableShopOrder` scope |
+| 10 | Tests | `ShopPurchaseFoldTest` (new, 11 cases); `CartPlacementTest`, `CheckoutTest`, `OrderUiTest`, `CartPageTest`, `NavigationCartTest` updated; `CheckoutParticipationTest`, `StoreWalletConcurrencyTest` re-targeted to the consolidated checkout |
+
+### Locking / invariants (unchanged, §7/§8 verified)
+
+Cart row lock → order row lock → product rows ascending → wallet; Store Wallet
+commits once per consolidated order idempotently; `payable > 0`; the fold never
+touches an auction-linked order; a verified Paid order stays Paid even if
+folded (recorded + `fulfilment_blocked`).
+
+### Local verification (2026-09-18)
+
+`ShopPurchaseFoldTest` 11 PASS; targeted 117 (cart, checkout, wallet, nav, UI)
+PASS; Unit 109, Concurrency 79, Feature slices 684 + 870 + 303 — all PASS
+(~2,045 tests); `./vendor/bin/pint` clean (3 files auto-formatted);
+`./vendor/bin/phpstan analyse --memory-limit=512M` — 0 errors.
+
+### Deploy & staging (2026-09-18)
+
+`stage30.3` tag → GitHub Actions release zip (`as-is-commerce-stage30.3.zip`,
+13.7 MB) → swap per `docs/DEPLOY_STAGE30_0.md` (previous tree snapshotted as
+`as-is-commerce-stage20.bak-30.2`, `.env` restored from
+`.env.bak-stage30.3`). No migration (`migrate --force` → nothing to run).
+Smoke: `/health` `{"status":"ok","database":"ok"}`, `/up` 200, `/products` +
+`/login` 200 with no secrets/traces in HTML, new release files + Vite manifest
+served. Operator signed-in visual checks PASS (rows #16–#20); gate closed.

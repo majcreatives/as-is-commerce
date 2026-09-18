@@ -9,9 +9,11 @@ use App\Models\Product;
 use Carbon\Carbon;
 
 /*
- * The header cart is the cart, not the order. The badge sums the quantity
- * across the customer's cart lines -- intent, nothing reserved. A pending
- * checkout is pointed to separately, so an abandoned buy is never lost.
+ * The header cart is the one affordance for everything still owed. The badge
+ * sums the quantity across the customer's basket (intent, nothing reserved)
+ * plus the payable Shop checkout's items (already set aside). A separate
+ * "Return to checkout" prompt does not exist: the cart page surfaces an owed
+ * order when there is one.
  */
 
 it('shows the cart link and no badge to a signed-in customer with an empty cart', function (): void {
@@ -60,40 +62,50 @@ it('links the cart icon to the cart page', function (): void {
         ->assertSee('href="'.route('cart.show').'"', false);
 });
 
-it('shows a return-to-checkout prompt while a checkout is still owed', function (): void {
+it('folds an owed checkout into the cart badge when the basket is empty', function (): void {
     $product = Product::factory()->active()->create();
     app(InventoryService::class)->initialStock($product, 1);
 
     $customer = userWithRole('customer');
     buyNowCheckout($customer, $product->fresh());
 
-    $this->actingAs($customer)
-        ->get(route('dashboard'))
-        ->assertOk()
-        ->assertSee('Return to checkout');
-});
-
-it('links the return-to-checkout prompt to the pending order', function (): void {
-    $product = Product::factory()->active()->create();
-    app(InventoryService::class)->initialStock($product, 1);
-
-    $customer = userWithRole('customer');
-    $order = buyNowCheckout($customer, $product->fresh());
-
-    $this->actingAs($customer)
-        ->get(route('dashboard'))
-        ->assertOk()
-        ->assertSee('href="'.route('checkout.show', $order).'"', false);
-});
-
-it('hides the return-to-checkout prompt when nothing is owed', function (): void {
-    $this->actingAs(userWithRole('customer'))
+    $response = $this->actingAs($customer)
         ->get(route('dashboard'))
         ->assertOk()
         ->assertDontSee('Return to checkout');
+
+    expect($response->getContent())
+        ->toMatch('/id="cart-count"[\s\S]*?>\s*1\s*<\/span>/');
 });
 
-it('hides the return-to-checkout prompt once the checkout is no longer payable', function (): void {
+it('sums the basket and an owed checkout in one badge', function (): void {
+    $first = Product::factory()->active()->create();
+    $second = Product::factory()->active()->create();
+    app(InventoryService::class)->initialStock($first, 5);
+    app(InventoryService::class)->initialStock($second, 1);
+
+    $customer = userWithRole('customer');
+    app(AddToCart::class)->handle($customer, $first->fresh(), 2);
+    buyNowCheckout($customer, $second->fresh());
+
+    $response = $this->actingAs($customer)
+        ->get(route('dashboard'))
+        ->assertOk()
+        ->assertDontSee('Return to checkout');
+
+    expect($response->getContent())
+        ->toMatch('/id="cart-count"[\s\S]*?>\s*3\s*<\/span>/');
+});
+
+it('shows no badge when nothing is owed and the basket is empty', function (): void {
+    $this->actingAs(userWithRole('customer'))
+        ->get(route('dashboard'))
+        ->assertOk()
+        ->assertDontSee('id="cart-count"')
+        ->assertDontSee('Return to checkout');
+});
+
+it('does not fold an expired checkout into the badge', function (): void {
     $product = Product::factory()->active()->create();
     app(InventoryService::class)->initialStock($product, 1);
 
@@ -106,7 +118,7 @@ it('hides the return-to-checkout prompt once the checkout is no longer payable',
     $this->actingAs($customer)
         ->get(route('dashboard'))
         ->assertOk()
-        ->assertDontSee('Return to checkout');
+        ->assertDontSee('id="cart-count"');
 
     Carbon::setTestNow();
 });

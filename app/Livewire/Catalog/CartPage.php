@@ -9,8 +9,10 @@ use App\Domain\Marketplace\Queries\ProductDiscoveryQuery;
 use App\Domain\Orders\Actions\PlaceCartOrder;
 use App\Domain\Orders\Services\CheckoutPricer;
 use App\Domain\Shared\Money\Money;
+use App\Enums\OrderSource;
 use App\Models\Cart;
 use App\Models\CartItem;
+use App\Models\Order;
 use App\Models\Product;
 use DomainException;
 use Illuminate\Http\RedirectResponse;
@@ -179,6 +181,7 @@ final class CartPage extends Component
             'availability' => $availability,
             'pricing' => $pricing,
             'pricingError' => $pricingError,
+            'payableOrder' => $this->payableOrder(),
             'lineSubtotals' => $lines->mapWithKeys(
                 fn (CartItem $line): array => [
                     $line->id => Money::fromMinor(
@@ -188,6 +191,32 @@ final class CartPage extends Component
                 ],
             ),
         ])->title('Your cart');
+    }
+
+    /**
+     * A Shop checkout this customer still owes on, if one exists.
+     *
+     * The cart page is the single view of an unfinished Shop purchase, so once
+     * the basket becomes an order the order stays visible here until it is
+     * paid, cancelled or expired. Its lines are frozen and reserved, so they
+     * are shown read-only. Only catalogue orders (`BuyNow`, no auction) belong
+     * here: auction-linked checkouts run on their own rails. The items are
+     * loaded because the blade renders each snapshot line.
+     */
+    private function payableOrder(): ?Order
+    {
+        return Order::query()
+            ->where('user_id', auth()->id())
+            ->where('source', OrderSource::BuyNow)
+            ->whereNull('auction_id')
+            ->awaitingPayment()
+            ->where(function ($query) {
+                $query->whereNull('payment_due_at')
+                    ->orWhere('payment_due_at', '>', now());
+            })
+            ->latest('id')
+            ->with(['items' => fn ($q) => $q->orderBy('product_id')->with('order')])
+            ->first();
     }
 
     /**

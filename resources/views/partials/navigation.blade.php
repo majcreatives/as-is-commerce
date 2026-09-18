@@ -4,13 +4,18 @@
     // when the page you are on lives behind a closed menu.
     $inAccount = request()->routeIs('dashboard', 'wallet', 'orders.*', 'addresses.*', 'referrals.*', 'profile.*', 'credits.history');
 
-    // The most recent checkout that is still payable right now. A customer who
-    // abandons the checkout page but has not paid yet needs a way back into it,
-    // so when one exists the header shows a prompt pointing at that order.
-    // Bound to a single indexed row, with the item quantity summed, because
-    // this runs on every page.
-    $activeCheckout = auth()->user()
+    // The Shop checkout this customer still owes on -- a catalogue order
+    // (source Buy Now, no auction) that is awaiting payment and is still within
+    // its window. Its quantity folds into the cart badge, so placing an order
+    // does not make a customer's purchase disappear while it is still owed; the
+    // cart page surfaces it as "Awaiting payment". Auction-linked checkouts run
+    // on their own rails and never show up in the Shop cart. Bound to a single
+    // indexed row, with the item quantity summed, because this runs on every
+    // page.
+    $payableOrder = auth()->user()
         ?->orders()
+        ->where('source', \App\Enums\OrderSource::BuyNow)
+        ->whereNull('auction_id')
         ->awaitingPayment()
         ->where(function ($query) {
             $query->whereNull('payment_due_at')
@@ -21,14 +26,17 @@
         ->first();
 
     // The customer's cart, and how many pieces it holds. The header badge is
-    // the cart count (intent, nothing reserved); a pending order is pointed to
-    // separately. One indexed row, summed, on every authenticated page.
+    // everything not yet paid for: the basket (intent, nothing reserved) plus
+    // any payable Shop checkout's items (already set aside). One indexed row
+    // each, summed, on every authenticated page.
     $cartCount = auth()->check()
         ? (int) (\App\Models\Cart::query()
             ->forUser(auth()->user())
             ->withSum('items as cart_count', 'quantity')
             ->value('cart_count'))
         : 0;
+
+    $cartBadge = $cartCount + ($payableOrder ? (int) $payableOrder->cart_count : 0);
 
     // The account menu, grouped the way somebody looks for things: what is
     // happening, what it cost, where it goes, then who else to tell. Each
@@ -124,9 +132,9 @@
                 <x-button href="{{ route('login') }}" variant="ghost" size="sm">Sign in</x-button>
                 <x-button href="{{ route('register') }}" variant="primary" size="sm">Create account</x-button>
             @else
-                {{-- The cart: intent, held server-side per customer and
-                     nothing reserved. The badge is the total quantity across
-                     its lines. --}}
+                {{-- The cart: one way into everything a purchase still owes. The
+                     badge is the quantity across the basket plus any payable Shop
+                     checkout. --}}
                 <a href="{{ route('cart.show') }}" wire:navigate
                    class="inline-flex items-center rounded-md p-2 text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
                    aria-label="View your cart">
@@ -134,23 +142,18 @@
                         <svg class="size-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 10.5V6a3.75 3.75 0 1 0-7.5 0v4.5m11.356-1.993 1.263 12A1.125 1.125 0 0 1 19.75 22H4.25a1.125 1.125 0 0 1-1.12-1.243l1.264-12A1.125 1.125 0 0 1 5.513 7.5h12.974c.576 0 1.059.435 1.119 1.007Z" />
                         </svg>
-                        @if ($cartCount > 0)
+                        @if ($cartBadge > 0)
                             <span id="cart-count" class="absolute -right-1.5 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-600 px-1 text-[0.65rem] font-bold leading-none text-white ring-2 ring-white"
                                   aria-hidden="true">
-                                {{ $cartCount > 99 ? '99+' : $cartCount }}
+                                {{ $cartBadge > 99 ? '99+' : $cartBadge }}
                             </span>
                         @endif
                     </span>
                 </a>
 
-                {{-- A pending checkout is still owed, so it stays reachable
-                     even though the badge now belongs to the cart. --}}
-                @if ($activeCheckout)
-                    <x-button variant="ghost" size="sm"
-                              href="{{ route('checkout.show', $activeCheckout) }}" wire:navigate>
-                        Return to checkout
-                    </x-button>
-                @endif
+                {{-- A pending Shop checkout surfaces inside the cart page, not
+                     as a second button: one affordance for everything still
+                     owed. --}}
 
                 {{-- The account menu.
 
@@ -299,25 +302,13 @@
 
                 <x-nav-link href="{{ route('cart.show') }}" class="block" :active="request()->routeIs('cart.show')">
                     Cart
-                    @if ($cartCount > 0)
+                    @if ($cartBadge > 0)
                         <span class="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-600 px-1 text-[0.65rem] font-bold leading-none text-white"
                               aria-hidden="true">
-                            {{ $cartCount > 99 ? '99+' : $cartCount }}
+                            {{ $cartBadge > 99 ? '99+' : $cartBadge }}
                         </span>
                     @endif
                 </x-nav-link>
-
-                @if ($activeCheckout)
-                    <x-nav-link href="{{ route('checkout.show', $activeCheckout) }}"
-                                class="block"
-                                :active="request()->routeIs('checkout.show')">
-                        Return to checkout
-                        <span class="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-600 px-1 text-[0.65rem] font-bold leading-none text-white"
-                              aria-hidden="true">
-                            {{ $activeCheckout->cart_count > 99 ? '99+' : $activeCheckout->cart_count }}
-                        </span>
-                    </x-nav-link>
-                @endif
 
                 @role('admin|super_admin')
                     <x-nav-link href="{{ route('admin.dashboard') }}" class="block" :active="request()->routeIs('admin.*')">Admin</x-nav-link>

@@ -3,17 +3,21 @@
 declare(strict_types=1);
 
 use App\Domain\Catalog\Actions\AddToCart;
+use App\Domain\Orders\Services\OrderLifecycle;
 use App\Enums\OrderStatus;
 use App\Livewire\Catalog\CartPage;
 use App\Models\Cart;
 use App\Models\Order;
 use App\Models\Product;
+use Carbon\Carbon;
 use Livewire\Livewire;
 
 /*
- * The cart page is the basket before payment. Editing the basket edits the
- * cart; placing the basket writes the order. The page itself never decides a
- * price, a total or a reservation -- those belong to the placement action.
+ * The cart page is the single view of an unfinished Shop purchase. It shows an
+ * "Awaiting payment" order (frozen, read-only, already reserved) next to the
+ * editable basket (intent, nothing reserved), and reads as truly empty only
+ * when there is neither. The page never decides a price, a total or a
+ * reservation -- those belong to the placement action and the frozen order.
  */
 
 it('sends a guest to sign in', function (): void {
@@ -47,7 +51,7 @@ it('lists every line with its product name and quantity', function (): void {
         ->assertSee($first->name)
         ->assertSee($second->name)
         ->assertSeeInOrder([
-            'Review your basket before you pay once.',
+            'Everything you are buying in one place, before you pay once.',
             $first->name,
             $second->name,
             'Place order',
@@ -153,4 +157,90 @@ it('shows an error when the basket cannot be placed', function (): void {
 
     expect(Order::query()->where('user_id', $buyer->id)->count())->toBe(0)
         ->and(Cart::query()->forUser($buyer)->count())->toBe(1);
+});
+
+it('keeps an owed checkout in the cart when the basket is empty', function (): void {
+    $product = Product::factory()->active()->withStock(1)->create();
+    $buyer = userWithRole('customer');
+    $order = buyNowCheckout($buyer, $product->fresh());
+
+    Livewire::actingAs($buyer)
+        ->test(CartPage::class)
+        ->assertSee($order->order_number)
+        ->assertSee('Continue to payment')
+        ->assertDontSee('Your cart is empty.')
+        ->assertDontSee('Place order');
+});
+
+it('shows the owed order and the editable basket together', function (): void {
+    $first = Product::factory()->active()->withStock(5)->create();
+    $second = Product::factory()->active()->withStock(1)->create();
+    $buyer = userWithRole('customer');
+
+    $order = buyNowCheckout($buyer, $second->fresh());
+    app(AddToCart::class)->handle($buyer, $first->fresh(), 2);
+
+    Livewire::actingAs($buyer)
+        ->test(CartPage::class)
+        ->assertSee($first->name)
+        ->assertSee($second->name)
+        ->assertSee($order->order_number)
+        ->assertSee('Continue to payment')
+        ->assertSee('Place order');
+});
+
+it('never folds an auction-linked Buy Now checkout into the shop cart', function (): void {
+    $auction = liveAuction();
+    $buyer = userWithRole('customer');
+    $order = buyNowCheckout($buyer, $auction->product->fresh(), $auction);
+
+    Livewire::actingAs($buyer)
+        ->test(CartPage::class)
+        ->assertDontSee($order->order_number)
+        ->assertSee('Your cart is empty.');
+});
+
+it('keeps the awaited order visible after the basket is emptied', function (): void {
+    $first = Product::factory()->active()->withStock(5)->create();
+    $second = Product::factory()->active()->withStock(1)->create();
+    $buyer = userWithRole('customer');
+
+    $order = buyNowCheckout($buyer, $second->fresh());
+    app(AddToCart::class)->handle($buyer, $first->fresh(), 1);
+
+    Livewire::actingAs($buyer)
+        ->test(CartPage::class)
+        ->call('clearCart')
+        ->assertSee($order->order_number)
+        ->assertDontSee('Your cart is empty.')
+        ->assertDontSee('Place order');
+});
+
+it('hides the awaited order once the checkout expires', function (): void {
+    $product = Product::factory()->active()->withStock(1)->create();
+    $buyer = userWithRole('customer');
+    $order = buyNowCheckout($buyer, $product->fresh());
+
+    Carbon::setTestNow($order->payment_due_at);
+    app(OrderLifecycle::class)->expire($order->fresh());
+
+    Livewire::actingAs($buyer)
+        ->test(CartPage::class)
+        ->assertDontSee($order->order_number)
+        ->assertSee('Your cart is empty.');
+
+    Carbon::setTestNow();
+});
+
+it('renders owed order lines read-only, without quantity inputs', function (): void {
+    $product = Product::factory()->active()->withStock(1)->create();
+    $buyer = userWithRole('customer');
+    $order = buyNowCheckout($buyer, $product->fresh());
+    $item = $order->items()->first();
+
+    $html = Livewire::actingAs($buyer)->test(CartPage::class)->html();
+
+    expect($html)
+        ->toContain($item->product_name_snapshot)
+        ->not->toContain('quantities.'.$item->id);
 });

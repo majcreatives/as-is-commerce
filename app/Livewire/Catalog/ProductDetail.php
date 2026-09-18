@@ -10,6 +10,7 @@ use App\Domain\Marketplace\ValueObjects\ListingAvailability;
 use App\Models\Product;
 use DomainException;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -52,7 +53,7 @@ class ProductDetail extends Component
     {
         $this->product = Product::query()
             ->publiclyVisible()
-            ->with(['brand', 'category.parent'])
+            ->with(['brand', 'category.parent', 'images'])
             ->where('slug', $slug)
             ->firstOrFail();
     }
@@ -109,7 +110,7 @@ class ProductDetail extends Component
             ->layoutData([
                 'description' => $this->product->short_description
                     ?? $this->product->name.' — buy now on '.config('app.name').'.',
-                'ogImage' => $this->product->image_path,
+                'ogImage' => $this->productImageUrl(),
                 // Truthful only: what it is, its condition, and the price it
                 // can actually be bought at. No rating, no review count, no
                 // availability claim the page cannot stand behind.
@@ -140,7 +141,7 @@ class ProductDetail extends Component
             'sku' => $this->product->sku,
             'description' => $this->product->short_description,
             'brand' => $this->product->brand?->name,
-            'image' => $this->product->image_path === null ? null : url($this->product->image_path),
+            'image' => $this->productImageUrl(),
             'offers' => [
                 '@type' => 'Offer',
                 'url' => route('products.show', $this->product->slug),
@@ -152,5 +153,24 @@ class ProductDetail extends Component
                     : 'https://schema.org/OutOfStock',
             ],
         ], fn (mixed $value): bool => $value !== null);
+    }
+
+    /**
+     * The product's image as an absolute URL, for crawlers and share cards.
+     *
+     * The featured gallery image already comes back absolute from the storage
+     * disk. The legacy single-column path is relative, so it is completed
+     * against the application URL -- an og:image that crawlers resolve is the
+     * whole point of emitting one.
+     */
+    private function productImageUrl(): ?string
+    {
+        $image = $this->product->image();
+
+        if ($image === null) {
+            return null;
+        }
+
+        return Str::startsWith($image, ['http://', 'https://']) ? $image : url($image);
     }
 }

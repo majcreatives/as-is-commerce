@@ -63,8 +63,9 @@ class AuctionDiscoveryQuery
         $query = Auction::query()
             ->publiclyVisible()
             // Eager loaded: a listing of twelve auctions would otherwise ask
-            // the database for twelve products, twelve brands and twelve bids.
-            ->with(['product.brand', 'product.category', 'highestBid'])
+            // the database for twelve products, twelve brands, twelve image
+            // galleries and twelve bids.
+            ->with(['product.brand', 'product.category', 'product.images', 'highestBid'])
             ->when($term !== '', fn (Builder $q) => $q->whereHas(
                 'product',
                 fn (Builder $p) => $p->where(function (Builder $inner) use ($term): void {
@@ -98,7 +99,7 @@ class AuctionDiscoveryQuery
     {
         return Auction::query()
             ->publiclyVisible()
-            ->with(['product.brand', 'highestBid'])
+            ->with(['product.brand', 'product.images', 'highestBid'])
             ->whereIn('status', [AuctionStatus::Live, AuctionStatus::Closing])
             ->orderByRaw('ends_at IS NULL, ends_at ASC')
             ->limit($limit)

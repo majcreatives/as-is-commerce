@@ -22,8 +22,8 @@
    aria-label="{{ $product->name }} — {{ $auction->status->customerLabel() }}">
 
     <div class="relative flex aspect-4/3 items-center justify-center rounded-t-xl bg-slate-100">
-        @if ($product->image_path)
-            <img src="{{ $product->image_path }}" alt="{{ $product->name }}"
+        @if ($product->image())
+            <img src="{{ $product->image() }}" alt="{{ $product->name }}"
                  class="h-full w-full rounded-t-xl object-cover" loading="lazy">
         @else
             <span class="text-xs font-medium text-slate-400">No image</span>

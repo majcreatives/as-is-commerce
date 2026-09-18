@@ -11,6 +11,7 @@ use App\Enums\ProductStatus;
 use App\Models\Concerns\GuardsMaterializedStock;
 use Database\Factories\ProductFactory;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -53,6 +54,7 @@ use Spatie\Activitylog\Support\LogOptions;
  * @property int $stock_on_hand
  * @property int $stock_reserved
  * @property string|null $image_path
+ * @property Collection<int, ProductImage> $images
  * @property Carbon|null $published_at
  */
 class Product extends Model
@@ -190,6 +192,39 @@ class Product extends Model
     public function inventoryTransactions(): HasMany
     {
         return $this->hasMany(InventoryTransaction::class);
+    }
+
+    /**
+     * The gallery images for this product, featured first.
+     *
+     * Position zero is the featured image. Ordering always reads position
+     * then id, so the front image is deterministic even while a transaction
+     * is swapping positions around.
+     *
+     * @return HasMany<ProductImage, $this>
+     */
+    public function images(): HasMany
+    {
+        return $this->hasMany(ProductImage::class)
+            ->orderBy('position')
+            ->orderBy('id');
+    }
+
+    /**
+     * The image a listing should show: the featured gallery image, or the
+     * product's own single-column picture before any gallery exists.
+     *
+     * Returns a URL a page can put straight into an <img src>.
+     */
+    public function image(): ?string
+    {
+        $featured = $this->images->first();
+
+        if ($featured !== null) {
+            return $featured->url();
+        }
+
+        return $this->image_path;
     }
 
     // --------------------------------------------------------------- Scopes

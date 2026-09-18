@@ -13,6 +13,7 @@ use App\Livewire\Admin\Auctions\AuctionDetail as AdminAuctionDetail;
 use App\Livewire\Admin\Auctions\AuctionManager;
 use App\Livewire\Admin\Catalog\InventoryManager;
 use App\Livewire\Admin\Catalog\ProductManager;
+use App\Livewire\Admin\Catalog\ProductMediaManager;
 use App\Livewire\Admin\Catalog\TaxonomyManager;
 use App\Livewire\Admin\Customers\CustomerDetail;
 use App\Livewire\Admin\Customers\CustomerIndex;
@@ -280,6 +281,13 @@ Route::middleware(['auth', 'role:admin|super_admin'])
         Route::get('/products', ProductManager::class)
             ->middleware('can:products.view')
             ->name('products');
+
+        // A product's image gallery. Gated on products.update rather than
+        // products.view: seeing this screen is itself an edit, so holding the
+        // read permission alone offers nothing to change.
+        Route::get('/products/{product}/media', ProductMediaManager::class)
+            ->middleware('can:products.update')
+            ->name('products.media');
 
         Route::get('/taxonomy', TaxonomyManager::class)
             ->middleware('can:categories.view')

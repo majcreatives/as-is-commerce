@@ -63,7 +63,7 @@ class ProductDiscoveryQuery
     {
         $sameCategory = Product::query()
             ->publiclyVisible()
-            ->with('brand')
+            ->with(['brand', 'images'])
             ->where('category_id', $product->category_id)
             ->whereKeyNot($product->id)
             ->orderByDesc('published_at')
@@ -78,7 +78,7 @@ class ProductDiscoveryQuery
         // there is room for four.
         $sameBrand = Product::query()
             ->publiclyVisible()
-            ->with('brand')
+            ->with(['brand', 'images'])
             ->where('brand_id', $product->brand_id)
             ->whereKeyNot($product->id)
             ->whereNotIn('id', $sameCategory->modelKeys())
@@ -98,7 +98,7 @@ class ProductDiscoveryQuery
     {
         return Product::query()
             ->publiclyVisible()
-            ->with(['brand', 'category'])
+            ->with(['brand', 'category', 'images'])
             ->orderByDesc('published_at')
             ->orderByDesc('id')
             ->limit($limit)
@@ -211,7 +211,7 @@ class ProductDiscoveryQuery
 
         return Product::query()
             ->publiclyVisible()
-            ->with(['brand', 'category'])
+            ->with(['brand', 'category', 'images'])
             ->when($term !== '', fn (Builder $q) => $q->where(function (Builder $inner) use ($term): void {
                 $inner->where('name', 'like', "%{$term}%")
                     ->orWhere('short_description', 'like', "%{$term}%")

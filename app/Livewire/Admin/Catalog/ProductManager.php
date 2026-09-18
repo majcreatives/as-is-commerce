@@ -218,7 +218,7 @@ class ProductManager extends Component
         $term = trim($this->search);
 
         return Product::query()
-            ->with(['category', 'brand'])
+            ->with(['category', 'brand', 'images'])
             ->when($term !== '', fn ($q) => $q->where(function ($inner) use ($term): void {
                 $inner->where('name', 'like', "%{$term}%")->orWhere('sku', 'like', "%{$term}%");
             }))

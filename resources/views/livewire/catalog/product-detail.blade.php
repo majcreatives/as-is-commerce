@@ -12,13 +12,50 @@
 
     <div class="grid gap-8 lg:grid-cols-2">
 
-        {{-- Image --}}
-        <div class="flex aspect-4/3 items-center justify-center rounded-xl border border-slate-200 bg-slate-100">
-            @if ($product->image_path)
-                <img src="{{ $product->image_path }}" alt="{{ $product->name }}"
-                     class="h-full w-full rounded-xl object-cover">
-            @else
-                <span class="text-sm font-medium text-slate-400">No image available</span>
+        {{-- Images --}}
+        @php
+            // The gallery, featured first. Before any gallery exists, the
+            // product's own single-column image is still what a listing shows.
+            $gallery = $product->images->map(fn ($image) => $image->url())->all();
+
+            if ($gallery === []) {
+                $legacy = $product->image_path;
+                if (is_string($legacy) && $legacy !== '') {
+                    $gallery[] = $legacy;
+                }
+            }
+        @endphp
+
+        <div x-data="{ active: 0 }">
+            <div class="relative flex aspect-4/3 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
+                @if ($gallery !== [])
+                    @foreach ($gallery as $index => $src)
+                        {{-- The featured image renders without x-cloak, so the
+                             page shows a picture even before Alpine runs; the
+                             others stay hidden until the active one changes. --}}
+                        <img x-show="active === {{ $index }}"
+                             @if ($index !== 0) x-cloak @endif
+                             src="{{ $src }}"
+                             alt="{{ $product->name }} image {{ $index + 1 }}"
+                             class="absolute inset-0 h-full w-full rounded-xl object-cover">
+                    @endforeach
+                @else
+                    <span class="text-sm font-medium text-slate-400">No image available</span>
+                @endif
+            </div>
+
+            @if (count($gallery) > 1)
+                <div class="mt-3 flex gap-2" role="group" aria-label="Product images">
+                    @foreach ($gallery as $index => $src)
+                        <button type="button" @click="active = {{ $index }}"
+                                :aria-label="'Show image ' + ({{ $index }} + 1)"
+                                :class="active === {{ $index }} ? 'ring-2 ring-brand-600 ring-offset-2' : 'opacity-70 hover:opacity-100'"
+                                class="h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
+                            <img src="{{ $src }}" alt="{{ $product->name }} image {{ $index + 1 }}"
+                                 class="h-full w-full object-cover">
+                        </button>
+                    @endforeach
+                </div>
             @endif
         </div>
 

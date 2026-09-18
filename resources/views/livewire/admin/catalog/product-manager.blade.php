@@ -151,10 +151,17 @@
                         <tr>
                             <td class="px-4 py-3 font-mono text-xs text-slate-500">{{ $product->sku }}</td>
                             <td class="px-4 py-3">
-                                <span class="font-medium text-slate-900">{{ $product->name }}</span>
-                                @if ($product->brand)
-                                    <span class="block text-xs text-slate-500">{{ $product->brand->name }}</span>
-                                @endif
+                                <div class="flex items-center gap-3">
+                                    @if ($product->image())
+                                        <img src="{{ $product->image() }}" alt="" class="h-10 w-10 shrink-0 rounded-lg object-cover ring-1 ring-slate-200">
+                                    @endif
+                                    <div>
+                                        <span class="font-medium text-slate-900">{{ $product->name }}</span>
+                                        @if ($product->brand)
+                                            <span class="block text-xs text-slate-500">{{ $product->brand->name }}</span>
+                                        @endif
+                                    </div>
+                                </div>
                             </td>
                             <td class="px-4 py-3 text-slate-600">{{ $product->category->name }}</td>
                             <td class="px-4 py-3">
@@ -184,6 +191,9 @@
                                         @if ($product->status->isEditable())
                                             <x-button wire:click="edit({{ $product->id }})"
                                                       variant="secondary" size="sm">Edit</x-button>
+
+                                            <x-button href="{{ route('admin.products.media', $product) }}"
+                                                      wire:navigate variant="ghost" size="sm">Images</x-button>
                                         @endif
                                     @endcan
 

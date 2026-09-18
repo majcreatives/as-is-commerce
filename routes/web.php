@@ -39,8 +39,10 @@ use App\Livewire\Admin\Wallets\WalletDetail;
 use App\Livewire\Admin\Wallets\WalletIndex;
 use App\Livewire\Auctions\AuctionIndex;
 use App\Livewire\Auctions\AuctionRoom;
+use App\Livewire\Auth\ForgotPassword;
 use App\Livewire\Auth\Login;
 use App\Livewire\Auth\Register;
+use App\Livewire\Auth\ResetPassword;
 use App\Livewire\Catalog\CartPage;
 use App\Livewire\Catalog\ProductCatalog;
 use App\Livewire\Catalog\ProductDetail;
@@ -106,6 +108,12 @@ Route::get('/products/{slug}', ProductDetail::class)->name('products.show');
 Route::middleware('guest')->group(function (): void {
     Route::get('/login', Login::class)->name('login');
     Route::get('/register', Register::class)->name('register');
+
+    // One-time-code password recovery. The reset step reads the address from
+    // the session placed by the forgot step, and the code is what proves the
+    // address is theirs -- a password is never reset from the address alone.
+    Route::get('/forgot-password', ForgotPassword::class)->name('password.request');
+    Route::get('/reset-password', ResetPassword::class)->name('password.reset');
 });
 
 /*

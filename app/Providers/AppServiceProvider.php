@@ -16,7 +16,7 @@ use App\Domain\Shared\Phone\GhanaPhoneNumberNormalizer;
 use App\Domain\Shared\Phone\PhoneNumberNormalizer;
 use App\Domain\StoreWallet\Services\AuctionLossCompensator;
 use App\Domain\User\Contracts\OtpChannel;
-use App\Domain\User\Support\UnconfiguredOtpChannel;
+use App\Domain\User\Support\MailOtpChannel;
 use App\Listeners\AuctionBroadcastSubscriber;
 use App\Listeners\NotificationSubscriber;
 use App\Listeners\ReferralSubscriber;
@@ -59,9 +59,11 @@ class AppServiceProvider extends ServiceProvider
         // directions.
         $this->app->bind(AuctionLossCompensation::class, AuctionLossCompensator::class);
 
-        // No SMS provider is integrated. The default binding throws rather
-        // than pretending a code was delivered.
-        $this->app->bind(OtpChannel::class, UnconfiguredOtpChannel::class);
+        // The active code transport is email: an OTP arrives as mail and the
+        // flows fail loudly when an account has no address to send to. An SMS
+        // provider (Hubtel) later replaces this binding without any call site
+        // changing.
+        $this->app->bind(OtpChannel::class, MailOtpChannel::class);
 
         // A singleton so the per-request settings snapshot is shared across
         // every caller in the request rather than rebuilt per resolution.

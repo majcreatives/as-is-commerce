@@ -9,6 +9,10 @@
     </div>
 
     <div class="mt-4">
+        <livewire:profile.verify-email-form />
+    </div>
+
+    <div class="mt-4">
         <livewire:profile.notification-preferences-form />
     </div>
 </x-layouts.app>

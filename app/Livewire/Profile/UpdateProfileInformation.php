@@ -49,7 +49,15 @@ class UpdateProfileInformation extends Component
         }
 
         $user->name = $this->name !== '' ? $this->name : null;
-        $user->email = $this->email !== '' ? $this->email : null;
+
+        $newEmail = $this->email !== '' ? $this->email : null;
+        if ($user->email !== $newEmail) {
+            // A different (or newly added) address has never been proven to
+            // belong to them: a verification earned at the old address must
+            // not carry over. The OTP flow re-verifies the new one.
+            $user->email = $newEmail;
+            $user->email_verified_at = null;
+        }
 
         // Changing the number invalidates any prior verification. The OTP
         // flow that re-verifies it arrives with the SMS provider; until then

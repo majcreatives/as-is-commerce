@@ -18,7 +18,8 @@
                              wire:model="phone" :error="$errors->has('phone')" required />
                 </x-field>
 
-                <x-field label="Email address" name="email" :error="$errors->first('email')" optional>
+                <x-field label="Email address" name="email" :error="$errors->first('email')" optional
+                         hint="Changing your email address will require verifying the new address.">
                     <x-input id="email" type="email" autocomplete="email"
                              wire:model="email" :error="$errors->has('email')" />
                 </x-field>

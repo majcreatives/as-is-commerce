@@ -223,6 +223,17 @@ class User extends Authenticatable
     }
 
     /**
+     * Whether this account's email address has been proven to belong to them.
+     *
+     * Only the server-side code flow (VerifyOtp against the account's address)
+     * ever sets this; it is never inferred from anything the browser says.
+     */
+    public function hasVerifiedEmail(): bool
+    {
+        return $this->email !== null && $this->email_verified_at !== null;
+    }
+
+    /**
      * Whether this account is currently permitted to authenticate.
      *
      * Checked server-side on every login attempt; never inferred from a

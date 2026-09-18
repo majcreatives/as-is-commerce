@@ -151,6 +151,17 @@ class SettingsSeeder extends Seeder
                     .'Zero means no cap, stated explicitly rather than left unbounded by default.',
                 'is_public' => false,
             ],
+            [
+                'key' => 'otp_enabled',
+                'value' => true,
+                'type' => SettingType::Boolean,
+                'group' => 'security',
+                'label' => 'One-time codes enabled',
+                'description' => 'Whether one-time verification codes can be issued. When off, '
+                    .'email verification and password reset fail explicitly instead of pretending '
+                    .'a code was sent.',
+                'is_public' => false,
+            ],
         ];
     }
 

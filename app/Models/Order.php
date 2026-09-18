@@ -282,6 +282,20 @@ class Order extends Model
         return $this->source === OrderSource::BuyNow && $this->auction_id !== null;
     }
 
+    /**
+     * Whether this is an ordinary catalogue order rather than an auction-linked
+     * purchase.
+     *
+     * Shop orders (`BuyNow`, no auction) are the ones a customer can grow and
+     * fold: they come from a cart and go back to a cart, because nothing on
+     * the auction rail owns their units. Auction-linked orders are driven by
+     * the auction lifecycle and are never folded into the Shop cart.
+     */
+    public function isShopOrder(): bool
+    {
+        return $this->source === OrderSource::BuyNow && $this->auction_id === null;
+    }
+
     // -------------------------------------------------------- Relationships
 
     /**
@@ -404,6 +418,29 @@ class Order extends Model
     public function scopeAwaitingPayment(Builder $query): Builder
     {
         return $query->where('status', OrderStatus::PendingPayment);
+    }
+
+    /**
+     * A customer's own outstanding catalogue checkout: `BuyNow`, no auction,
+     * awaiting payment within its window.
+     *
+     * The one order the Shop cart and its header badge surface. Auction-linked
+     * checkouts never match, because they run on their own rails.
+     *
+     * @param  Builder<self>  $query
+     * @return Builder<self>
+     */
+    public function scopePayableShopOrder(Builder $query, int $userId): Builder
+    {
+        return $query
+            ->where('user_id', $userId)
+            ->where('source', OrderSource::BuyNow)
+            ->whereNull('auction_id')
+            ->awaitingPayment()
+            ->where(function (Builder $q): Builder {
+                return $q->whereNull('payment_due_at')
+                    ->orWhere('payment_due_at', '>', now());
+            });
     }
 
     /**

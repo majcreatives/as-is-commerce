@@ -159,17 +159,52 @@ class CheckoutPage extends Component
             return null;
         }
 
-        return redirect()->route('orders.index');
+        // A Shop order's lines return to the cart it came from, so the customer
+        // picks the basket back up on the cart page. Auction-linked orders have
+        // no basket to return to and stay in the order history.
+        return redirect(
+            $this->order->isShopOrder()
+                ? route('cart.show')
+                : route('orders.index')
+        );
     }
 
-    public function render(): View
+    public function render(): View|RedirectResponse
     {
         $this->order->refresh();
+
+        $this->guardPayable();
 
         return view('livewire.checkout.checkout-page', [
             'addresses' => auth()->user()->addresses()->get(),
             'pricing' => $this->order->pricing(),
             'items' => $this->order->items()->with('order')->get(),
         ])->title('Checkout '.$this->order->order_number);
+    }
+
+    /**
+     * A checkout nobody can pay for does not belong on this page.
+     *
+     * A Shop order that died unpaid -- cancelled, expired, or the provider
+     * reported a failed charge -- has already had its lines restored to the
+     * customer's cart, so the customer is guided back to the basket to place
+     * it again. A paid order is finished and lives with the order records;
+     * so does any auction-linked checkout, which never returns to a cart.
+     */
+    private function guardPayable(): void
+    {
+        if ($this->order->isPayable()) {
+            return;
+        }
+
+        if ($this->order->isPaid()) {
+            abort(redirect()->route('orders.show', $this->order));
+        }
+
+        abort(redirect(
+            $this->order->isShopOrder()
+                ? route('cart.show')
+                : route('orders.show', $this->order)
+        ));
     }
 }

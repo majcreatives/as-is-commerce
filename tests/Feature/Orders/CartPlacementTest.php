@@ -148,22 +148,27 @@ it('leaves nothing, no order and no reservation, when any one line is short', fu
         ->and(Cart::query()->forUser($buyer)->firstOrFail()->items)->toHaveCount(2);
 });
 
-it('refuses a second placement while one catalogue checkout is owed', function (): void {
+it('folds an earlier placement into the cart and re-places as one order', function (): void {
     $first = Product::factory()->active()->withStock(5)->create();
     $second = Product::factory()->active()->withStock(5)->create();
     $buyer = userWithRole('customer');
 
     app(AddToCart::class)->handle($buyer, $first->fresh(), 1);
-    app(PlaceCartOrder::class)->handle($buyer);
+    $firstOrder = app(PlaceCartOrder::class)->handle($buyer);
 
-    // The customer may still edit a cart; placing it is what refuses.
+    // The customer may keep shopping after placing: adding folds the pending
+    // order back into the basket (release → restore), and the next placement
+    // becomes the single order covering both products.
     app(AddToCart::class)->handle($buyer, $second->fresh(), 1);
+    $order = app(PlaceCartOrder::class)->handle($buyer);
 
-    expect(fn () => app(PlaceCartOrder::class)->handle($buyer))
-        ->toThrow(InvalidCheckout::class, 'already have an open checkout');
-
-    expect($second->fresh()->stock_reserved)->toBe(0)
-        ->and(Cart::query()->forUser($buyer)->firstOrFail()->items)->toHaveCount(1);
+    expect($firstOrder->fresh()->status)->toBe(OrderStatus::Cancelled)
+        ->and($order->status)->toBe(OrderStatus::PendingPayment)
+        ->and($order->items)->toHaveCount(2)
+        ->and($first->fresh()->stock_reserved)->toBe(1)
+        ->and($second->fresh()->stock_reserved)->toBe(1)
+        ->and(Order::query()->payableShopOrder($buyer->id)->count())->toBe(1)
+        ->and(Cart::query()->forUser($buyer)->count())->toBe(0);
 });
 
 it('allows a new placement once the earlier checkout has been paid', function (): void {

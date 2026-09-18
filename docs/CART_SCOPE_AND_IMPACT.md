@@ -29,10 +29,19 @@ quantities, reviews the whole basket, and pays once.
    authoritative available Shop inventory (`on_hand - reserved`). Products are
    ordinary multi-unit e-commerce items; **no auction-style one-unit or
    scarcity restriction** is imposed on Shop products.
-4. **One pending order per customer.** "One open checkout" means **one
-   awaiting-payment order** (which may contain many lines and quantities), not
-   one product or one unit. A customer cannot place a new cart order while an
-   earlier one is awaiting payment.
+4. **One active Shop purchase per customer, fold-when-it-grows.** "One open
+   checkout" means **one awaiting-payment order** (which may contain many lines
+   and quantities), not one product or one unit. A customer can keep shopping
+   after placing: adding, editing or placing again **folds** the pending order
+   back into the cart (releases its reservation and Store Wallet commitment,
+   restores its lines to the basket) and the next placement becomes the single
+   order covering everything. The folded order stays `Cancelled` history. If a
+   payment attempt is genuinely in flight the fold refuses unless the customer
+   explicitly chooses "Move back to my cart", which abandons the attempt first
+   and then folds. Expiry and a provider-reported failed charge restore the
+   lines to the cart through the order lifecycle, so the basket never
+   disappears with a product the customer did not buy. Auction-linked
+   checkouts are never folded and never appear in the Shop cart.
 5. **Shop vs Auction allocation stay separate.** `auction_eligible` only means
    *admin may move the product into the auction channel*. It does not mean the
    product is single-unit, is currently in an auction, or has auction-only
@@ -88,7 +97,9 @@ browse (product page: quantity + "Add to cart")
    → cart page: review, change quantities, remove lines, see the total
    → "Place order":
         transaction {
-            assert no other awaiting-payment catalogue order for this user
+            fold any earlier awaiting-payment catalogue order for this user:
+              cancel it (release its reservations + Store Wallet commitment)
+              restore its lines into this cart
             load lines with products, deterministic product-id order
             for each line: lock its product row and reserve quantity      (all-or-nothing: any failure rolls back every reservation)
             compute order totals server-side (sum of quantity × price, + delivery + tax − Store Wallet, payable > 0)
@@ -100,6 +111,9 @@ browse (product page: quantity + "Add to cart")
    → checkout page shows the full basket and the payable
    → Paystack initialized for order.payable_minor (unchanged)
    → verified payment → Paid → fulfilment handoff (unchanged, order-level)
+   → later cart edits / "Move back to my cart": fold the pending order back
+        (abandon attempts first when asked to), lines reappear to be placed again
+   → expiry or provider-reported failure: lifecycle restores the lines to the cart
 ```
 
 ## 5. Schema changes — one additive migration
@@ -126,8 +140,10 @@ history and is covered by no append-only trigger.
 | `app/Models/CartItem.php` | A line: product, quantity; `product()` belongs-to. |
 | `app/Domain/Catalog/Actions/AddToCart.php` | Upsert a line; server-validated qty cap at available stock. No financial/inventory effect. |
 | `app/Domain/Catalog/Actions/UpdateCartLine.php` | Change quantity / remove line; same cap. |
-| `app/Domain/Orders/Actions/PlaceCartOrder.php` | The atomic placement in §4. Writes the order + lines + reservation + Store Wallet in one transaction. |
-| `app/Livewire/Catalog/CartPage.php` + blade | Review/edit basket. |
+| `app/Domain/Orders/Actions/PlaceCartOrder.php` | The atomic placement in §4. Writes the order + lines + reservation + Store Wallet in one transaction. Folds any earlier pending catalogue order first. |
+| `app/Domain/Orders/Actions/FoldShopPurchaseToCart.php` | Fold a pending Shop order back into the cart (cancel → release → restore), with an in-flight payment guard and an `abandonAttempts` flag for the explicit move-back. No-op when nothing is pending. |
+| `app/Domain/Orders/Services/CartRestorer.php` | Restore an order's item lines onto the customer's cart as plain intent (accumulates quantities). Used by the order lifecycle for an unpaid Shop order's closure. |
+| `app/Livewire/Catalog/CartPage.php` + blade | Review/edit basket; "Payment in progress" panel with "Resume payment" / "Move back to my cart". |
 | `app/Domain/Orders/ValueObjects/CheckoutPricing` street: add multi-line pricing path | see below. |
 
 ### Modified files
@@ -135,11 +151,11 @@ history and is covered by no append-only trigger.
 | File | Change |
 |---|---|
 | `app/Domain/Orders/Services/CheckoutPricer.php` | Add `forCart()`: per-line `quantity × buyNowPrice` subtotals summed, discount = 0 (pure catalogue), delivery/tax from settings, Store Wallet applied once against total, `payable > 0`. `forBuyNow()` (auction) unchanged. |
-| `app/Domain/Orders/Services/OrderLifecycle.php` | Generalise `reserveUnit`, `releaseReservation`, `sellUnit` from `item()` to iterate `items()`; reserve/release/sell each product by its item quantity, `holds_reservation` unchanged. |
+| `app/Domain/Orders/Services/OrderLifecycle.php` | Generalise `reserveUnit`, `releaseReservation`, `sellUnit` from `item()` to iterate `items()`; reserve/release/sell each product by its item quantity, `holds_reservation` unchanged. Restores a catalogue order's lines to the cart (`CartRestorer`) when it is cancelled, expires or the payment fails. |
 | `app/Domain/Orders/Actions/StartBuyNowCheckout.php` | Keep the **auction-linked** path exactly as is. Catalogue path delegates to cart placement (a single-line, quantity-one cart order) so there is one checker-out. `assertNoOpenCheckout` becomes order-level for catalogue orders. |
 | `app/Livewire/Catalog/ProductDetail.php` + blade | Quantity picker + "Add to cart" for products **not** in an active auction; the existing auction redirect is untouched for in-flight items. Browser sends only product + quantity. |
-| `resources/views/partials/navigation.blade.php` | Badge/link → the user's cart count; "return to checkout" link retained while a pending order exists. |
-| `app/Livewire/Checkout/CheckoutPage.php` + blade | Render **all** lines and quantities plus order totals / wallet / payable from the frozen order. |
+| `resources/views/partials/navigation.blade.php` | Badge/link → the user's cart count + any payable Shop order's quantity; uses the `payableShopOrder` scope. |
+| `app/Livewire/Checkout/CheckoutPage.php` + blade | Render **all** lines and quantities plus order totals / wallet / payable from the frozen order. Redirect non-payable checkouts away (paid → order record; Shop order that died unpaid → cart). |
 | `database/factories/OrderFactory.php` | Add a multi-line state for cart tests. |
 | routes | `cart.show` / `cart.update` / `checkout` wiring. |
 
@@ -157,7 +173,13 @@ refund, referral, delivery/fulfilment, Store Wallet ledger, auction engine.
 - Availability at placement is read under each product row lock
   (`InventoryService::reserve` re-reads `FOR UPDATE`), never from stale or
   page-level numbers.
-- The awaiting-payment guard is checked inside the placement transaction.
+- The fold (when there is something to fold) runs inside the placement
+  transaction **after the cart row lock** and releases/re-reserves the same
+  product rows in the same ascending order, so it cannot invert the lock
+  order. Cart edits fold through the same action under the cart row lock.
+- A verified Paid order stays Paid even if it was folded while the customer
+  paid: the payment is recorded with its provider facts and the order is
+  flagged `fulfilment_blocked` for a human (unchanged §37).
 
 ## 8. Invariants preserved
 
@@ -169,6 +191,15 @@ refund, referral, delivery/fulfilment, Store Wallet ledger, auction engine.
 - A verified Paid order stays Paid even if fulfilment is blocked (§37/§116).
 - No reservation before placement; none after expiry/cancel (multi-line release
   summed per line).
+- One awaiting-payment catalogue order per customer at a time: a pending order
+  folds back to the cart before any cart change or new placement, and the old
+  order is Cancelled history (never silently deleted).
+- A fold releases the order's reservation and Store Wallet commitment exactly
+  once (idempotent keys), and restores no money — the cart lines are intent.
+- Expiry/`markPaymentFailed`/cancel of a Shop order restores its lines to the
+  cart through the order lifecycle; auction-linked orders never restore.
+- An in-flight payment attempt protects the order from an automatic fold; only
+  the explicit "Move back to my cart" abandons attempts first.
 - The browser never sends a price, total, discount or wallet figure.
 
 ## 9. Tests
@@ -185,10 +216,16 @@ helpers.
   totals, reservation counts, wallet portion, transition, cart cleared.
 - All-or-nothing: one line short of stock → whole placement fails, nothing
   reserved, no order, no wallet movement, cart intact.
-- One-pending-order rule: second place blocked; auction-linked checkout still
-  allowed alongside.
+- One-pending-order rule: a second place **folds** the pending order into the
+  new one (one active order, the earlier Cancelled); auction-linked checkout
+  still allowed alongside.
+- Fold paths: add/edit/place fold a pending order back to the cart; fold
+  refuses while an attempt is in flight; move-back abandons the attempt first;
+  double-fold is a no-op; the folded order keeps its lines and never double
+  releases stock or wallet value.
 - Expiry/cancel/failed-payment on a multi-line order release **every**
-  reservation; no double release.
+  reservation **and** restore the lines to the cart; no double release, and an
+  auction-linked order never restores.
 - Concurrency: two customers racing the last available units of the same
   product; one wins, the other fails atomically.
 - Store Wallet multi-line: `payable > 0` enforced; release on expiry returns
@@ -206,10 +243,16 @@ helpers.
 - **`OrderLifecycle::item()` generalisation** touches money-adjacent paths
   (expiry release, sell). Multi-line tests must cover cancel/expire/fail/sell
   on an order with several lines to prove the release sums can't double-count.
-- **One-pending-order rule is stricter than today.** Today two different
-  products can each have an open checkout. The new rule blocks the second
-  order entirely. This is the operator's decision; the header/dashboard wording
-  must tell the customer an earlier payment is still owed.
+- **One-pending-order rule became a fold.** Today two different products can
+  each have an open checkout. The new rule folds an earlier pending order back
+  into the cart on any cart change or placement. The trade-off: a customer who
+  wants the frozen order separately has only short windows (while a payment
+  attempt is in flight, the fold waits or the explicit move-back is used). The
+  header badge, the cart page panel and the checkout page tell the customer an
+  earlier payment is still owed, and "Resume payment" / "Move back to my cart"
+  are the two, explicit ways to resolve it. The fold never touches an auction-
+  linked order, and a payment verified after a fold is recorded with a
+  fulfilment block rather than thrown away.
 
 ## 11. Explicit non-goals (unchanged rail)
 
@@ -229,8 +272,9 @@ helpers.
    the P2 deploy pattern).
 4. Runbook (`docs/VERIFY_30_SHOP_CART_P3.md`, to be created at implementation)
    proves on staging: multi-product/multi-quantity order, all-or-nothing
-   failure, reservation + expiry release, Store Wallet on a cart, one-pending-
-   order rule, full-basket checkout page, payment through Paystack test mode.
+   failure, reservation + expiry release (lines return to the cart), Store
+   Wallet on a cart, one-active-order rule with fold on grow / move-back,
+   full-basket checkout page, payment through Paystack test mode.
 5. No auction/financial invariant regressed (verify regressions suites).
 
 ## 13. Sequencing

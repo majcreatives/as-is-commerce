@@ -44,19 +44,30 @@ use Illuminate\Support\Facades\Log;
  * sale. The `holds_reservation` column says which, explicitly, rather than
  * being inferred -- releasing a reservation nobody took would overstate
  * available stock.
+ *
+ * UNPAID SHOP ORDERS GO BACK TO THE CART. A catalogue order (Buy Now, no
+ * auction) that dies without being paid -- cancelled, expired, or the
+ * provider reported a failed charge -- has its lines restored to the
+ * customer's cart by {@see CartRestorer}, in the same transaction that gives
+ * back the reservation and the Store Wallet commitment. That keeps the basket
+ * the customer was working on intact while the order is folded away as
+ * history. Auction-linked orders are never restored: the auction lifecycle
+ * owns their closure.
  */
 class OrderLifecycle
 {
     public function __construct(
         private readonly InventoryService $inventory,
         private readonly StoreWalletCheckout $storeWallet,
+        private readonly CartRestorer $cartRestorer,
     ) {}
 
     /**
      * Withdraw an unpaid checkout.
      *
      * Releases the held unit, if this order was holding one, and returns any
-     * Store Wallet value that was committed to it.
+     * Store Wallet value that was committed to it. A catalogue order's lines
+     * go back to the customer's cart.
      */
     public function cancel(Order $order, string $reason, ?User $actor = null): Order
     {
@@ -66,6 +77,7 @@ class OrderLifecycle
             $this->assertCanMove($locked, OrderStatus::Cancelled);
 
             $this->releaseReservation($locked, $actor, 'Checkout cancelled.');
+            $this->restoreShopLines($locked);
             $this->storeWallet->release($locked);
 
             $locked->cancelled_at = Carbon::now();
@@ -84,7 +96,8 @@ class OrderLifecycle
      * This is what stops an abandoned checkout holding stock indefinitely. It
      * is driven by the clock rather than by anybody's decision, which is why
      * it is a separate state from Cancelled. The held unit and any committed
-     * Store Wallet value both go back to the customer.
+     * Store Wallet value both go back to the customer, and a catalogue
+     * order's lines return to the cart.
      */
     public function expire(Order $order, ?Carbon $now = null): Order
     {
@@ -102,6 +115,7 @@ class OrderLifecycle
             }
 
             $this->releaseReservation($locked, null, 'Checkout expired unpaid.');
+            $this->restoreShopLines($locked);
             $this->storeWallet->release($locked);
 
             return $this->apply(
@@ -119,6 +133,10 @@ class OrderLifecycle
 
     /**
      * The provider reported the payment did not succeed.
+     *
+     * The checkout closes in the state that actually happened, and a
+     * catalogue order's lines return to the cart: the customer still owes
+     * nothing, so the basket should not disappear with the charge.
      */
     public function markPaymentFailed(Order $order, string $reason): Order
     {
@@ -130,6 +148,7 @@ class OrderLifecycle
             }
 
             $this->releaseReservation($locked, null, 'Payment failed.');
+            $this->restoreShopLines($locked);
             $this->storeWallet->release($locked);
 
             return $this->apply($locked, OrderStatus::PaymentFailed, $reason, null);
@@ -230,6 +249,22 @@ class OrderLifecycle
     }
 
     // ------------------------------------------------------------ Inventory
+
+    /**
+     * A catalogue order that dies unpaid goes back to the basket it came from.
+     *
+     * Only Shop orders: the auction rail owns its own checkouts and units, and
+     * an auction-linked order must never reappear as editable cart lines it
+     * was never part of. Called after the reservation and Store Wallet
+     * commitments have been returned, inside the same transaction, so the
+     * restored lines read as plain intent -- nothing reserved, nothing owed.
+     */
+    private function restoreShopLines(Order $order): void
+    {
+        if ($order->isShopOrder()) {
+            $this->cartRestorer->restore($order);
+        }
+    }
 
     /**
      * Hold stock aside for this checkout.

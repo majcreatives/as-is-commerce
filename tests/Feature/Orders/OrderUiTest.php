@@ -12,6 +12,7 @@ use App\Livewire\Checkout\CheckoutPage;
 use App\Livewire\Delivery\OrderTracking;
 use App\Livewire\Orders\OrderDetail;
 use App\Livewire\Orders\OrderIndex;
+use App\Models\Cart;
 use App\Models\Order;
 use App\Models\Product;
 use Illuminate\Support\Facades\Auth;
@@ -164,13 +165,16 @@ it('cancels a checkout at the customer request', function (): void {
     $buyer = bidder();
     $order = buyNowCheckout($buyer, $product);
 
+    // A Shop order's lines return to the cart it came from, so the customer
+    // picks the basket back up on the cart page.
     Livewire::actingAs($buyer)
         ->test(CheckoutPage::class, ['order' => $order])
         ->call('cancel')
-        ->assertRedirect(route('orders.index'));
+        ->assertRedirect(route('cart.show'));
 
     expect($order->fresh()->status)->toBe(OrderStatus::Cancelled)
-        ->and($product->fresh()->availableStock())->toBe(1);
+        ->and($product->fresh()->availableStock())->toBe(1)
+        ->and(Cart::query()->forUser($buyer)->firstOrFail()->items)->toHaveCount(1);
 });
 
 // --------------------------------------------------------- Customer orders

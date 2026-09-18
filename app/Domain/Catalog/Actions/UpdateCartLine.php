@@ -6,6 +6,7 @@ namespace App\Domain\Catalog\Actions;
 
 use App\Domain\Catalog\Exceptions\InvalidCart;
 use App\Domain\Marketplace\Queries\ProductDiscoveryQuery;
+use App\Domain\Orders\Actions\FoldShopPurchaseToCart;
 use App\Domain\Orders\Exceptions\InvalidCheckout;
 use App\Models\Cart;
 use App\Models\CartItem;
@@ -24,11 +25,19 @@ use Illuminate\Support\Facades\DB;
  * auction or run short of stock: a customer shrinking their basket is never a
  * commercial claim on anything. Growth re-runs the add rules -- purchasable,
  * not auction-held, capped at available stock.
+ *
+ * A PENDING SHOP ORDER FOLDS FIRST, exactly as when a line is added: an order
+ * still awaiting payment is a frozen snapshot of the basket, and editing the
+ * cart while it exists would leave those frozen lines unplaced. The fold runs
+ * before the availability below is read so stock it held counts again. If a
+ * payment attempt is in flight the fold refuses (the basket is being paid
+ * for); moving it back to the cart is the only action allowed to abandon it.
  */
 final class UpdateCartLine
 {
     public function __construct(
         private readonly ProductDiscoveryQuery $products,
+        private readonly FoldShopPurchaseToCart $folds,
     ) {}
 
     /**
@@ -38,7 +47,7 @@ final class UpdateCartLine
     public function handle(User $buyer, CartItem $line, int $quantity): Cart
     {
         return DB::transaction(function () use ($buyer, $line, $quantity): Cart {
-            $cart = Cart::query()->forUser($buyer)->first();
+            $cart = Cart::query()->forUser($buyer)->lockForUpdate()->first();
 
             $owned = $cart === null
                 ? null
@@ -50,6 +59,17 @@ final class UpdateCartLine
             if ($owned === null) {
                 throw InvalidCart::because('That cart line does not belong to you.');
             }
+
+            // An unpaid snapshot of an earlier basket folds back into the cart
+            // first: the stock it was holding counts again below, and nothing
+            // stays silently unpaid while the basket is edited. The fold may
+            // restore lines, so the row is re-read after it.
+            $this->folds->handle($buyer);
+
+            $owned = CartItem::query()
+                ->whereKey($owned->getKey())
+                ->where('cart_id', $cart->id)
+                ->firstOrFail();
 
             if ($quantity < 1) {
                 $owned->delete();

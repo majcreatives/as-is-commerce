@@ -6,10 +6,10 @@ namespace App\Livewire\Catalog;
 
 use App\Domain\Catalog\Actions\UpdateCartLine;
 use App\Domain\Marketplace\Queries\ProductDiscoveryQuery;
+use App\Domain\Orders\Actions\FoldShopPurchaseToCart;
 use App\Domain\Orders\Actions\PlaceCartOrder;
 use App\Domain\Orders\Services\CheckoutPricer;
 use App\Domain\Shared\Money\Money;
-use App\Enums\OrderSource;
 use App\Models\Cart;
 use App\Models\CartItem;
 use App\Models\Order;
@@ -142,6 +142,33 @@ final class CartPage extends Component
         return redirect()->route('checkout.show', $order);
     }
 
+    /**
+     * Bring an in-progress Shop order back to the editable basket.
+     *
+     * The customer decides and the server obeys. Any payment attempt opened
+     * with the provider is abandoned first (an attempt records intent to pay;
+     * nothing has been charged), then the order is cancelled and its lines
+     * return to this cart. This is the only fold allowed to abandon an
+     * in-flight attempt -- automatic folds, such as adding an item while a
+     * payment is open, refuse instead.
+     */
+    public function moveBackToCart(FoldShopPurchaseToCart $fold): ?RedirectResponse
+    {
+        $this->authorize('checkout.create');
+
+        try {
+            $fold->handle(auth()->user(), abandonAttempts: true);
+        } catch (DomainException $e) {
+            $this->addError('moveBack', $e->getMessage());
+
+            return null;
+        }
+
+        session()->flash('cart-restored', 'Your saved items are back in your cart. Update them and place your order again.');
+
+        return redirect()->route('cart.show');
+    }
+
     public function render(
         ProductDiscoveryQuery $products,
         CheckoutPricer $pricer,
@@ -194,26 +221,21 @@ final class CartPage extends Component
     }
 
     /**
-     * A Shop checkout this customer still owes on, if one exists.
+     * A Shop checkout this customer is still paying for, if one exists.
      *
      * The cart page is the single view of an unfinished Shop purchase, so once
      * the basket becomes an order the order stays visible here until it is
-     * paid, cancelled or expired. Its lines are frozen and reserved, so they
-     * are shown read-only. Only catalogue orders (`BuyNow`, no auction) belong
-     * here: auction-linked checkouts run on their own rails. The items are
-     * loaded because the blade renders each snapshot line.
+     * paid, moved back to the cart or expired. Its lines are frozen and
+     * reserved, so they are shown read-only, and the customer can either
+     * resume the payment or move the whole thing back into the editable
+     * basket. Only catalogue orders (`BuyNow`, no auction) belong here:
+     * auction-linked checkouts run on their own rails. The items are loaded
+     * because the blade renders each snapshot line.
      */
     private function payableOrder(): ?Order
     {
         return Order::query()
-            ->where('user_id', auth()->id())
-            ->where('source', OrderSource::BuyNow)
-            ->whereNull('auction_id')
-            ->awaitingPayment()
-            ->where(function ($query) {
-                $query->whereNull('payment_due_at')
-                    ->orWhere('payment_due_at', '>', now());
-            })
+            ->payableShopOrder(auth()->id())
             ->latest('id')
             ->with(['items' => fn ($q) => $q->orderBy('product_id')->with('order')])
             ->first();

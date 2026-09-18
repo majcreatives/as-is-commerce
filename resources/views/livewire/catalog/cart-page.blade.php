@@ -1,9 +1,10 @@
 {{-- The unified view of everything a customer is still buying in the Shop.
 
      Two states, clearly separated and never mixed:
-     - An "Awaiting payment" order (if one is owed): a frozen, already-reserved
-       checkout whose lines cannot be edited here. It stays visible until it is
-       paid, cancelled or expires, so placing an order never looks like the
+     - A "Payment in progress" order (if one is owed): a frozen, already-reserved
+       checkout whose lines cannot be edited here. The customer resumes paying
+       or moves it back into the editable basket. It stays visible until it is
+       paid, moved back or expires, so placing an order never looks like the
        purchase vanished.
      - The editable basket: intent only, nothing reserved.
 
@@ -19,12 +20,20 @@
         <x-alert variant="success" class="mb-6" role="status">{{ session('cart-added') }}</x-alert>
     @endif
 
+    @if (session('cart-restored'))
+        <x-alert variant="success" class="mb-6" role="status">{{ session('cart-restored') }}</x-alert>
+    @endif
+
     @error('place')
         <x-alert variant="danger" class="mb-6" role="alert">{{ $message }}</x-alert>
     @enderror
 
+    @error('moveBack')
+        <x-alert variant="danger" class="mb-6" role="alert">{{ $message }}</x-alert>
+    @enderror
+
     @if ($payableOrder)
-        <x-card title="Awaiting payment"
+        <x-card title="Payment in progress"
                 subtitle="Order {{ $payableOrder->order_number }} — set aside when you placed it."
                 class="mb-6">
             <div class="space-y-4">
@@ -94,7 +103,11 @@
 
             <div class="mt-5 flex flex-wrap items-center gap-3">
                 <x-button href="{{ route('checkout.show', $payableOrder) }}" wire:navigate>
-                    Continue to payment
+                    Resume payment
+                </x-button>
+                <x-button type="button" variant="ghost" wire:click="moveBackToCart"
+                          wire:loading.attr="disabled">
+                    Move back to my cart
                 </x-button>
                 <x-button variant="ghost" href="{{ route('products.index') }}" wire:navigate>
                     Keep shopping
@@ -102,8 +115,8 @@
             </div>
 
             <p class="mt-3 text-xs text-slate-500">
-                This order was set aside for you when you placed it. Its lines are fixed and cannot be
-                edited here. Paying completes it; if it expires or you cancel it, the items go back on sale.
+                This order is set aside for you and waiting to be paid. Its lines are fixed until you
+                pay, move them back into your cart, or it expires.
             </p>
         </x-card>
     @endif

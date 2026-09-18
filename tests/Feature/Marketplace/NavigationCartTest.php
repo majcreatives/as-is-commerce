@@ -105,7 +105,7 @@ it('shows no badge when nothing is owed and the basket is empty', function (): v
         ->assertDontSee('Return to checkout');
 });
 
-it('does not fold an expired checkout into the badge', function (): void {
+it('returns an expired checkout to the basket for the badge', function (): void {
     $product = Product::factory()->active()->create();
     app(InventoryService::class)->initialStock($product, 1);
 
@@ -115,10 +115,15 @@ it('does not fold an expired checkout into the badge', function (): void {
     Carbon::setTestNow($order->payment_due_at);
     app(OrderLifecycle::class)->expire($order->fresh());
 
-    $this->actingAs($customer)
+    // The checkout is no longer owed, so nothing is counted from the order --
+    // but the lifecycle restored its line to the basket, so the badge shows
+    // the item the customer never paid for instead of losing it.
+    $response = $this->actingAs($customer)
         ->get(route('dashboard'))
-        ->assertOk()
-        ->assertDontSee('id="cart-count"');
+        ->assertOk();
+
+    expect($response->getContent())
+        ->toMatch('/id="cart-count"[\s\S]*?>\s*1\s*<\/span>/');
 
     Carbon::setTestNow();
 });

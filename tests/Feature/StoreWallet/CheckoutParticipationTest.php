@@ -336,7 +336,7 @@ it('says nothing about the Store Wallet when none was applied', function (): voi
 
 // ------------------------- One balance, one open catalogue checkout
 
-it('never spends the same value twice: a second open checkout is refused', function (): void {
+it('commits the wallet value exactly once, on the consolidated checkout', function (): void {
     $first = Product::factory()->active()->pricedAt(550_000)->create();
     $second = Product::factory()->active()->pricedAt(550_000)->create();
     app(InventoryService::class)->initialStock($first, 1);
@@ -347,16 +347,25 @@ it('never spends the same value twice: a second open checkout is refused', funct
 
     $firstOrder = buyNowCheckout($buyer, $first);
 
-    // The one-pending-order rule closes the two-checkouts scenario: the
-    // second catalogue checkout is refused before it can plan to spend
-    // anything.
-    expect(fn (): Order => buyNowCheckout($buyer, $second))
-        ->toThrow(InvalidCheckout::class, 'already have an open checkout');
+    // The customer buys again. The second catalogue checkout folds the first
+    // back into the basket instead of being refused: the first order's value
+    // commitment is released and the consolidated order takes it again, so
+    // the wallet is never committed to two plans at once.
+    $consolidated = buyNowCheckout($buyer, $second);
 
-    // Every head of the wallet value a single checkout commits is gone with
-    // the first, and the ledgers match what the projection claims.
-    expect($firstOrder->store_wallet_applied_minor)->toBe(300)
-        ->and($firstOrder->payable_minor)->toBe(549_700)
+    expect($firstOrder->fresh()->status)->toBe(OrderStatus::Cancelled)
+        ->and($consolidated->items)->toHaveCount(2)
+        ->and($consolidated->subtotal_minor)->toBe(1_100_000)
+        ->and($consolidated->store_wallet_applied_minor)->toBe(300)
+        ->and($consolidated->payable_minor)->toBe(1_099_700)
+        // The fold released the first order's commitment exactly once; the
+        // consolidated order is the only checkout still holding value.
+        ->and(StoreWalletTransaction::where('idempotency_key', StoreWalletCheckout::releasedKeyFor($firstOrder->id))->count())
+        ->toBe(1)
+        ->and($first->fresh()->stock_reserved)->toBe(1)
+        ->and($second->fresh()->stock_reserved)->toBe(1)
+        // The projection and the ledger total still agree: 0 available to
+        // spend, one net commitment outstanding.
         ->and(storeWalletBalance($buyer)->minor)->toBe(0)
         ->and($this->wallets->verify($this->wallets->walletFor($buyer)))
         ->toMatchArray(['matches' => true, 'projected_minor' => 0, 'ledger_minor' => 0]);

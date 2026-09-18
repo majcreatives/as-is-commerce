@@ -159,7 +159,7 @@ it('shows an error when the basket cannot be placed', function (): void {
         ->and(Cart::query()->forUser($buyer)->count())->toBe(1);
 });
 
-it('keeps an owed checkout in the cart when the basket is empty', function (): void {
+it('keeps an owed checkout visible when the basket is empty', function (): void {
     $product = Product::factory()->active()->withStock(1)->create();
     $buyer = userWithRole('customer');
     $order = buyNowCheckout($buyer, $product->fresh());
@@ -167,12 +167,13 @@ it('keeps an owed checkout in the cart when the basket is empty', function (): v
     Livewire::actingAs($buyer)
         ->test(CartPage::class)
         ->assertSee($order->order_number)
-        ->assertSee('Continue to payment')
+        ->assertSee('Resume payment')
+        ->assertSee('Move back to my cart')
         ->assertDontSee('Your cart is empty.')
         ->assertDontSee('Place order');
 });
 
-it('shows the owed order and the editable basket together', function (): void {
+it('moves an earlier owed checkout into the basket when the customer keeps shopping', function (): void {
     $first = Product::factory()->active()->withStock(5)->create();
     $second = Product::factory()->active()->withStock(1)->create();
     $buyer = userWithRole('customer');
@@ -180,12 +181,15 @@ it('shows the owed order and the editable basket together', function (): void {
     $order = buyNowCheckout($buyer, $second->fresh());
     app(AddToCart::class)->handle($buyer, $first->fresh(), 2);
 
+    // Adding to the cart folded the owed checkout back into the basket: both
+    // products are editable lines again, the frozen order is gone from the
+    // page, and the whole thing waits for one placement.
     Livewire::actingAs($buyer)
         ->test(CartPage::class)
         ->assertSee($first->name)
         ->assertSee($second->name)
-        ->assertSee($order->order_number)
-        ->assertSee('Continue to payment')
+        ->assertDontSee($order->order_number)
+        ->assertDontSee('Resume payment')
         ->assertSee('Place order');
 });
 
@@ -200,7 +204,7 @@ it('never folds an auction-linked Buy Now checkout into the shop cart', function
         ->assertSee('Your cart is empty.');
 });
 
-it('keeps the awaited order visible after the basket is emptied', function (): void {
+it('empties the basket along with a checkout that was moved back into it', function (): void {
     $first = Product::factory()->active()->withStock(5)->create();
     $second = Product::factory()->active()->withStock(1)->create();
     $buyer = userWithRole('customer');
@@ -208,15 +212,17 @@ it('keeps the awaited order visible after the basket is emptied', function (): v
     $order = buyNowCheckout($buyer, $second->fresh());
     app(AddToCart::class)->handle($buyer, $first->fresh(), 1);
 
+    // Adding also folded the owed checkout back into the basket, so clearCart
+    // empties everything -- there is no owed order left to keep visible.
     Livewire::actingAs($buyer)
         ->test(CartPage::class)
         ->call('clearCart')
-        ->assertSee($order->order_number)
-        ->assertDontSee('Your cart is empty.')
+        ->assertSee('Your cart is empty.')
+        ->assertDontSee($order->order_number)
         ->assertDontSee('Place order');
 });
 
-it('hides the awaited order once the checkout expires', function (): void {
+it('returns an expired checkout to the basket', function (): void {
     $product = Product::factory()->active()->withStock(1)->create();
     $buyer = userWithRole('customer');
     $order = buyNowCheckout($buyer, $product->fresh());
@@ -224,10 +230,14 @@ it('hides the awaited order once the checkout expires', function (): void {
     Carbon::setTestNow($order->payment_due_at);
     app(OrderLifecycle::class)->expire($order->fresh());
 
+    // The checkout expired, so it is gone from the page -- but its line came
+    // back to the basket, where it can be placed again instead of vanishing.
     Livewire::actingAs($buyer)
         ->test(CartPage::class)
         ->assertDontSee($order->order_number)
-        ->assertSee('Your cart is empty.');
+        ->assertSee($product->name)
+        ->assertSee('Place order')
+        ->assertDontSee('Your cart is empty.');
 
     Carbon::setTestNow();
 });

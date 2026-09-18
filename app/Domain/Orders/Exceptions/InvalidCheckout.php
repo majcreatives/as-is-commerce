@@ -32,6 +32,14 @@ final class InvalidCheckout extends DomainException
         );
     }
 
+    public static function paymentInProgress(): self
+    {
+        return new self(
+            'A payment for your earlier order is still being processed. '
+            .'Resume it, or move it back to your cart first.'
+        );
+    }
+
     public static function notTheWinner(): self
     {
         return new self('Only the auction winner can settle this auction.');

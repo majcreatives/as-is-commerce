@@ -8,19 +8,13 @@
     // (source Buy Now, no auction) that is awaiting payment and is still within
     // its window. Its quantity folds into the cart badge, so placing an order
     // does not make a customer's purchase disappear while it is still owed; the
-    // cart page surfaces it as "Awaiting payment". Auction-linked checkouts run
-    // on their own rails and never show up in the Shop cart. Bound to a single
-    // indexed row, with the item quantity summed, because this runs on every
-    // page.
+    // cart page surfaces it as "Payment in progress". Auction-linked checkouts
+    // run on their own rails and never show up in the Shop cart. Bound to a
+    // single indexed row, with the item quantity summed, because this runs on
+    // every page.
     $payableOrder = auth()->user()
         ?->orders()
-        ->where('source', \App\Enums\OrderSource::BuyNow)
-        ->whereNull('auction_id')
-        ->awaitingPayment()
-        ->where(function ($query) {
-            $query->whereNull('payment_due_at')
-                ->orWhere('payment_due_at', '>', now());
-        })
+        ->payableShopOrder(auth()->id())
         ->latest('id')
         ->withSum('items as cart_count', 'quantity')
         ->first();

@@ -40,18 +40,20 @@ use Illuminate\Support\Str;
  * Store Wallet portion and the payable come from server-side reads and are
  * frozen onto the order here. A request carries no amount.
  *
- * ONE PENDING ORDER PER CUSTOMER. A customer cannot place a new cart order
- * while an earlier catalogue order is awaiting payment (a multi-line order may
- * hold many product lines and quantities). An auction-linked checkout stays
- * allowed alongside one: the auction rail owns its own unit.
+ * ONE PENDING SHOP ORDER PER CUSTOMER, GROWN HERE. A customer cannot hold two
+ * outstanding catalogue orders: an order still awaiting payment is folded
+ * back into the cart first (its reservation and Store Wallet commitment
+ * released, its lines restored), so the new placement is the single order
+ * that covers everything, and the old one is Cancelled history. Auction-linked
+ * checkouts stay allowed alongside: the auction rail owns its own unit.
  *
- * LOCKING ORDER PRESERVED. The order row is new and needs no lock. Lines are
- * processed in ascending product-id order (`OrderLifecycle::reserveUnit`
- * locks each product row before re-reading availability under the lock, and a
- * short line throws, rolling back every reservation already taken), then the
- * wallet -- the product,wallets order used everywhere else. Two concurrent
- * cart placements lock the same product rows in the same sequence and cannot
- * deadlock each other.
+ * LOCKING ORDER PRESERVED. The order row is new and needs no lock. A pending
+ * order, when there is one, is folded before any line is read, so the cart
+ * locks first, then the old order row, then the products it released in
+ * ascending product-id order (`OrderLifecycle::cancel`), then the products the
+ * new placement reserves in the same ascending order, then the wallet. Two
+ * concurrent cart placements lock the same rows in the same sequence and
+ * cannot deadlock each other.
  */
 final class PlaceCartOrder
 {
@@ -60,6 +62,7 @@ final class PlaceCartOrder
         private readonly OrderLifecycle $orders,
         private readonly StoreWalletCheckout $storeWallet,
         private readonly ProductDiscoveryQuery $products,
+        private readonly FoldShopPurchaseToCart $folds,
     ) {}
 
     public function handle(User $buyer): Order
@@ -71,6 +74,14 @@ final class PlaceCartOrder
                 throw InvalidCheckout::because('You have no cart to place an order from.');
             }
 
+            // An earlier catalogue order still owed by this customer folds back
+            // into the cart first: the new placement supersedes it, so the
+            // customer's entire unfinished Shop purchase is one order. With
+            // nothing pending this is a no-op inside the same transaction. The
+            // fold restores the old order's lines into this cart, so they are
+            // read below as part of the new basket.
+            $this->folds->handle($buyer);
+
             $lines = $cart->items()
                 ->orderBy('product_id')
                 ->with('product')
@@ -79,8 +90,6 @@ final class PlaceCartOrder
             if ($lines->isEmpty()) {
                 throw InvalidCheckout::because('Your cart is empty.');
             }
-
-            $this->assertNoOpenCatalogueCheckout($buyer);
 
             foreach ($lines as $line) {
                 $this->assertLine($line);
@@ -153,27 +162,6 @@ final class PlaceCartOrder
                 "[{$product->name}] is being sold through an auction right now. "
                 .'Remove it from your cart and use the auction listing until it resolves.'
             );
-        }
-    }
-
-    /**
-     * One open catalogue checkout per customer.
-     *
-     * Stricter than four checkouts on four products: a customer may hold only
-     * one awaiting-payment cart order at a time. An existing order that has
-     * expired no longer blocks a new placement.
-     */
-    private function assertNoOpenCatalogueCheckout(User $buyer): void
-    {
-        $existing = Order::query()
-            ->where('user_id', $buyer->id)
-            ->where('source', OrderSource::BuyNow)
-            ->awaitingPayment()
-            ->whereNull('auction_id')
-            ->first();
-
-        if ($existing !== null && ! $existing->hasExpired()) {
-            throw InvalidCheckout::alreadyOpen($existing->order_number);
         }
     }
 

@@ -171,15 +171,25 @@ it('refuses a second catalog checkout when the last unit is held', function (): 
     expect($product->fresh()->stock_reserved)->toBe(1);
 });
 
-it('refuses a second open checkout from the same customer', function (): void {
+it('folds an earlier checkout into the cart and consolidates into one new order', function (): void {
     $product = Product::factory()->active()->create();
     app(InventoryService::class)->initialStock($product, 5);
 
     $buyer = bidder();
-    buyNowCheckout($buyer, $product);
+    $firstOrder = buyNowCheckout($buyer, $product);
 
-    expect(fn (): Order => buyNowCheckout($buyer, $product->fresh()))
-        ->toThrow(InvalidCheckout::class, 'already have an open checkout');
+    // The customer buys again. The earlier catalogue checkout is no longer
+    // refused: it folds back into the basket (release → restore), the cart
+    // regrows around it, and one consolidated order supersedes it.
+    $consolidated = buyNowCheckout($buyer, $product->fresh());
+
+    expect($firstOrder->fresh()->status)->toBe(OrderStatus::Cancelled)
+        ->and($consolidated->status)->toBe(OrderStatus::PendingPayment)
+        ->and($consolidated->items->first()->quantity)->toBe(2)
+        // One reservation, grown: the fold released the first unit, the second
+        // placement reserved both again.
+        ->and($product->fresh()->stock_reserved)->toBe(2)
+        ->and($product->fresh()->availableStock())->toBe(3);
 });
 
 it('gives the unit back when a checkout is cancelled', function (): void {

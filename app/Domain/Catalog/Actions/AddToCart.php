@@ -6,6 +6,7 @@ namespace App\Domain\Catalog\Actions;
 
 use App\Domain\Catalog\Exceptions\InvalidCart;
 use App\Domain\Marketplace\Queries\ProductDiscoveryQuery;
+use App\Domain\Orders\Actions\FoldShopPurchaseToCart;
 use App\Domain\Orders\Exceptions\InvalidCheckout;
 use App\Models\Cart;
 use App\Models\CartItem;
@@ -28,11 +29,20 @@ use Illuminate\Support\Facades\DB;
  * The quantity is capped at what the ledger says is actually available, and
  * the browser's figure is only ever a "how many I want" -- never a price or a
  * total. A line's real price is re-read from the product row at placement.
+ *
+ * A PENDING SHOP ORDER FOLDS FIRST. An order still awaiting payment is a
+ * frozen snapshot of an earlier basket. Adding to the cart while it exists
+ * would leave those frozen lines unplaced, so the fold calls it back into the
+ * cart before the availability below is read -- releasing the stock it held
+ * so that stock counts again. If a payment attempt is in flight the fold
+ * refuses, because the basket is being paid for; the explicit move-back
+ * action is the only kind of fold allowed to abandon it.
  */
 final class AddToCart
 {
     public function __construct(
         private readonly ProductDiscoveryQuery $products,
+        private readonly FoldShopPurchaseToCart $folds,
     ) {}
 
     public function handle(User $buyer, Product $product, int $quantity = 1): Cart
@@ -55,13 +65,26 @@ final class AddToCart
                 );
             }
 
+            // One basket row, locked: concurrent adds for the same customer must
+            // read-and-write the line atomically or a slower request could
+            // overwrite a faster one's quantity.
+            $cart = Cart::query()->firstOrCreate(['user_id' => $buyer->id]);
+            $cart = Cart::query()->whereKey($cart->getKey())->lockForUpdate()->firstOrFail();
+
+            // An unpaid snapshot of an earlier basket folds back into the cart
+            // first: the stock it was holding counts again below, and nothing
+            // stays silently unpaid while the basket grows.
+            $this->folds->handle($buyer);
+
+            // Re-read under the fold: any reservation the old order released
+            // is part of what is available now.
+            $product = $product->fresh();
+
             $available = $product->availableStock();
 
             if ($available < 1) {
                 throw InvalidCheckout::notPurchasable($product->name);
             }
-
-            $cart = Cart::query()->firstOrCreate(['user_id' => $buyer->id]);
 
             $line = CartItem::query()
                 ->where('cart_id', $cart->id)

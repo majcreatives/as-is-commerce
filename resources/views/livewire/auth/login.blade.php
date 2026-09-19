@@ -19,6 +19,13 @@
                          wire:model="password" :error="$errors->has('password')" required />
             </x-field>
 
+            <div class="-mt-2 flex justify-end">
+                <a href="{{ route('password.request') }}" wire:navigate
+                   class="text-sm font-semibold text-brand-700 hover:text-brand-800">
+                    Forgot your password?
+                </a>
+            </div>
+
             <label class="flex items-center gap-2 text-sm text-slate-600">
                 <input type="checkbox" wire:model="remember"
                        class="size-4 rounded border-slate-300 text-brand-700 focus:ring-brand-600">

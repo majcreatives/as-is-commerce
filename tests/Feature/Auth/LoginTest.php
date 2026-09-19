@@ -18,6 +18,12 @@ beforeEach(function (): void {
     ]);
 });
 
+it('links to the forgot-password page', function (): void {
+    Livewire::test(Login::class)
+        ->assertSee('Forgot your password?')
+        ->assertSee(route('password.request'));
+});
+
 it('logs in with a phone number', function (): void {
     Livewire::test(Login::class)
         ->set('identifier', '0244123456')

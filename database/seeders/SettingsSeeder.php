@@ -121,6 +121,17 @@ class SettingsSeeder extends Seeder
                 'is_public' => true,
             ],
             [
+                'key' => 'notification_badge_window_days',
+                'value' => 30,
+                'type' => SettingType::Integer,
+                'group' => 'notifications',
+                'label' => 'Notification badge window (days)',
+                'description' => 'How recent an unread notification must be to count toward the '
+                    .'badge on the menu. Older unread ones stay in the notification centre; they '
+                    .'just stop counting. Zero means no window: every unread notification counts.',
+                'is_public' => false,
+            ],
+            [
                 'key' => 'referrals_enabled',
                 'value' => false,
                 'type' => SettingType::Boolean,

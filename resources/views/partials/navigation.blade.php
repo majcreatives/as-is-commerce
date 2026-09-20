@@ -32,6 +32,31 @@
 
     $cartBadge = $cartCount + ($payableOrder ? (int) $payableOrder->cart_count : 0);
 
+    // Unread AND recent, counted once for the whole header. The desktop link,
+    // the drawer's link and the hamburger button all read this one figure, so
+    // they cannot disagree with each other -- which two separate queries, as
+    // this used to be, could if a notification landed between them. A single
+    // indexed COUNT, because this runs on every authenticated page. What earns
+    // a badge is defined on the user; the complete count lives in the centre.
+    $unread = auth()->check() ? auth()->user()->recentUnreadNotificationCount() : 0;
+
+    // What the menu button is called to somebody who cannot see its badge. The
+    // count is in the name, so it is announced without opening the menu.
+    //
+    // Built here, in the block at the top, on purpose. Blade pairs a block-form
+    // PHP directive with a pattern that also catches the inline form used
+    // further down this file, so a second block down there swallows everything
+    // between the two as raw PHP and the page 500s. And a conditional
+    // directive written touching the word before it is not compiled at all.
+    // (Do not spell the directive names in this comment: the block ends at the
+    // first literal closing directive it finds, comment or not.)
+    $menuLabel = 'Toggle navigation';
+
+    if ($unread > 0) {
+        $menuLabel .= ', '.($unread > 99 ? 'more than 99' : $unread)
+            .' unread '.Str::plural('notification', $unread);
+    }
+
     // The account menu, grouped the way somebody looks for things: what is
     // happening, what it cost, where it goes, then who else to tell. Each
     // group is separated by a rule in the panel, which is what stops eight
@@ -101,15 +126,12 @@
                     <x-nav-link href="{{ route('credits.packages') }}"
                                 :active="request()->routeIs('credits.packages')">Credits</x-nav-link>
 
-                    {{-- The unread count is a single indexed COUNT, not a load of
-                         the rows, because this runs on every authenticated page. --}}
-                    @php($unread = auth()->user()->unreadNotificationCount())
                     <x-nav-link href="{{ route('notifications.index') }}"
                                 :active="request()->routeIs('notifications.*')">
                         Notifications
                         @if ($unread > 0)
                             <span class="ml-1 inline-flex min-w-5 items-center justify-center rounded-full bg-brand-700 px-1.5 py-0.5 text-xs font-bold text-white">
-                                {{ $unread > 99 ? '99+' : $unread }}
+                                {{ $unread > 99 ? '99+' : $unread }}<span class="sr-only"> unread</span>
                             </span>
                         @endif
                     </x-nav-link>
@@ -259,15 +281,29 @@
         </div>
 
         <button type="button"
-                class="inline-flex items-center rounded-md p-2 text-slate-600 hover:bg-slate-100 md:hidden"
+                class="relative inline-flex items-center rounded-md p-2 text-slate-600 hover:bg-slate-100 md:hidden"
                 x-on:click="open = ! open"
                 x-bind:aria-expanded="open.toString()"
                 aria-controls="mobile-nav">
-            <span class="sr-only">Toggle navigation</span>
+            {{-- The accessible name carries the count, so somebody who cannot
+                 see the badge is told what it says without opening the menu.
+                 The badge itself is hidden from assistive technology, or it
+                 would be announced twice. --}}
+            <span class="sr-only">{{ $menuLabel }}</span>
             <svg class="size-6" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24" aria-hidden="true">
                 <path x-show="! open" stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
                 <path x-show="open" x-cloak stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
             </svg>
+
+            {{-- Something needs attention, visible without opening the menu.
+                 The same count the drawer's Notifications link shows inside. --}}
+            @if ($unread > 0)
+                <span data-menu-notification-badge
+                      class="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-700 px-1 text-[0.65rem] font-bold leading-none text-white ring-2 ring-white"
+                      aria-hidden="true">
+                    {{ $unread > 99 ? '99+' : $unread }}
+                </span>
+            @endif
         </button>
     </x-container>
 
@@ -286,10 +322,9 @@
 
                 <x-nav-link href="{{ route('notifications.index') }}" class="block" :active="request()->routeIs('notifications.*')">
                     Notifications
-                    @php($unreadMobile = auth()->user()->unreadNotificationCount())
-                    @if ($unreadMobile > 0)
+                    @if ($unread > 0)
                         <span class="ml-1 rounded-full bg-brand-700 px-1.5 py-0.5 text-xs font-bold text-white">
-                            {{ $unreadMobile > 99 ? '99+' : $unreadMobile }}
+                            {{ $unread > 99 ? '99+' : $unread }}<span class="sr-only"> unread</span>
                         </span>
                     @endif
                 </x-nav-link>

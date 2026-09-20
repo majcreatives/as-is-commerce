@@ -187,6 +187,38 @@ class User extends Authenticatable
     }
 
     /**
+     * How many unread notifications are recent enough to be worth a badge.
+     *
+     * THE BADGE IS AN ATTENTION SIGNAL, NOT A LEDGER. Unread rows only leave
+     * the full count when somebody marks them read, so a customer who rarely
+     * opens the centre carries every notification they were ever sent, and a
+     * badge reading 47 stops meaning "something happened" and starts meaning
+     * "you have an account". Counting only recent unread keeps it a signal.
+     *
+     * The complete count is still {@see self::unreadNotificationCount()}, which
+     * the notification centre and dashboard show: nothing here hides anything,
+     * it only decides what earns a badge on every page.
+     *
+     * Every notification type counts, transactional or not. Something about
+     * money or an order is exactly what a badge is for, and a customer's own
+     * preferences have already decided what was sent at all.
+     *
+     * The window is a setting rather than a constant. Zero means no window --
+     * every unread notification counts -- stated explicitly rather than left
+     * as an unbounded default nobody chose. Runs on every authenticated page,
+     * so it is one indexed COUNT and never loads rows.
+     */
+    public function recentUnreadNotificationCount(): int
+    {
+        $days = max(0, settings()->getInt('notification_badge_window_days', 30) ?? 30);
+
+        return $this->notifications()
+            ->whereNull('read_at')
+            ->when($days > 0, fn ($query) => $query->where('created_at', '>=', now()->subDays($days)))
+            ->count();
+    }
+
+    /**
      * Give every new account its wallets immediately.
      *
      * Both start at zero, which is a real balance rather than a placeholder.

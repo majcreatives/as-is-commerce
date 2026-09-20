@@ -178,7 +178,10 @@ class AuctionDetail extends Component
             // discrepancy is visible here rather than silently repaired.
             'highestBid' => $bids->highestBid($this->auction),
             'projection' => $bids->verify($this->auction),
-            'history' => $bids->history($this->auction, 100),
+            // With the bidder: an administrator investigating an auction is
+            // entitled to see who bid, which is exactly what the customer-
+            // facing history withholds.
+            'history' => $bids->history($this->auction, 100, withBidder: true),
             'secondsRemaining' => $clock->secondsRemaining($this->auction),
             'rulesets' => AuctionRuleset::query()->active()->orderBy('name')->get(),
             // The winner's settlement checkout, and every Buy Now order opened

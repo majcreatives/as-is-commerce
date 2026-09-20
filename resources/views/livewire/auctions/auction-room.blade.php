@@ -347,8 +347,16 @@
                                     <tr class="{{ $highestBid && $bid->id === $highestBid->id ? 'bg-emerald-50/60' : '' }}">
                                         <td class="px-5 py-3 text-slate-700">
                                             {{-- Other bidders are not named. Who is bidding is not
-                                                 public information; how much they bid is. --}}
-                                            {{ $bid->user_id === auth()->id() ? 'You' : 'Bidder #'.$bid->sequence }}
+                                                 public information; how much they bid is.
+
+                                                 The number identifies a participant, not a bid: the
+                                                 person who bid first is Bidder #1 every time they
+                                                 appear, so three bids from one bidder do not read as
+                                                 three rivals. Worked out on the server across the
+                                                 whole auction. --}}
+                                            {{ $bid->user_id === auth()->id()
+                                                ? 'You'
+                                                : 'Bidder #'.($participants[$bid->user_id] ?? 1) }}
                                         </td>
                                         <td class="px-5 py-3 font-semibold tabular-nums text-slate-900">
                                             {{ number_format($bid->amount_credits) }}

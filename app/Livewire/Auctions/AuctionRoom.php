@@ -311,6 +311,12 @@ class AuctionRoom extends Component
             'highestBid' => $highestBid,
             'history' => $bids->history($auction, 25),
 
+            // Anonymised participant numbers, computed across the whole
+            // auction rather than the 25 rows shown -- so a bidder keeps one
+            // number however far the history scrolls, and one person bidding
+            // three times reads as one person rather than three.
+            'participants' => $bids->participantNumbers($auction),
+
             // Worked out on the server. A client that reports time remaining
             // is reporting an opinion.
             'secondsRemaining' => $clock->secondsRemaining($auction),

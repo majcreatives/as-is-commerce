@@ -6,6 +6,7 @@ namespace App\Domain\Auction\Services;
 
 use App\Models\Auction;
 use App\Models\Bid;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 
 /**
@@ -136,16 +137,69 @@ class HighestBidResolver
     /**
      * The bid history, leading first.
      *
+     * THE BIDDER IS NOT LOADED BY DEFAULT. A customer-facing history names
+     * nobody, so the identity it would need to hide is simply not fetched --
+     * `user_id` is on the bid row, which is all a page needs to recognise the
+     * viewer's own bids. Staff screens pass `withBidder: true`, because an
+     * administrator is entitled to see who bid and an N+1 is the only other
+     * way to show them.
+     *
      * @return Collection<int, Bid>
      */
-    public function history(Auction $auction, int $limit = 50): Collection
+    public function history(Auction $auction, int $limit = 50, bool $withBidder = false): Collection
     {
         return Bid::query()
             ->where('auction_id', $auction->getKey())
-            ->with('user')
+            ->when($withBidder, fn (Builder $q) => $q->with('user'))
             ->orderByDesc('sequence')
             ->limit($limit)
             ->get();
+    }
+
+    /**
+     * Which participant each bidder is, numbered by when they first bid.
+     *
+     * A PARTICIPANT, NOT A BID. The first person to bid on this auction is
+     * participant 1 for the life of it, however many times they bid afterwards
+     * and however many other people bid in between. Numbering by the bid's own
+     * `sequence` instead -- which is what a customer-facing history used to do
+     * -- gives one person a new number on every bid, so three bids from one
+     * bidder read as three different people competing.
+     *
+     * COMPUTED OVER THE WHOLE AUCTION. Ranking within a page of history would
+     * renumber everybody as the list scrolled, and the same bid would carry
+     * different numbers on the customer page and the admin page. The map is
+     * one grouped row per bidder, so its size is bounded by how many distinct
+     * people have bid.
+     *
+     * The status filter deliberately matches {@see self::history()} rather
+     * than `counting()`: this map exists to number the rows that history
+     * returns, and a row it did not cover would render as a bidder with no
+     * number.
+     *
+     * NOT AN IDENTITY. The number says only "these bids came from the same
+     * person". It is per auction, so the same bidder is a different number on
+     * a different auction and nothing can be correlated across the two.
+     *
+     * @return array<int, int> Participant number, keyed by user id.
+     */
+    public function participantNumbers(Auction $auction): array
+    {
+        $firstBidPerUser = Bid::query()
+            ->where('auction_id', $auction->getKey())
+            ->selectRaw('user_id, MIN(sequence) as first_sequence')
+            ->groupBy('user_id')
+            ->orderBy('first_sequence')
+            ->pluck('first_sequence', 'user_id');
+
+        $numbers = [];
+        $next = 1;
+
+        foreach ($firstBidPerUser as $userId => $firstSequence) {
+            $numbers[(int) $userId] = $next++;
+        }
+
+        return $numbers;
     }
 
     /**

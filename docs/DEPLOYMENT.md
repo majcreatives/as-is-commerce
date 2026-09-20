@@ -62,6 +62,34 @@ Completed on the server (SSH):
    — a stale config cache is the commonest cause of a live app "ignoring" `.env`.
 10. Set the cron entry (below).
 
+### 2a. Upgrading an existing install (directory swap)
+
+The staging runbooks (`DEPLOY_STAGE*.md`) replace the application by renaming
+the live directory to a `.bak-*` name and extracting the release zip into a
+fresh one. The zip contains **no user data**, so the swap orphans anything the
+application wrote at runtime. Before the rename, carry over:
+
+- **`.env`** — copy it into the new directory (the runbooks do this).
+- **`storage/app/public`** — uploaded product images (Stage 30.4 galleries).
+- **`storage/app/private`** — private uploads.
+
+```bash
+cp -a old/storage/app/public/.  new/storage/app/public/
+cp -a old/storage/app/private/. new/storage/app/private/
+find new/storage/app -type f | wc -l   # must equal the same count in old/
+```
+
+After the swap, recreate the public link, because `public/storage` is a
+symlink whose target is an **absolute path into the old directory name**:
+
+```bash
+rm -f public/storage && php artisan storage:link
+```
+
+Then `chmod -R u+rwX storage bootstrap/cache`, re-run the three caches, and
+`migrate --force`. Skipping the copy does not fail loudly — the app boots, but
+product images 404 until the files are restored from the backup directory.
+
 ## 3. Cron
 
 One line drives every schedule — auctions opening/closing, settlement

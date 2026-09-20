@@ -39,6 +39,16 @@
 
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 
+    {{-- THE HEADER'S MENU IS ALPINE, AND ALPINE LIVES IN LIVEWIRE'S BUNDLE.
+         Livewire only injects that bundle onto a page that renders a Livewire
+         component, so a plain Blade page (How It Works, About, FAQs, Contact)
+         got the header markup with nothing to run it: the menu was dead, and
+         the [x-cloak] rule that also ships with Livewire's styles was missing
+         too. Including the assets here makes every page that has the header
+         able to run it. Livewire notices they were included by hand and does
+         not inject them a second time. --}}
+    @livewireStyles
+
     {{-- Truthful structured data only, and only where a page supplies it. --}}
     @isset($structuredData)
         <script type="application/ld+json">{!! json_encode($structuredData, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) !!}</script>
@@ -58,5 +68,7 @@
     </main>
 
     @include('partials.footer')
+
+    @livewireScripts
 </body>
 </html>

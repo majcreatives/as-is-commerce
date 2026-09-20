@@ -35,6 +35,54 @@ it('gives each company page a description for search and sharing', function (str
         ->assertSee('<link rel="canonical"', false);
 })->with(['about', 'contact', 'faqs']);
 
+// ---------------------------------------------------------------- The menu
+
+/*
+ * The header's menu is Alpine, and Alpine ships inside Livewire's JavaScript.
+ * Livewire only injects that onto a page that renders a Livewire component, so
+ * a plain Blade page got the header markup with nothing to run it: the menu was
+ * dead on How It Works (before this release) and on the pages added with it.
+ *
+ * A test that asserted the menu "opens" would need a browser. What can be held
+ * without one is the cause: every page that carries the header must also carry
+ * the script that runs it, and it must carry it exactly once.
+ */
+it('loads the script that runs the header menu on every public page', function (string $route): void {
+    $html = $this->get(route($route))->assertOk()->getContent();
+
+    // The header is Alpine markup...
+    expect($html)->toContain('<header x-data=')
+        // ...so the bundle that contains Alpine has to be on the page.
+        ->and(preg_match('#/livewire-[^/"]+/livewire(\.min)?\.js#', $html))->toBe(1);
+})->with([
+    // The plain Blade pages: the ones that were broken.
+    'how-it-works',
+    'about',
+    'contact',
+    'faqs',
+    // And the Livewire pages, which must not regress.
+    'home',
+    'products.index',
+    'auctions.index',
+]);
+
+it('does not load the script twice on a page that is also a Livewire component', function (): void {
+    // Including the assets by hand must not make Livewire inject them again.
+    $html = $this->get(route('products.index'))->assertOk()->getContent();
+
+    expect(preg_match_all('#/livewire-[^/"]+/livewire(\.min)?\.js#', $html))->toBe(1)
+        ->and(substr_count($html, '<!-- Livewire Styles -->'))->toBe(1);
+});
+
+it('carries the hiding rule the mobile drawer depends on', function (): void {
+    // The drawer is `x-show` + `x-cloak`. The [x-cloak] rule ships with
+    // Livewire's styles, and without it the drawer is visible before Alpine
+    // starts -- or, on a page where Alpine never starts, permanently.
+    $this->get(route('faqs'))
+        ->assertOk()
+        ->assertSee('[x-cloak]', false);
+});
+
 // ------------------------------------------------------------------ Footer
 
 it('links the company pages from the footer on every public page', function (string $route): void {

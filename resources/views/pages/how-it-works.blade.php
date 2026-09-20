@@ -9,7 +9,40 @@
 
     <x-page-header
         title="How it works"
-        description="Two ways to get something: buy it outright, or compete for it with credits." />
+        description="This is a store first. Some products are also auctioned, and here is exactly how both work." />
+
+    {{-- THE ONE PLACE THE GENERAL EXPLANATION LIVES. Other pages say what a
+         customer needs at the moment they decide -- a condition, a delivery
+         fee, the credit-consumption warning beside a bid -- and point here for
+         the rest. The store comes first because it is what this is; the
+         auction is a channel some products carry. --}}
+    <x-card title="Shopping in the store" class="mb-10">
+        <div class="space-y-3 text-sm text-slate-600">
+            <p>
+                Every product has a <strong>Buy Now price in cedis</strong>. Add what you want to
+                your cart and place your order when you are ready.
+            </p>
+            <p>
+                <strong>A cart holds nothing.</strong> Items are only set aside for you when you
+                place the order, and an order that is not paid for in time expires, so the items
+                go back on sale.
+            </p>
+            <p>
+                Nothing is treated as paid because a page said so. We confirm every payment
+                directly with our payment provider before an order moves on.
+            </p>
+            <p>
+                Some products are also being auctioned. When one is, its page leads with the
+                auction; the rest of this page explains how that works.
+            </p>
+        </div>
+
+        <x-button href="{{ route('products.index') }}" wire:navigate variant="secondary" size="sm" class="mt-4">
+            Shop products
+        </x-button>
+    </x-card>
+
+    <h2 class="mb-4 text-xl font-bold tracking-tight text-slate-900">Auctions: competing with credits</h2>
 
     {{-- The one thing somebody must understand before they bid. First, not
          last, and not in small print. --}}
@@ -178,27 +211,92 @@
             </x-card>
         </li>
 
-        <li>
-            <x-card>
-                <div class="flex items-start gap-4">
-                    <span class="grid size-8 shrink-0 place-items-center rounded-full bg-brand-700 text-sm font-bold text-white" aria-hidden="true">6</span>
-                    <div>
-                        <h2 class="text-lg font-bold text-slate-900">Getting it to you</h2>
-                        <p class="mt-2 text-sm text-slate-600">
-                            Once a payment is verified we prepare your order and deliver it
-                            ourselves. You can follow each step — preparing, dispatched, out for
-                            delivery, delivered — from your order page.
-                        </p>
-                        <p class="mt-2 text-sm text-slate-600">
-                            Delivery is handled by our own team rather than through a courier's
-                            tracking system, so the reference on your order is ours and the updates
-                            come from us.
-                        </p>
-                    </div>
-                </div>
-            </x-card>
-        </li>
     </ol>
+
+    {{-- WHAT HAPPENS TO A LOSING BIDDER, stated once, where it can be found.
+         Until now a customer met the Store Wallet at checkout and in their
+         wallet without it being explained anywhere public.
+
+         Two things this must keep saying together, because either alone is
+         misleading: the credits stay consumed, AND Store Wallet value exists.
+         It is not a refund of credits and never offers them back. --}}
+    <x-card title="If you bid and do not get the product" class="mt-8">
+        <div class="space-y-3 text-sm text-slate-600">
+            <p>
+                Bid credits stay consumed however an auction ends. That does not change. But when
+                an auction ends and somebody else ends up with the product, every other bidder is
+                given <strong>Store Wallet</strong> value for the credits they bought.
+            </p>
+            <p>
+                The amount is what those credits actually cost you. Credits bought at
+                GH&#8373;1 each and consumed bidding on that auction are worth GH&#8373;1 each in
+                your Store Wallet. Credits that cost nothing &mdash; promotional ones, for example
+                &mdash; are worth nothing here.
+            </p>
+            <p>
+                If you won, or bought the product outright, you are not given it: your credits
+                already counted toward getting the product. An auction that is cancelled, or
+                forfeited because the winner did not pay, gives it to nobody.
+            </p>
+
+            <div class="rounded-lg bg-slate-50 p-4 ring-1 ring-inset ring-slate-200">
+                <p class="font-semibold text-slate-900">
+                    Store Wallet is not credits, and it is not a refund of credits.
+                </p>
+                <p class="mt-2">
+                    Your credits stay consumed. Store Wallet is a separate balance in cedis that
+                    you can spend in the shop. On an ordinary purchase it reduces what you pay and
+                    the rest is paid as usual &mdash; it never covers a whole order. It cannot be
+                    used to settle an auction you won or to buy an auctioned product outright, and
+                    it cannot be turned back into credits.
+                </p>
+            </div>
+        </div>
+    </x-card>
+
+    <x-card title="Getting it to you" class="mt-8">
+        <div class="space-y-3 text-sm text-slate-600">
+            <p>
+                Once a payment is verified we prepare your order and deliver it ourselves. You
+                can follow each step &mdash; preparing, dispatched, out for delivery, delivered
+                &mdash; from your order page.
+            </p>
+            <p>
+                Delivery is handled by our own team rather than through a courier's tracking
+                system, so the reference on your order is ours and the updates come from us.
+            </p>
+        </div>
+    </x-card>
+
+    {{-- WHAT YOU CAN RELY ON. These were three cards on the front page; they
+         are explanation rather than a reason to shop, so they live here. Every
+         one is a description of what the code does, not a promise about
+         outcomes. --}}
+    <x-card title="What you can rely on" class="mt-8">
+        <dl class="space-y-4 text-sm">
+            <div>
+                <dt class="font-semibold text-slate-900">The server decides</dt>
+                <dd class="mt-1 text-slate-600">
+                    Auction timing, valid bids and winners are settled on our servers, never in
+                    your browser. A countdown on screen is there to inform you, not to decide
+                    anything.
+                </dd>
+            </div>
+            <div>
+                <dt class="font-semibold text-slate-900">Payments are verified</dt>
+                <dd class="mt-1 text-slate-600">
+                    Every payment is confirmed with our provider directly before an order moves.
+                </dd>
+            </div>
+            <div>
+                <dt class="font-semibold text-slate-900">Delivered by hand</dt>
+                <dd class="mt-1 text-slate-600">
+                    We pack and deliver orders ourselves, and record every step so you can see
+                    where yours has got to.
+                </dd>
+            </div>
+        </dl>
+    </x-card>
 
     {{-- The three quantities, once more, in one place. This is the single most
          important distinction on the platform. --}}

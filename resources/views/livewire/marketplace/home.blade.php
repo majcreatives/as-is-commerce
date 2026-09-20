@@ -21,11 +21,13 @@
                 Some products are also auctioned.
             </h1>
 
+            {{-- Two sentences, not a lesson. The full explanation lives on How
+                 It Works, linked below; a front page that teaches the whole
+                 model before somebody has looked at a product is asking them to
+                 read before they can shop. --}}
             <p class="mt-4 text-base text-brand-100 sm:text-lg">
-                This is a store: every product has a Buy Now price in cedis, and most are yours
-                the moment you pay. Some products also run as auctions, where you bid with
-                platform credits and the highest valid bid wins when the auction closes.
-                Timing and results are decided on our servers, so everyone sees the same outcome.
+                Every product has a Buy Now price in cedis, and most are yours the moment you pay.
+                Some are also auctioned: you bid with credits, and the highest valid bid wins.
             </p>
 
             <div class="mt-8 flex flex-wrap gap-3">
@@ -80,30 +82,8 @@
         @endif
     </section>
 
-    {{-- Trust. Only claims the platform can actually back. --}}
-    <section class="mt-12 grid gap-4 sm:grid-cols-3">
-        <x-card>
-            <h3 class="text-sm font-semibold text-slate-900">The server decides</h3>
-            <p class="mt-1.5 text-sm text-slate-600">
-                Auction timing, valid bids and winners are settled on our servers, never in your
-                browser. A countdown on screen is there to inform you, not to decide anything.
-            </p>
-        </x-card>
-
-        <x-card>
-            <h3 class="text-sm font-semibold text-slate-900">Payments are verified</h3>
-            <p class="mt-1.5 text-sm text-slate-600">
-                Nothing is treated as paid because a page said so. Every payment is confirmed with
-                our provider directly before an order moves.
-            </p>
-        </x-card>
-
-        <x-card>
-            <h3 class="text-sm font-semibold text-slate-900">Delivered by hand</h3>
-            <p class="mt-1.5 text-sm text-slate-600">
-                We pack and deliver orders ourselves, and record every step, so you can see where
-                yours has got to.
-            </p>
-        </x-card>
-    </section>
+    {{-- The three trust cards that sat here explained how the platform works
+         rather than giving a reason to shop, and were repeated in full on the
+         How It Works page. They now live only there ("What you can rely on"),
+         so the front page is the shop and the explanation has one home. --}}
 </div>

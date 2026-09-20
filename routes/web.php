@@ -94,6 +94,14 @@ Route::get('/auctions', AuctionIndex::class)->name('auctions.index');
 Route::get('/auctions/{auction}', AuctionRoom::class)->name('auctions.show');
 Route::view('/how-it-works', 'pages.how-it-works')->name('how-it-works');
 
+// Company pages. Static views, deliberately: there is no content system behind
+// them, and what each may say is limited to what the platform demonstrably is
+// and does. Blog and the legal pages are not here yet -- they need content and
+// a legal author, and a link to a page that does not exist is worse than none.
+Route::view('/about', 'pages.about')->name('about');
+Route::view('/contact', 'pages.contact')->name('contact');
+Route::view('/faqs', 'pages.faqs')->name('faqs');
+
 // The catalog. Both routes resolve only publicly visible products, so a
 // draft or archived listing 404s rather than existing at a guessable URL.
 Route::get('/products', ProductCatalog::class)->name('products.index');

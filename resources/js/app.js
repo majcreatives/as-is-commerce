@@ -5,10 +5,21 @@
  * and does nothing at all where one is not. Every page renders and every
  * action works with this file absent, which is the property that lets the
  * current production deployment run without a WebSocket server.
+ *
+ * The product gallery is registered here for the same reason it is written to
+ * degrade: with this file missing, a product page still shows the product.
  */
 
 import { resolveEcho } from './echo.js';
 import { listenToAuction } from './auction-stream.js';
+import { productGallery } from './product-gallery.js';
+
+// Alpine ships inside Livewire, and components have to be registered before it
+// starts. Nothing on a page depends on this having happened: the markup the
+// gallery enhances is rendered by the server and readable on its own.
+document.addEventListener('alpine:init', () => {
+    window.Alpine?.data('productGallery', productGallery);
+});
 
 const subscriptions = new WeakMap();
 

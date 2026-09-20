@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Livewire\Catalog;
 
+use App\Domain\Auction\Services\AuctionClock;
 use App\Domain\Catalog\Actions\AddToCart;
 use App\Domain\Marketplace\Queries\ProductDiscoveryQuery;
 use App\Domain\Marketplace\ValueObjects\ListingAvailability;
@@ -27,6 +28,17 @@ use Livewire\Component;
  * an auction running on it has zero *available* stock -- and a page that asked
  * the catalog alone would tell a customer an item was out of stock while an
  * auction for it was open in the next tab.
+ *
+ * AN ACTIVE AUCTION LEADS THE PAGE. When one holds this unit it owns both ways
+ * of acquiring the product -- the bidding and the Buy Now, whose price carries
+ * the bidder's credit discount -- so it is presented first and the outright
+ * price follows it. What triggers that is an auction that actually exists and
+ * is currently relevant, never `products.auction_eligible`, which says only
+ * that an administrator MAY put this product into the auction channel.
+ *
+ * The page still does no bidding. Placing a bid is two deliberate actions
+ * validated against a locked auction row, and a second copy of that form here
+ * would be a second place to keep correct; this links to the auction room.
  *
  * ADDING TO THE CART RESERVES NOTHING. For a product no auction is holding,
  * the page offers a quantity and "Add to cart". The line is intent with a
@@ -97,13 +109,22 @@ class ProductDetail extends Component
         return redirect()->route('cart.show');
     }
 
-    public function render(ProductDiscoveryQuery $products): View
+    public function render(ProductDiscoveryQuery $products, AuctionClock $clock): View
     {
         $auction = $products->activeAuctionFor($this->product);
+        $availability = ListingAvailability::for($this->product, $auction);
 
         return view('livewire.catalog.product-detail', [
-            'availability' => ListingAvailability::for($this->product, $auction),
+            'availability' => $availability,
             'auction' => $auction,
+
+            // Worked out on the server, for a countdown to display. It decides
+            // nothing: the auction ends when `ends_at` says so and the sweep
+            // notices, so when this reaches zero the page announces no
+            // outcome. Null before an auction has opened, which is honest
+            // rather than a zero that would read as "closing".
+            'secondsRemaining' => $auction === null ? null : $clock->secondsRemaining($auction),
+
             'related' => $products->related($this->product),
         ])
             ->title($this->product->name)
@@ -114,7 +135,7 @@ class ProductDetail extends Component
                 // Truthful only: what it is, its condition, and the price it
                 // can actually be bought at. No rating, no review count, no
                 // availability claim the page cannot stand behind.
-                'structuredData' => $this->structuredData($auction !== null),
+                'structuredData' => $this->structuredData($availability),
             ]);
     }
 
@@ -123,17 +144,14 @@ class ProductDetail extends Component
      *
      * Only facts the platform can prove. Availability follows the same
      * authoritative reading the page shows a human, so a search result cannot
-     * say "in stock" about something the page itself calls unavailable.
+     * say "in stock" about something the page itself calls unavailable --
+     * which is why the caller's reading is passed in rather than a second one
+     * being resolved here from a fresh query.
      *
      * @return array<string, mixed>
      */
-    private function structuredData(bool $hasAuction): array
+    private function structuredData(ListingAvailability $availability): array
     {
-        $availability = ListingAvailability::for(
-            $this->product,
-            $hasAuction ? app(ProductDiscoveryQuery::class)->activeAuctionFor($this->product) : null,
-        );
-
         return array_filter([
             '@context' => 'https://schema.org',
             '@type' => 'Product',

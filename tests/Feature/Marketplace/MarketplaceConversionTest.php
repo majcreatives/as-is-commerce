@@ -75,9 +75,12 @@ it('routes a product with a live auction to the auction', function (): void {
 
     Livewire::actingAs(bidder())
         ->test(ProductDetail::class, ['slug' => $product->slug])
-        ->assertSee('View the auction')
-        // The auction owns the Buy Now path for the unit it is holding, so the
-        // product page sends the customer to the auction instead of the cart.
+        // The auction leads the page, and it owns both ways of acquiring the
+        // unit it is holding -- the bidding and the outright purchase, whose
+        // price carries the bidder's credit discount.
+        ->assertSee('Bid on this product')
+        ->assertSee('Buy it outright on the auction page')
+        // So the product page sends the customer to the auction, not the cart.
         ->call('addToCart')
         ->assertRedirect(route('auctions.show', $auction));
 

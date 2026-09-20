@@ -155,14 +155,15 @@ cumulative_step  new. winner_rule = highest_cumulative_credits. Catch-up bid.
   `2026_09_10_100200_replace_flat_buy_now_credit_discount_with_lot_valuation`: drop
   `auctions_frozen_configuration`, `JSON_SET`, recreate it, in one migration.
   **Every existing auction behaves identically afterwards.**
-- **Live auction #14** keeps taking free-form bids under its frozen snapshot, and
-  finishes under the old winner rule. It cannot be flipped mid-flight: its 11 recorded
-  bids would be judged by a rule they were not placed under. The room therefore has
-  two modes until no legacy auction is live.
+- **Live auction #14** (11 bids) and #16 must be **finished or cancelled before the new
+  model deploys**, not flipped mid-flight: their recorded bids would be judged by a
+  rule they were not placed under. See §12: because staging is the only environment, the
+  room ships one mode rather than two.
 - A **verification command** recomputes, for every existing auction, the leader and
   the smallest valid bid from the old and the new snapshot and reports any difference.
   It reports and repairs nothing.
-- The legacy branches are never deleted while a snapshot can still need them.
+- The legacy engine branches are never deleted while a snapshot or the regression suite
+  can still need them (§12).
 
 **The ruleset column** is renamed `minimum_bid_increment_credits` →
 `bid_increment_credits`, so it does not keep a name that says "minimum" while meaning
@@ -188,13 +189,13 @@ To take the lead you need to add 13 credits (you would lead with 23).
   the bidder agreed to.
 - **Tampering.** A crafted request for any other figure fails the same equality check.
   The browser's display is presentation only.
-- **The leader.** With `allow_bid_increase` false a leader has no bid to place and the
-  page says they hold the lead. With it true, their next bid adds one increment
-  (standing + increment). See D-4.
+- **The leader has no bid to place** until somebody overtakes them; the page says they
+  hold the lead. This is a rule of the model (D-4), not a ruleset option, and the domain
+  refuses a leader's bid even if a request is crafted.
 - **Affordability.** If the catch-up bid exceeds the balance, the page shows the
   shortfall and links to credit packages. Nothing is placed.
-- **Legacy auctions keep the current form.** #14 renders the existing amount field,
-  chosen by the frozen `bid_model`, never by anything the browser sends.
+- **One room mode** (§12). The free-text amount field is removed; a legacy auction that
+  is somehow still open renders read-only rather than accepting a bid in the old form.
 
 ## 7. Admin
 
@@ -248,7 +249,8 @@ Each step is independently reviewable and leaves the system working.
 - **Invariant.** For every bidder, the standing on their last bid equals the sum of
   their `amount_credits` and equals what `consumedCreditsBy` returns, which is what the
   Buy Now discount uses.
-- **Leader and `allow_bid_increase`,** both values. **Insufficient balance.**
+- **A leader cannot bid**, including via a crafted request; they can once overtaken.
+  **Insufficient balance** shows the shortfall and places nothing.
 - **Snapshot.** v4 round-trip; v3 refused; a migrated auction rebuilds identically;
   `winnerRule()` follows `bid_model`; an invalid combination is unrepresentable; the
   frozen-configuration trigger returns after migration and still refuses edits.
@@ -271,14 +273,48 @@ frozen snapshot never changes meaning; `AuctionRules` stays `readonly`; lock ord
 untouched; the broadcast whitelist and polling are untouched; credits are always
 rendered as a count, never as money.
 
-## 11. Decisions still open
+## 11. Decisions
 
-| ID | Decision | Recommendation |
+| ID | Decision | Outcome |
 |---|---|---|
-| ~~D-1~~ | ~~Consumption model~~ | **Decided: cumulative standing, catch-up bid (variant A).** |
-| D-2 | Is a minimum bid required alongside the increment? It is the only non-invented opening bid. | Require both to activate a ruleset. |
-| D-3 | Staging rulesets #1 and #3 (no increment) and #2 (increment 5): leave active but flagged "legacy", or archive and re-create? | Leave, flag as legacy; an admin versions them. |
-| D-4 | A leader with `allow_bid_increase = true` may add one increment to their own standing. Keep, or never let a leader bid? | Keep; it is the existing rule and is harmless. |
-| D-5 | Keep the two-step confirmation behind "Bid 13 credits". | Keep. Credits are irreversible. |
-| D-7 | **Wording.** "Highest Bid (Credits)" is a locked label, but the number is now the leader's *total*. Rename (e.g. "Leading total (Credits)") or keep? | Rename for new-model auctions so it cannot be read as one bid. Your call. |
-| D-8 | Should a bidder see other participants' standings in the history, or only the leader's? Participant numbering already makes them derivable. | Show them; they are the game state, and identity stays hidden. |
+| D-1 | Consumption model | **Decided: cumulative standing, catch-up bid (variant A).** Confirmed against the owner's worked example: A opens with 1; B must bid 2; A must bid 2 (→ 3); C must bid 4; B must bid 3 (→ 5). |
+| D-2 | Minimum bid required alongside the increment | **Decided: yes.** Both are required to activate a ruleset. The opening bid is exactly the minimum bid. |
+| D-3 | Existing staging rulesets | **Decided: leave, flag.** #1 and #3 have no increment and cannot create auctions until an admin versions them with a minimum bid and an increment. #2 (min 1, increment 5) becomes a valid exact-step configuration of 5 and should be reviewed. |
+| D-4 | A leader bidding again | **Decided: no.** A leader has no bid to place until somebody overtakes them. In the new model this is a rule, not an option, so `allow_bid_increase` applies to legacy snapshots only. |
+| D-5 | Two-step confirmation behind "Bid 13 credits" | **Decided: keep.** Credits are irreversible. |
+| D-7 | Wording | **Decided: "Highest Total (Credits)"** for new-model auctions, chosen per auction by `bid_model` so no view hard-codes it. "Highest Bid (Credits)" remains true for legacy auctions and stays there. Rule copy across the site is rewritten to "the largest total of credits committed wins". |
+| D-8 | History visibility | **Decided: show participants' totals**, by participant number; identity stays hidden. |
+| D-9 | Environment | **Staging only.** Nothing is live in production, so no real auction depends on the old rule. |
+
+## 12. Staging-only: what that lets us drop, and what it does not
+
+Because nothing is in production, no *live* auction has to keep bidding under the old
+rule: the three open staging auctions (#6 draft, #14 live, #16 live) can be finished or
+cancelled before the new model deploys. That removes the need for a two-mode room and
+for any bid to be judged by two rules at once.
+
+**It does not remove the old rule from the test suite, and that matters.** Measured:
+**464 `placeBid(...)` call sites across 40 test files**, plus 473 `liveAuction(...)`
+sites. Many are the proofs that the money paths did not move: 40 in
+`CreditCashValueTest` (exact Store Wallet valuations from a known amount of consumed
+credits), and more in checkout, order, refund, notification and concurrency tests. They
+place arbitrary amounts such as 150 to set up known consumed credits.
+
+Deleting the old rule outright would mean rewriting those tests to reach the same
+consumed-credit figures by catch-up bids, in precisely the suites whose job is to show
+the financial behaviour is unchanged. That is a large rewrite with a real risk of
+weakening the proof.
+
+**Recommended scope (Option 1):**
+
+- The **domain engine keeps `single_highest`**. It is what old snapshots need to remain
+  valid and explainable, and what keeps the 464 call sites proving the money paths
+  unchanged. It is reachable from tests and from stored history only.
+- **Nothing in the product offers it.** Rulesets require a minimum bid and an increment
+  to activate; no admin path creates a `single_highest` auction.
+- **The room ships one mode**, the catch-up button. The free-text amount field and its
+  UI tests are removed. Auctions #6, #14 and #16 are finished or cancelled first.
+- Old snapshots stay readable in every admin and history view.
+
+**Option 2:** remove the old rule from the engine entirely and rewrite the affected
+tests. Smaller domain, much larger and riskier test change. Not recommended.

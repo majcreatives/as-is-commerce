@@ -1623,5 +1623,15 @@ gateway reads when it is constructed.
 php artisan test
 ```
 
+Both need a raised memory limit for the same reason: the codebase outgrew PHP's
+128M default. PHPStan takes it as a flag. The test suite takes it from
+`phpunit.xml` (`<ini name="memory_limit" value="1G"/>`), so `php artisan test`
+just works — do not remove it as clutter. Without it the run dies partway
+through **and still exits 0**, so a gate on the exit code reports a pass for a
+suite that never finished. If you ever see a run end with `Allowed memory size
+… exhausted` instead of a pass/fail count, that is what happened. Note that
+`php -d memory_limit=… artisan test` does not help: artisan spawns Pest as a
+subprocess and the flag does not carry.
+
 PHPStan needs the raised limit: the default 128M is no longer enough for this
 codebase and the worker crashes rather than reporting anything useful.

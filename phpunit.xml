@@ -28,6 +28,17 @@
     </source>
     <php>
         <!--
+            The suite outgrew PHP's 128M CLI default. It does not fail a test:
+            the process runs out of memory partway through and exits 0, so a
+            gate on `php artisan test` reports a pass for a run that never
+            finished. Set here rather than documented as a flag because
+            `artisan test` spawns Pest as a subprocess, so `php -d` on the
+            outer command never reaches it, whereas this reaches every way of
+            running the suite. A ceiling, not a measurement: 1G is known to pass.
+        -->
+        <ini name="memory_limit" value="1G"/>
+
+        <!--
             force="true" everywhere, and a <server> twin for every <env>:
             phpunit's <env> writes only $_ENV and the process environment, but
             `php artisan test` boots the application (loading .env, which lands

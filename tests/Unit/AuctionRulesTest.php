@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Domain\Auction\Exceptions\InvalidAuctionRules;
 use App\Domain\Auction\ValueObjects\AuctionRules;
 use App\Domain\Shared\Money\Money;
+use App\Enums\BidModel;
 use App\Enums\ForfeitPolicy;
 
 /**
@@ -325,16 +326,71 @@ it('refuses a snapshot written by an incompatible version', function (int $versi
     // Version 1 was the obsolete last-bidder shape. Refusing it is correct:
     // its fields do not mean what this version would read them as.
     'the obsolete model' => 1,
+    // Version 3 had no bid model. It is refused rather than read as one: the
+    // migration that rewrites stored snapshots is what upgrades them.
+    'the previous version' => 3,
     'a future model' => 999,
 ]);
 
-it('is at snapshot version three', function (): void {
-    // Version 3 is the lot-valued shape: the flat per-credit rate was removed,
-    // because what a consumed credit is worth now comes from the lots it was
-    // bought in, never from the ruleset.
-    expect(AuctionRules::SNAPSHOT_VERSION)->toBe(3)
-        ->and(rules()->toArray()['snapshot_version'])->toBe(3)
+it('is at snapshot version four', function (): void {
+    // Version 3 was the lot-valued shape: the flat per-credit rate was removed,
+    // because what a consumed credit is worth comes from the lots it was bought
+    // in, never from the ruleset. Version 4 adds the bid model, so the winner
+    // rule is read from the snapshot instead of being a constant of the code.
+    expect(AuctionRules::SNAPSHOT_VERSION)->toBe(4)
+        ->and(rules()->toArray()['snapshot_version'])->toBe(4)
         ->and(rules()->toArray())->not->toHaveKey('buy_now_credit_discount_minor_per_credit');
+});
+
+// --------------------------------------------------------------- Bid model
+
+it('follows the single-highest model unless told otherwise', function (): void {
+    expect(rules()->bidModel)->toBe(BidModel::SingleHighest)
+        ->and(rules()->winnerRule())->toBe('highest_valid_credit_bid');
+});
+
+it('records the bid model and the winner rule it implies', function (): void {
+    $array = rules()->toArray();
+
+    expect($array['bid_model'])->toBe('single_highest')
+        ->and($array['winner_rule'])->toBe('highest_valid_credit_bid');
+});
+
+it('reads its winner rule from the model, not from a constant', function (): void {
+    // The point of version 4. The winner rule used to be a constant that
+    // fromArray() ignored, so a snapshot could record one and the engine could
+    // never honour another. It is now derived from what the snapshot says.
+    $rules = AuctionRules::fromArray(rules()->toArray());
+
+    expect($rules->bidModel->winnerRule())->toBe($rules->winnerRule());
+});
+
+it('refuses a snapshot that names a bid model this engine cannot honour', function (): void {
+    // `cumulative_step` is defined in the database but not yet in the engine.
+    // Ranking such an auction as single-highest would name the wrong winner
+    // without any error, so it is refused loudly.
+    $data = rules()->toArray();
+    $data['bid_model'] = 'cumulative_step';
+
+    expect(fn (): AuctionRules => AuctionRules::fromArray($data))
+        ->toThrow(InvalidAuctionRules::class, 'cannot honour');
+});
+
+it('refuses a snapshot with no bid model', function (): void {
+    $data = rules()->toArray();
+    unset($data['bid_model']);
+
+    expect(fn (): AuctionRules => AuctionRules::fromArray($data))
+        ->toThrow(InvalidAuctionRules::class);
+});
+
+it('refuses a snapshot whose winner rule disagrees with its bid model', function (): void {
+    // Which half to believe is exactly the guess this refuses to make.
+    $data = rules()->toArray();
+    $data['winner_rule'] = 'highest_cumulative_credits';
+
+    expect(fn (): AuctionRules => AuctionRules::fromArray($data))
+        ->toThrow(InvalidAuctionRules::class, 'disagree');
 });
 
 it('cannot be mutated after construction', function (): void {

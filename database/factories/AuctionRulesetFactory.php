@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Database\Factories;
 
+use App\Enums\BidModel;
 use App\Enums\ForfeitPolicy;
 use App\Enums\RulesetStatus;
 use App\Models\AuctionRuleset;
@@ -38,6 +39,7 @@ class AuctionRulesetFactory extends Factory
             'minimum_bid_credits' => null,
             'minimum_bid_increment_credits' => null,
             'allow_bid_increase' => null,
+            'bid_model' => BidModel::SingleHighest,
             'minimum_bid_interval_ms' => 3000,
 
             'base_duration_seconds' => 300,

@@ -6,6 +6,7 @@ namespace App\Domain\Auction\ValueObjects;
 
 use App\Domain\Auction\Exceptions\InvalidAuctionRules;
 use App\Domain\Shared\Money\Money;
+use App\Enums\BidModel;
 use App\Enums\ForfeitPolicy;
 use JsonSerializable;
 
@@ -46,15 +47,23 @@ final readonly class AuctionRules implements JsonSerializable
      * Buy Now credit discount from each credit lot's own acquisition economics
      * rather than from a system-wide rate per credit; the rate column is gone,
      * and a version 2 snapshot is refused rather than reinterpreted.
+     *
+     * Version 4 records which bidding model the auction follows (`bid_model`),
+     * so the winner rule is READ from the frozen snapshot instead of being a
+     * constant of the code. Every version 3 snapshot was single-highest, and
+     * the migration that rewrites them says so and changes nothing else. A
+     * version 3 snapshot is refused rather than reinterpreted.
      */
-    public const SNAPSHOT_VERSION = 3;
+    public const SNAPSHOT_VERSION = 4;
 
     /**
-     * How the winner is determined, stated rather than implied.
+     * The name of the single-highest model's winner rule.
      *
-     * Recorded in every snapshot so the future engine reads its winner rule
-     * from the auction's own frozen configuration instead of inferring it from
-     * whatever the code happens to do that week.
+     * NOT "the" winner rule of the platform any more: which rule an auction
+     * follows is decided by its {@see BidModel}, and asked of
+     * {@see self::winnerRule()}. This constant remains as the name the
+     * single-highest model has always used, which is what every existing
+     * snapshot and test refers to.
      */
     public const WINNER_RULE = 'highest_valid_credit_bid';
 
@@ -100,6 +109,12 @@ final readonly class AuctionRules implements JsonSerializable
         public ?int $rulesetId = null,
         public ?string $rulesetName = null,
         public ?int $rulesetVersion = null,
+
+        // Which bidding model this auction follows. Last, and defaulted, so
+        // every existing caller keeps building the single-highest rules it
+        // always built; the model is chosen deliberately, never by omission of
+        // something else.
+        public BidModel $bidModel = BidModel::SingleHighest,
     ) {
         $this->assertValid();
     }
@@ -111,10 +126,14 @@ final readonly class AuctionRules implements JsonSerializable
 
     /**
      * The winner rule, for a caller that would otherwise guess.
+     *
+     * Derived from the bidding model this auction was frozen with, not a
+     * constant: the engine reads how an auction picks its winner from the
+     * auction itself.
      */
     public function winnerRule(): string
     {
-        return self::WINNER_RULE;
+        return $this->bidModel->winnerRule();
     }
 
     // ------------------------------------------------------------ Bid rules
@@ -197,7 +216,12 @@ final readonly class AuctionRules implements JsonSerializable
     {
         return [
             'snapshot_version' => self::SNAPSHOT_VERSION,
-            'winner_rule' => self::WINNER_RULE,
+
+            // The model is the fact; the winner rule is a label derived from
+            // it, written so a reader of the raw snapshot sees both -- and
+            // checked on the way back in, so the two cannot disagree.
+            'bid_model' => $this->bidModel->value,
+            'winner_rule' => $this->winnerRule(),
 
             'minimum_bid_credits' => $this->minimumBidCredits,
             'minimum_bid_increment_credits' => $this->minimumBidIncrementCredits,
@@ -239,6 +263,31 @@ final readonly class AuctionRules implements JsonSerializable
             throw InvalidAuctionRules::unsupportedSnapshotVersion($version);
         }
 
+        // A model this engine cannot honour is refused, never ranked as
+        // something else. `tryFrom` rather than `from` so the refusal is a
+        // domain exception with a reason, not a bare ValueError.
+        $storedModel = (string) ($data['bid_model'] ?? '');
+        $model = BidModel::tryFrom($storedModel);
+
+        if ($model === null) {
+            throw InvalidAuctionRules::because(
+                'This snapshot names the bid model "'.$storedModel.'", which this version of '
+                .'the engine cannot honour. It is refused rather than ranked as another model.'
+            );
+        }
+
+        // The winner rule is derived from the model. A snapshot that says one
+        // thing in each place is corrupt, and which half to believe is exactly
+        // the guess this refuses to make.
+        $storedWinnerRule = (string) ($data['winner_rule'] ?? '');
+
+        if ($storedWinnerRule !== $model->winnerRule()) {
+            throw InvalidAuctionRules::because(
+                'This snapshot records the bid model "'.$model->value.'" but the winner rule '
+                .'"'.$storedWinnerRule.'". They disagree, so it is refused rather than guessed at.'
+            );
+        }
+
         $currency = (string) ($data['currency'] ?? 'GHS');
 
         return new self(
@@ -267,6 +316,8 @@ final readonly class AuctionRules implements JsonSerializable
             rulesetId: isset($data['ruleset_id']) ? (int) $data['ruleset_id'] : null,
             rulesetName: isset($data['ruleset_name']) ? (string) $data['ruleset_name'] : null,
             rulesetVersion: isset($data['ruleset_version']) ? (int) $data['ruleset_version'] : null,
+
+            bidModel: $model,
         );
     }
 

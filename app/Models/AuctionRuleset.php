@@ -7,6 +7,7 @@ namespace App\Models;
 use App\Domain\Auction\RulesetResolver;
 use App\Domain\Auction\ValueObjects\AuctionRules;
 use App\Domain\Shared\Money\Money;
+use App\Enums\BidModel;
 use App\Enums\ForfeitPolicy;
 use App\Enums\RulesetStatus;
 use Database\Factories\AuctionRulesetFactory;
@@ -35,6 +36,7 @@ use Spatie\Activitylog\Support\LogOptions;
  * @property int|null $minimum_bid_credits
  * @property int|null $minimum_bid_increment_credits
  * @property bool|null $allow_bid_increase
+ * @property BidModel $bid_model
  * @property int $minimum_bid_interval_ms
  * @property int $base_duration_seconds
  * @property int $closing_window_seconds
@@ -72,6 +74,17 @@ class AuctionRuleset extends Model
     public const GENERATED_COLUMNS = ['active_name', 'default_marker'];
 
     /**
+     * A ruleset built in code carries the model the column defaults to, so
+     * reading it back never trips over an attribute that was never loaded.
+     * Existing rulesets are single-highest and stay so.
+     *
+     * @var array<string, mixed>
+     */
+    protected $attributes = [
+        'bid_model' => 'single_highest',
+    ];
+
+    /**
      * Status, versioning and audit columns are excluded on purpose: they are
      * lifecycle state, changed only by the dedicated actions, never by a mass
      * assignment from request input.
@@ -81,6 +94,10 @@ class AuctionRuleset extends Model
     protected $fillable = [
         'name',
         'description',
+        // `bid_model` is deliberately not fillable. Which bidding model a
+        // ruleset produces is chosen by code that means it, never by a form
+        // field or a request, so a crafted payload cannot flip a ruleset into
+        // producing a different kind of auction.
         'minimum_bid_credits',
         'minimum_bid_increment_credits',
         'allow_bid_increase',
@@ -106,6 +123,7 @@ class AuctionRuleset extends Model
     {
         return [
             'status' => RulesetStatus::class,
+            'bid_model' => BidModel::class,
             'forfeit_policy' => ForfeitPolicy::class,
             'is_default' => 'boolean',
             'allow_bid_increase' => 'boolean',
@@ -191,6 +209,8 @@ class AuctionRuleset extends Model
             rulesetId: $this->id,
             rulesetName: $this->name,
             rulesetVersion: $this->version,
+
+            bidModel: $this->bid_model,
         );
     }
 
@@ -252,6 +272,7 @@ class AuctionRuleset extends Model
                 'minimum_bid_credits',
                 'minimum_bid_increment_credits',
                 'allow_bid_increase',
+                'bid_model',
                 'minimum_bid_interval_ms',
                 'base_duration_seconds',
                 'closing_window_seconds',

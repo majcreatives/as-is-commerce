@@ -37,6 +37,12 @@ use Illuminate\Support\Carbon;
  * @property int $auction_id
  * @property int $user_id
  * @property int $amount_credits
+ * @property int|null $cumulative_credits Where this bid left its bidder: the credits
+ *                                        that bidder had consumed on this auction, this bid
+ *                                        included. Written once at insert, never updated.
+ *                                        Null for every bid placed under the single-highest
+ *                                        model, which ranks by `amount_credits` and never
+ *                                        needed a running total.
  * @property int $sequence
  * @property BidStatus $status
  * @property int $credit_transaction_id

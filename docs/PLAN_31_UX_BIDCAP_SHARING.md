@@ -290,6 +290,10 @@ Because of F3/F4 this is a small feature, not a widget.
 
 ## Stage 32 — Maximum bid increment (auction rule)
 
+> **SUPERSEDED.** Replaced by `PLAN_32_FIXED_BID_INCREMENT.md`. An exact bid step
+> makes a cap on the size of a jump redundant, so this design is not being built.
+> Kept below as the record of the reasoning.
+
 ### 32.1 — How the engine works today (verified in code)
 
 - `PlaceBid` → idempotency key → lock auction row → `BidValidator::assertValid`

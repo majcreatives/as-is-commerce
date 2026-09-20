@@ -218,7 +218,7 @@
                     </div>
 
                     <div class="flex justify-between gap-4">
-                        <dt class="text-slate-600">Minimum increment</dt>
+                        <dt class="text-slate-600">Bid increment</dt>
                         <dd class="tabular-nums text-slate-900">
                             {{ $rules->minimumBidIncrementCredits === null
                                 ? 'No increment' : number_format($rules->minimumBidIncrementCredits).' credits' }}

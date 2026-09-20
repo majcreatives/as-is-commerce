@@ -121,6 +121,16 @@ it('rejects a zero base duration', function (): void {
         ->assertHasErrors('base_duration_seconds');
 });
 
+it('calls the increment field "Bid increment" and no longer "Minimum increment"', function (): void {
+    // A label change only: the field, its column and its behaviour are
+    // untouched. The wording is the business's, and "minimum" described a
+    // lower bound the business intends to replace with an exact step.
+    Livewire::actingAs($this->admin)
+        ->test(RulesetForm::class)
+        ->assertSee('Bid increment (credits)')
+        ->assertDontSee('Minimum increment');
+});
+
 it('no longer offers a per-credit discount rate field', function (): void {
     // The rate was removed with the lot valuation. The form must not hand an
     // administrator a control for a figure the correction deleted.

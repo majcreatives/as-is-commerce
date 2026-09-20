@@ -50,7 +50,7 @@
                              :error="$errors->has('minimum_bid_credits')" />
                 </x-field>
 
-                <x-field label="Minimum increment (credits)" name="minimum_bid_increment_credits"
+                <x-field label="Bid increment (credits)" name="minimum_bid_increment_credits"
                          :error="$errors->first('minimum_bid_increment_credits')" optional
                          hint="How far a new bid must exceed the current highest. Leave blank for no minimum.">
                     <x-input id="minimum_bid_increment_credits" inputmode="numeric"

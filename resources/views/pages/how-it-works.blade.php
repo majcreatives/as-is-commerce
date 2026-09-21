@@ -88,7 +88,7 @@
                         <h2 class="text-lg font-bold text-slate-900">Find an auction</h2>
                         <p class="mt-2 text-sm text-slate-600">
                             Auctions run on real products from our own stock. Each one shows the
-                            product, its condition, the standing highest bid in credits, and how
+                            product, its condition, the highest total in credits, and how
                             long is left.
                         </p>
                         <p class="mt-2 text-sm text-slate-600">
@@ -112,15 +112,34 @@
                     <div>
                         <h2 class="text-lg font-bold text-slate-900">Place a bid</h2>
                         <p class="mt-2 text-sm text-slate-600">
-                            You choose how many credits to commit — there is no fixed cost per bid.
-                            A bid of 150 credits consumes exactly 150 credits.
+                            Every bid puts you exactly one step ahead of whoever is leading.
+                            <strong>You do not choose the amount</strong>: we work out how many
+                            credits it takes, show it on the button, and you confirm it before
+                            anything is taken.
                         </p>
                         <p class="mt-2 text-sm text-slate-600">
-                            <strong>The highest valid bid wins</strong> when an auction closes
-                            normally. Not the last bid, not the most bids, not whoever led longest.
-                            If you are overtaken you can bid again, and if your later bid is the
-                            highest when it closes, you win on that bid.
+                            <strong>The largest total wins.</strong> Your position is the total
+                            credits you have committed to that auction, not the size of any one
+                            bid. Whoever holds the largest total when the auction closes normally
+                            wins. A bid is the leader's total, plus the step, less what you have
+                            already committed: with a step of 1, if you have committed 10 and the
+                            leader has 22, your bid is 13 and you lead with 23.
                         </p>
+                        <p class="mt-2 text-sm text-slate-600">
+                            The leader has no bid to place until somebody overtakes them. The
+                            first bid on an auction is its minimum.
+                        </p>
+
+                        <div class="mt-4 rounded-lg bg-slate-50 p-4 ring-1 ring-inset ring-slate-200">
+                            <p class="text-sm font-semibold text-slate-900">An example, with a minimum of 1 and a step of 1</p>
+                            <ol class="mt-2 list-decimal space-y-1 pl-5 text-sm text-slate-600">
+                                <li>A bids 1 credit and leads with 1.</li>
+                                <li>B must bid 2, because A leads by 1. B leads with 2.</li>
+                                <li>A must bid 2 to get back on top: 1 + 2 makes 3.</li>
+                                <li>C joins and must bid 4 to take part, and leads with 4.</li>
+                                <li>B needs 3 more, because B already holds 2, and leads with 5.</li>
+                            </ol>
+                        </div>
                         <p class="mt-2 text-sm text-slate-600">
                             Every credit you commit is consumed the moment the bid is accepted, and
                             stays consumed however the auction ends.
@@ -197,7 +216,7 @@
                         </p>
                         <p class="mt-2 text-sm text-slate-600">
                             It is not the Buy Now price, and it is not your bid converted into
-                            money. A winning bid of 180 credits and a settlement of GH&#8373;100 are
+                            money. A winning total of 180 credits and a settlement of GH&#8373;100 are
                             two different quantities: one is what you committed, the other is what
                             you now pay.
                         </p>

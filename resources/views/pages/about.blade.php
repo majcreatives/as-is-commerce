@@ -36,7 +36,7 @@
             <div class="space-y-3 text-sm text-slate-600">
                 <p>
                     Alongside the shop, some products are also offered as auctions. You bid with
-                    credits, and the highest valid bid wins when an auction closes.
+                    credits, and the largest total of credits committed wins when an auction closes.
                 </p>
                 <p>
                     Credits are not money, and credits you bid are consumed whether or not you

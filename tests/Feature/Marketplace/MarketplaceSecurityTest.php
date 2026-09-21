@@ -44,7 +44,7 @@ it('sends a guest to sign in for anything of their own', function (string $route
 })->with(['dashboard', 'orders.index', 'notifications.index', 'credits.packages', 'addresses.index']);
 
 it('lets a guest read an auction but not bid on it', function (): void {
-    $auction = liveAuction();
+    $auction = cumulativeAuction();
 
     $this->get(route('auctions.show', $auction))
         ->assertOk()
@@ -52,8 +52,7 @@ it('lets a guest read an auction but not bid on it', function (): void {
 
     // And the action itself refuses, not merely the button.
     Livewire::test(AuctionRoom::class, ['auction' => $auction])
-        ->set('amount', '150')
-        ->call('review')
+        ->call('review', 1)
         ->assertForbidden();
 
     expect(Bid::count())->toBe(0);
@@ -168,9 +167,11 @@ it('exposes no price or discount a browser could set', function (): void {
             ->toBeFalse("AuctionRoom must not expose a {$property} property.");
     }
 
-    // The bid form carries a credit count and an idempotency key, and nothing
-    // that could be read as money.
-    expect(property_exists(AuctionRoom::class, 'amount'))->toBeTrue();
+    // The bid flow carries a credit count the server chose and an idempotency
+    // key, and nothing that could be read as money. There is no field a bidder
+    // types an amount into any more.
+    expect(property_exists(AuctionRoom::class, 'confirmedAmount'))->toBeTrue()
+        ->and(property_exists(AuctionRoom::class, 'amount'))->toBeFalse();
 });
 
 it('ignores a fabricated price sent to a checkout', function (): void {

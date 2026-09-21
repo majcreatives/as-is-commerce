@@ -110,8 +110,7 @@
                 @if ($order->source === App\Enums\OrderSource::AuctionWin)
                     <div class="mt-5 rounded-lg bg-slate-50 p-4 ring-1 ring-inset ring-slate-200">
                         <p class="text-sm text-slate-700">
-                            You won this auction with the highest valid credit bid of
-                            <strong>{{ number_format($pricing->winningBidCredits ?? 0) }} credits</strong>.
+                            {{ $order->auction->rules()->bidModel->youWonSentence($pricing->winningBidCredits ?? 0) }}
                         </p>
                         <p class="mt-2 text-sm text-slate-600">
                             Those credits were consumed when you bid and are not charged again here.
@@ -123,7 +122,7 @@
                     <div class="mt-5 rounded-lg bg-slate-50 p-4 ring-1 ring-inset ring-slate-200">
                         <p class="text-sm text-slate-700">
                             Paying for this buys the product outright and <strong>ends the auction
-                            immediately</strong>. The current highest bidder will not win.
+                            immediately</strong>. Whoever is leading will not win.
                         </p>
                         <p class="mt-2 text-sm text-slate-600">
                             The auction is still running until your payment is confirmed — opening

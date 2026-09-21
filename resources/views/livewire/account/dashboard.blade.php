@@ -101,7 +101,7 @@
                     <div class="p-5">
                         <x-empty-state
                             title="You haven't bid on anything yet"
-                            description="Find something you want and commit credits to it. The highest valid bid wins when the auction closes." />
+                            description="Find something you want and commit credits to it. The largest total of credits committed wins when the auction closes." />
                         <div class="mt-4 flex justify-center">
                             <x-button href="{{ route('auctions.index') }}" wire:navigate>Explore live auctions</x-button>
                         </div>
@@ -116,7 +116,7 @@
                                         {{ $auction->product->name }}
                                     </a>
                                     <p class="mt-1 text-sm text-slate-600">
-                                        Highest Bid (Credits):
+                                        {{ $auction->rules()->bidModel->leaderLabel() }}:
                                         <span class="font-semibold tabular-nums">
                                             {{ number_format($auction->highest_bid_credits ?? 0) }}
                                         </span>

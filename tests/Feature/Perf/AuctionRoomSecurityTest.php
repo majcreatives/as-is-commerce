@@ -105,7 +105,7 @@ it('does not expose another customer on the auction it belongs to', function ():
 // ------------------------------------------------------------ Authorization
 
 it('refuses a bid from somebody without the permission', function (): void {
-    $auction = liveAuction();
+    $auction = cumulativeAuction();
 
     // Signed in, holding no role at all. The action authorizes rather than
     // trusting that the form was never drawn for them.
@@ -113,7 +113,11 @@ it('refuses a bid from somebody without the permission', function (): void {
 
     Livewire::actingAs($outsider)
         ->test(AuctionRoom::class, ['auction' => $auction->fresh()])
-        ->set('amount', '100')
+        ->call('review', 1)
+        ->assertForbidden();
+
+    Livewire::actingAs($outsider)
+        ->test(AuctionRoom::class, ['auction' => $auction->fresh()])
         ->call('bid')
         ->assertForbidden();
 });
@@ -133,16 +137,16 @@ it('refuses a checkout from somebody without the permission', function (): void 
         ->assertForbidden();
 });
 
-it('validates the bid amount server-side rather than trusting the field', function (): void {
-    $auction = liveAuction();
+it('validates the bid server-side rather than trusting the figure the page sent', function (): void {
+    $auction = cumulativeAuction(minimum: 100, increment: 10);
     $viewer = bidder(1_000);
 
-    foreach (['-5', '10.5', 'abc', '', '1e9'] as $rubbish) {
+    foreach ([-5, 0, 1, 99, 101, 1_000_000_000] as $rubbish) {
         Livewire::actingAs($viewer)
             ->test(AuctionRoom::class, ['auction' => $auction->fresh()])
-            ->set('amount', $rubbish)
-            ->call('bid')
-            ->assertHasErrors('amount');
+            ->call('review', $rubbish)
+            ->assertHasErrors('bid')
+            ->assertSet('confirming', false);
     }
 
     // Nothing was consumed by any of it.

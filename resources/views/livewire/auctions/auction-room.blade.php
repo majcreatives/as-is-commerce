@@ -39,15 +39,15 @@
     <div class="grid gap-6 lg:grid-cols-3">
         {{-- ---------------------------------------------------- The auction --}}
         <div class="space-y-6 lg:col-span-2">
-            <x-card title="Highest Bid (Credits)"
-                    subtitle="The highest valid credit bid wins when this auction closes.">
+            <x-card :title="$bidModel->leaderLabel()"
+                    :subtitle="$bidModel->ruleSentence()">
                 @if ($highestBid)
                     {{-- The two hooks a live update may repaint. Both are a
                          count of credits or a count of bids -- never money --
                          and the next poll re-renders them from the database
                          either way. --}}
                     <p class="text-4xl font-bold tracking-tight text-slate-900">
-                        <span data-auction-highest-credits>{{ number_format($highestBid->amount_credits) }}</span>
+                        <span data-auction-highest-credits>{{ number_format($highestBid->rankingValue()) }}</span>
                         <span class="text-base font-semibold text-slate-500">credits</span>
                     </p>
 
@@ -93,79 +93,99 @@
 
             {{-- ------------------------------------------------- Placing a bid --}}
             @if ($auction->status->acceptsBids())
+                @if (! $bidModel->isCumulative())
+                    {{-- An auction created under the earlier rules. It is shown, and
+                         it is not bid on through this page: there is no free-text
+                         amount here any more, and nothing in the product creates an
+                         auction of this kind. --}}
+                    <x-card title="Bidding">
+                        <x-alert variant="info">
+                            This auction was created under the earlier bidding rules and is not taking
+                            new bids.
+                        </x-alert>
+                    </x-card>
+                @else
                 <x-card title="Place a bid"
-                        subtitle="You choose how many credits to commit. They are consumed immediately and permanently.">
+                        :subtitle="'Each bid puts you exactly '.number_format($stepCredits).' '.Str::plural('credit', $stepCredits).' ahead of the leader. Credits are consumed immediately and permanently.'">
                     @auth
                         @can('bids.place')
                             @php
-                                // Both read once by the component. Blade asks
-                                // for nothing the server has not already
-                                // worked out for this render.
-                                $smallest = $smallestValidBid;
+                                // Read once by the component. Blade asks for
+                                // nothing the server has not already worked out
+                                // for this render.
                                 $balance = $spendableBalance;
+                                $leaderTotal = $highestBid?->rankingValue();
                             @endphp
 
-                            {{-- Where the bidder stands, before anything else.
-                                 No other bidder is named: only the amount to
-                                 beat, which is all anybody needs. --}}
+                            {{-- Where the bidder stands, before anything else. No
+                                 other bidder is named: only the figure to beat,
+                                 which is all anybody needs. --}}
                             @if ($viewerIsLeading)
                                 <x-alert variant="success" class="mb-4" role="status">
-                                    You hold the highest bid right now.
+                                    <strong>You hold the lead</strong> with
+                                    <x-credits :amount="$committedCredits" />. You can bid again once
+                                    somebody overtakes you.
                                 </x-alert>
                             @elseif ($viewerIsOutbid)
                                 <x-alert variant="warning" class="mb-4" role="status">
                                     <strong>You have been outbid.</strong>
-                                    The highest bid is now
-                                    <x-credits :amount="$auction->highest_bid_credits ?? 0" />@if ($smallest),
-                                        and the smallest valid bid is <x-credits :amount="$smallest" />@endif.
+                                    The {{ $bidModel->leaderNoun() }} is now
+                                    <x-credits :amount="$leaderTotal ?? 0" />.
                                     The <x-credits :amount="$committedCredits" /> you have
                                     already committed stay consumed either way.
                                 </x-alert>
                             @endif
 
-                            @if ($confirming)
-                                {{-- The confirmation. Committing credits cannot
-                                     be undone, so it takes two deliberate
-                                     actions -- and the figures here are the
-                                     server's, re-read again under a lock when
-                                     the bid is actually placed. --}}
+                            @if ($confirming && $confirmedAmount !== null)
+                                {{-- The confirmation. Committing credits cannot be
+                                     undone, so it takes two deliberate actions -- and
+                                     the figure here is the one the server showed, which
+                                     the domain re-derives under a lock when the bid is
+                                     actually placed. A figure that has moved is
+                                     refused, never substituted. --}}
                                 <div class="rounded-lg border-2 border-accent-300 bg-accent-50/50 p-4"
                                      role="alertdialog" aria-labelledby="confirm-bid-heading">
                                     <h3 id="confirm-bid-heading" class="text-sm font-bold text-slate-900">
-                                        You are about to bid <x-credits :amount="(int) $amount" />.
+                                        You are about to bid <x-credits :amount="$confirmedAmount" />.
                                     </h3>
 
                                     <dl class="mt-3 space-y-1.5 text-sm">
                                         <div class="flex justify-between gap-3">
-                                            <dt class="text-slate-600">Current highest bid</dt>
+                                            <dt class="text-slate-600">Current {{ $bidModel->leaderNoun() }}</dt>
                                             <dd class="tabular-nums text-slate-900">
                                                 @if ($highestBid)
-                                                    <x-credits :amount="$highestBid->amount_credits" />
+                                                    <x-credits :amount="$leaderTotal" />
                                                 @else
                                                     No bids yet
                                                 @endif
                                             </dd>
                                         </div>
                                         <div class="flex justify-between gap-3">
-                                            <dt class="text-slate-600">Your bid</dt>
+                                            <dt class="text-slate-600">Your total now</dt>
+                                            <dd class="tabular-nums text-slate-900">
+                                                <x-credits :amount="$committedCredits" />
+                                            </dd>
+                                        </div>
+                                        <div class="flex justify-between gap-3">
+                                            <dt class="text-slate-600">Your total after this bid</dt>
                                             <dd class="font-semibold tabular-nums text-slate-900">
-                                                <x-credits :amount="(int) $amount" />
+                                                <x-credits :amount="$committedCredits + $confirmedAmount" />
                                             </dd>
                                         </div>
                                         <div class="flex justify-between gap-3 border-t border-accent-200 pt-1.5">
                                             <dt class="text-slate-600">Your balance afterwards</dt>
                                             <dd class="tabular-nums text-slate-900">
-                                                <x-credits :amount="max(0, $balance - (int) $amount)" />
+                                                <x-credits :amount="max(0, $balance - $confirmedAmount)" />
                                             </dd>
                                         </div>
                                     </dl>
 
                                     <p class="mt-3 text-sm font-semibold text-slate-900">
-                                        <x-credits :amount="(int) $amount" /> will be consumed immediately
+                                        <x-credits :amount="$confirmedAmount" /> will be consumed immediately
                                         and will not be returned if you lose.
                                     </p>
 
-                                    @error('amount')
+                                    @error('bid')
                                         <p class="mt-3 text-sm font-medium text-red-700" role="alert">{{ $message }}</p>
                                     @enderror
 
@@ -182,29 +202,54 @@
                                     </div>
                                 </div>
                             @else
-                                <form wire:submit="review" class="space-y-4">
-                                    <x-field label="Credits to commit" name="amount"
-                                             :error="$errors->first('amount')"
-                                             :hint="$smallest
-                                                ? 'The smallest valid bid right now is '.number_format($smallest).' credits.'
-                                                : 'This auction sets no minimum. Any whole number of credits is a valid bid.'">
-                                        <x-input wire:model="amount" inputmode="numeric"
-                                                 placeholder="e.g. 150"
-                                                 :error="$errors->has('amount')" />
-                                    </x-field>
+                                @error('bid')
+                                    <x-alert variant="danger" class="mb-4" role="alert">{{ $message }}</x-alert>
+                                @enderror
 
-                                    <div class="flex flex-wrap items-center gap-3">
-                                        <x-button type="submit" wire:loading.attr="disabled">
-                                            <span wire:loading.remove wire:target="review">Review bid</span>
-                                            <span wire:loading wire:target="review">Checking…</span>
-                                        </x-button>
+                                @if ($nextBid !== null)
+                                    {{-- The one bid this viewer could place. Worked out
+                                         by the server; the button carries the figure
+                                         shown so a stale page is told so. --}}
+                                    <p class="text-sm text-slate-700">
+                                        @if ($highestBid)
+                                            To take the lead, add
+                                            <strong><x-credits :amount="$nextBid" /></strong>
+                                            &mdash; you would lead with
+                                            <x-credits :amount="$committedCredits + $nextBid" />.
+                                        @else
+                                            Be the first: the opening bid on this auction is
+                                            <strong><x-credits :amount="$nextBid" /></strong>.
+                                        @endif
+                                    </p>
 
-                                        <p class="text-sm text-slate-500">
-                                            Your balance:
-                                            <strong><x-credits :amount="$balance" /></strong>
-                                        </p>
+                                    <div class="mt-4 flex flex-wrap items-center gap-3">
+                                        @if ($nextBid > $balance)
+                                            <x-button type="button" disabled>
+                                                Bid {{ number_format($nextBid) }} {{ Str::plural('credit', $nextBid) }}
+                                            </x-button>
+
+                                            <p class="text-sm text-slate-600" role="status">
+                                                You need <strong><x-credits :amount="$nextBid - $balance" /></strong>
+                                                more to bid.
+                                                <a href="{{ route('credits.packages') }}" wire:navigate
+                                                   class="font-semibold text-brand-800 underline">Buy credits</a>
+                                            </p>
+                                        @else
+                                            <x-button wire:click="review({{ $nextBid }})" wire:loading.attr="disabled"
+                                                      wire:target="review">
+                                                <span wire:loading.remove wire:target="review">
+                                                    Bid {{ number_format($nextBid) }} {{ Str::plural('credit', $nextBid) }}
+                                                </span>
+                                                <span wire:loading wire:target="review">Checking…</span>
+                                            </x-button>
+
+                                            <p class="text-sm text-slate-500">
+                                                Your balance:
+                                                <strong><x-credits :amount="$balance" /></strong>
+                                            </p>
+                                        @endif
                                     </div>
-                                </form>
+                                @endif
                             @endif
 
                             <x-alert variant="warning" class="mt-4">
@@ -217,12 +262,27 @@
                             <x-alert variant="info">Your account is not able to place bids.</x-alert>
                         @endcan
                     @else
+                        {{-- A visitor sees what joining costs: the same figure a
+                             signed-in newcomer would be shown. --}}
+                        @if ($nextBid !== null)
+                            <p class="mb-3 text-sm text-slate-700">
+                                @if ($highestBid)
+                                    To take the lead right now, a new bidder adds
+                                    <strong><x-credits :amount="$nextBid" /></strong>.
+                                @else
+                                    The opening bid on this auction is
+                                    <strong><x-credits :amount="$nextBid" /></strong>.
+                                @endif
+                            </p>
+                        @endif
+
                         <x-alert variant="info">
                             <a href="{{ route('login') }}" wire:navigate class="font-semibold underline">Sign in</a>
                             to bid on this auction.
                         </x-alert>
                     @endauth
                 </x-card>
+                @endif
             @endif
 
             {{-- ------------------------------------------------------- Outcome --}}
@@ -230,7 +290,7 @@
                 <x-card title="Sold via Buy Now">
                     <p class="text-sm text-slate-700">
                         Someone bought this product outright, which ends the auction immediately.
-                        There is no auction winner: the highest bidder did not win, and credits
+                        There is no auction winner: the bidder who was leading did not win, and credits
                         already committed stay consumed.
                     </p>
 
@@ -247,8 +307,7 @@
             @elseif ($auction->hasBidWinner())
                 <x-card title="Result">
                     <p class="text-sm text-slate-700">
-                        Won by the highest valid credit bid of
-                        <strong>{{ number_format($auction->winningBid?->amount_credits ?? 0) }} credits</strong>.
+                        {{ $bidModel->winnerSentence($auction->winningBid?->rankingValue() ?? 0) }}
                         The winner pays the auction settlement amount of
                         <strong><x-money :amount="$auction->settlementAmount()" /></strong> plus applicable
                         delivery and checkout charges.
@@ -301,8 +360,8 @@
                         <x-alert variant="info" class="mt-4">
                             <p class="font-semibold">You did not win this auction.</p>
                             <p class="mt-1">
-                                The winning bid was
-                                {{ number_format($auction->winningBid?->amount_credits ?? 0) }}
+                                The {{ $bidModel->winningFigure() }} was
+                                {{ number_format($auction->winningBid?->rankingValue() ?? 0) }}
                                 credits. The
                                 <strong>{{ number_format($committedCredits) }}
                                 credits</strong> you committed remain consumed — bid credits are
@@ -338,7 +397,12 @@
                             <thead class="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
                                 <tr>
                                     <th class="px-5 py-3 font-semibold">Bidder</th>
-                                    <th class="px-5 py-3 font-semibold">Bid (credits)</th>
+                                    @if ($bidModel->isCumulative())
+                                        <th class="px-5 py-3 font-semibold">Credits added</th>
+                                        <th class="px-5 py-3 font-semibold">Total after</th>
+                                    @else
+                                        <th class="px-5 py-3 font-semibold">Bid (credits)</th>
+                                    @endif
                                     <th class="px-5 py-3 font-semibold">Placed</th>
                                 </tr>
                             </thead>
@@ -358,9 +422,18 @@
                                                 ? 'You'
                                                 : 'Bidder #'.($participants[$bid->user_id] ?? 1) }}
                                         </td>
-                                        <td class="px-5 py-3 font-semibold tabular-nums text-slate-900">
-                                            {{ number_format($bid->amount_credits) }}
-                                        </td>
+                                        @if ($bidModel->isCumulative())
+                                            <td class="px-5 py-3 tabular-nums text-slate-700">
+                                                +{{ number_format($bid->amount_credits) }}
+                                            </td>
+                                            <td class="px-5 py-3 font-semibold tabular-nums text-slate-900">
+                                                {{ number_format($bid->rankingValue()) }}
+                                            </td>
+                                        @else
+                                            <td class="px-5 py-3 font-semibold tabular-nums text-slate-900">
+                                                {{ number_format($bid->amount_credits) }}
+                                            </td>
+                                        @endif
                                         <td class="px-5 py-3 text-slate-500">
                                             {{ $bid->created_at->timezone(settings()->getString('display_timezone', 'UTC'))->format('j M, H:i') }}
                                         </td>
@@ -432,7 +505,7 @@
 
                             <p class="mt-3 text-xs text-slate-500">
                                 Starting a checkout does not end this auction. It ends the moment we
-                                have confirmed your payment — and then the highest bidder does not
+                                have confirmed your payment — and then whoever was leading does not
                                 win.
                             </p>
                         @endcan
@@ -458,7 +531,7 @@
                 </dl>
 
                 <p class="mt-3 text-sm text-slate-600">
-                    The highest valid credit bidder wins and pays this amount plus applicable delivery
+                    The winner pays this amount plus applicable delivery
                     and checkout charges. It is a separate figure from the Buy Now price, and it is
                     <strong>not</strong> worked out from anybody's bid.
                 </p>
@@ -495,6 +568,9 @@
                                     </span>
                                     <span class="font-semibold tabular-nums text-slate-900">
                                         {{ number_format($bid->amount_credits) }} credits
+                                        @if ($bidModel->isCumulative())
+                                            <span class="font-normal text-slate-500">(total {{ number_format($bid->rankingValue()) }})</span>
+                                        @endif
                                     </span>
                                 </li>
                             @endforeach

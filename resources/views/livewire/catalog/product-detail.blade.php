@@ -214,7 +214,7 @@
                     </div>
 
                     <div class="mt-4">
-                        <p class="text-sm font-medium text-slate-600">Highest Bid (Credits)</p>
+                        <p class="text-sm font-medium text-slate-600">{{ $liveAuction->rules()->bidModel->leaderLabel() }}</p>
 
                         @if ($availability->highestBidCredits() !== null)
                             <p class="mt-1 text-3xl font-bold tabular-nums text-slate-900">

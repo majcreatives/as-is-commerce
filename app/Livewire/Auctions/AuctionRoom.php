@@ -21,16 +21,26 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 
 /**
  * One auction, as a bidder sees it.
  *
  * EVERYTHING ON THIS PAGE IS COMPUTED ON THE SERVER. The countdown, the
- * standing highest bid, the smallest valid bid, the Buy Now price after
+ * standing to beat, the bid the viewer would place, the Buy Now price after
  * discount, whether the auction is open -- all of it is read from the database
- * on each render and re-read from scratch when a bid is submitted. The browser
- * sends one thing: how many credits the bidder wants to commit.
+ * on each render and re-read from scratch when a bid is submitted.
+ *
+ * THE BIDDER DOES NOT TYPE AN AMOUNT. Under the cumulative model there is
+ * exactly one valid bid at any moment -- the credits that put the viewer one
+ * step ahead of the leader -- and the server works it out. The page shows it on
+ * a button; clicking asks for confirmation; confirming places it. What the
+ * browser sends is the figure it was SHOWN, so the server can tell a stale page
+ * from a fresh one, and the domain then re-derives the right figure under the
+ * auction lock and refuses anything else. A refused bid consumes nothing, and a
+ * figure that has moved is never quietly swapped for the new one: that would
+ * spend more credits than the bidder agreed to.
  *
  * The countdown in particular is a number this component worked out and
  * handed over for display. It is refreshed by polling, and it is not what
@@ -88,10 +98,15 @@ class AuctionRoom extends Component
     public const POLL_TIGHTEN_WITHIN_SECONDS = 120;
 
     /**
-     * Held as a string so an empty field stays empty rather than becoming
-     * zero, and so nothing is coerced before validation sees it.
+     * The bid the viewer has been asked to confirm, in credits.
+     *
+     * Set only by {@see self::review()}, from the server's own reading, and
+     * LOCKED: a request cannot write it. Even if it could, the domain would
+     * refuse any figure that is not the one valid bid, so the lock is a second
+     * wall rather than the only one.
      */
-    public string $amount = '';
+    #[Locked]
+    public ?int $confirmedAmount = null;
 
     /**
      * One key per bid the customer intends to place.
@@ -131,36 +146,65 @@ class AuctionRoom extends Component
     }
 
     /**
-     * Show the bidder exactly what they are about to do.
+     * Ask the bidder to confirm the bid they were shown.
      *
-     * Validates the shape of the amount only. Every business rule is the
-     * domain's, checked against a locked auction row when the bid is placed --
-     * so this cannot approve a bid, and a confirmation that has been open for
-     * a while cannot make one valid that no longer is.
+     * `$shown` is the figure on the button they pressed. It is compared with
+     * the server's reading of the bid right now, so a page that has gone stale
+     * says so here -- with the new figure -- rather than quietly opening a
+     * confirmation for a different amount than the one they clicked.
+     *
+     * This cannot approve a bid. Every business rule is the domain's, checked
+     * against a locked auction row when the bid is placed, so a confirmation
+     * that has been open for a while cannot make a bid valid that no longer is.
      */
-    public function review(): void
+    public function review(BidValidator $validator, int $shown): void
     {
         $this->authorize('bids.place');
+        $this->resetErrorBag();
 
-        $this->validate([
-            'amount' => ['required', 'regex:/^\d{1,12}$/'],
-        ], [
-            'amount.regex' => 'Enter a whole number of credits.',
-        ]);
+        $auction = $this->auction->fresh();
 
+        // Only the cumulative model is bid on here. There is no free-text
+        // amount to fall back to: an auction that follows the earlier rules
+        // is shown, and not bid on, through this page.
+        if (! $auction->rules()->bidModel->isCumulative()) {
+            $this->addError('bid', 'This auction is not taking new bids.');
+
+            return;
+        }
+
+        $next = $validator->nextBid($auction, auth()->user());
+
+        if ($next === null) {
+            $this->auction->refresh();
+            $this->addError('bid', 'You already hold the lead. You can bid again once somebody overtakes you.');
+
+            return;
+        }
+
+        if ($next !== $shown) {
+            $this->auction->refresh();
+            $this->addError('bid', "Somebody bid while you were looking. To take the lead you now need to add {$next} credits.");
+
+            return;
+        }
+
+        $this->confirmedAmount = $next;
         $this->confirming = true;
     }
 
     public function cancelBid(): void
     {
         $this->confirming = false;
+        $this->confirmedAmount = null;
     }
 
     /**
      * Commit credits to this auction.
      *
-     * The amount is validated for shape here and for every business rule by
-     * the domain, against a freshly locked auction row. Nothing this component
+     * Places the figure the bidder confirmed, and nothing else. The domain
+     * re-derives the one valid bid against a freshly locked auction row and
+     * either accepts that figure or refuses it. Nothing this component
      * displayed is trusted at that point -- the page may be seconds old, and
      * someone else may have bid, bought the product, or ended the auction
      * since it was rendered.
@@ -169,18 +213,19 @@ class AuctionRoom extends Component
     {
         $this->authorize('bids.place');
 
-        $validated = $this->validate([
-            // A whole number of credits. Not money, so no decimal point.
-            'amount' => ['required', 'regex:/^\d{1,12}$/'],
-        ], [
-            'amount.regex' => 'Enter a whole number of credits.',
-        ]);
+        if ($this->confirmedAmount === null) {
+            // Nothing was confirmed: the confirmation was cancelled, or this
+            // call did not come from the page. There is no amount to place.
+            $this->confirming = false;
+
+            return;
+        }
 
         try {
             $placeBid->handle(
                 auction: $this->auction->fresh(),
                 user: auth()->user(),
-                amountCredits: (int) $validated['amount'],
+                amountCredits: $this->confirmedAmount,
                 idempotencyKey: $this->bidKey,
             );
         } catch (BidRejected $e) {
@@ -190,20 +235,25 @@ class AuctionRoom extends Component
             //
             // The confirmation closes and the page re-reads the auction: the
             // usual reason a bid is refused is that somebody else bid first,
-            // and the figures the bidder was looking at are now wrong.
+            // and the figure the bidder agreed to is no longer the right one.
+            // NOTHING was consumed, and the next click asks again with the
+            // figure that is right now -- under a fresh key, because a refused
+            // attempt and its retry are two different intended bids.
             $this->confirming = false;
+            $this->confirmedAmount = null;
+            $this->bidKey = (string) Str::uuid();
             $this->auction->refresh();
-            $this->addError('amount', $e->getMessage());
+            $this->addError('bid', $e->getMessage());
 
             return;
         } catch (ConcurrentOperationInProgress) {
-            $this->addError('amount', 'That bid is still being processed. Give it a moment.');
+            $this->addError('bid', 'That bid is still being processed. Give it a moment.');
 
             return;
         }
 
         $this->auction->refresh();
-        $this->amount = '';
+        $this->confirmedAmount = null;
         $this->confirming = false;
         $this->bidKey = (string) Str::uuid();
 
@@ -340,10 +390,19 @@ class AuctionRoom extends Component
                 && $auction->winner_user_id !== $viewer->id
                 && $myBids->isNotEmpty(),
 
-            // The smallest bid that would be valid right now. Null when this
-            // auction sets no floor at all, which is a real answer and not a
-            // missing one: an unset rule is not a rule of one credit.
-            'smallestValidBid' => $validator->smallestValidBid($auction),
+            // The model this auction follows, frozen into its snapshot. Every
+            // rule and label the page states comes from here, so a page never
+            // describes one model while the auction follows the other.
+            'bidModel' => $auction->rules()->bidModel,
+
+            // The ONE bid this viewer could place right now, worked out by the
+            // server: the credits that put them a step ahead of the leader.
+            // Null when they hold the lead and have nothing to place. It is for
+            // display; the domain re-derives it under the lock when it matters.
+            'nextBid' => $validator->nextBid($auction, $viewer),
+
+            // How far ahead of the leader every bid lands, from the frozen rules.
+            'stepCredits' => $auction->rules()->bidIncrementCredits,
 
             'buyNowQuote' => $pricer->quote($auction, $viewer),
 

@@ -98,6 +98,95 @@ enum BidModel: string
         };
     }
 
+    // ----------------------------------------------------- Customer wording
+    //
+    // Chosen per auction, from the model frozen into it, so no view hard-codes
+    // a rule that is true of one model and false of the other. Credits are a
+    // count throughout: never money, never a currency symbol.
+
+    /**
+     * The label above the figure that leads. The unit is in the label, so the
+     * number beside it cannot be read as a price.
+     *
+     * "Highest Bid" is true only while a bid IS the figure that ranks. Under the
+     * cumulative model a bid is the small amount that closes a gap, and the
+     * figure that leads is a total; calling it a bid would put "Highest Bid: 22"
+     * beside a history row that says 2.
+     */
+    public function leaderLabel(): string
+    {
+        return match ($this) {
+            self::SingleHighest => 'Highest Bid (Credits)',
+            self::CumulativeStep => 'Highest Total (Credits)',
+        };
+    }
+
+    /**
+     * The same figure inside a sentence: "The highest total is now 22 credits."
+     */
+    public function leaderNoun(): string
+    {
+        return match ($this) {
+            self::SingleHighest => 'highest bid',
+            self::CumulativeStep => 'highest total',
+        };
+    }
+
+    /**
+     * The one-line rule, as a customer is told it.
+     */
+    public function ruleSentence(): string
+    {
+        return match ($this) {
+            self::SingleHighest => 'The highest valid credit bid wins when this auction closes.',
+            self::CumulativeStep => 'The largest total of credits committed wins when this auction closes.',
+        };
+    }
+
+    /**
+     * How the result is stated to somebody reading it.
+     */
+    public function winnerSentence(int $credits): string
+    {
+        return match ($this) {
+            self::SingleHighest => "Won by the highest valid credit bid of {$credits} credits.",
+            self::CumulativeStep => "Won with the highest total: {$credits} credits committed.",
+        };
+    }
+
+    /**
+     * The same result, told to the person who won it, on their checkout.
+     */
+    public function youWonSentence(int $credits): string
+    {
+        return match ($this) {
+            self::SingleHighest => "You won this auction with the highest valid credit bid of {$credits} credits.",
+            self::CumulativeStep => "You won this auction with the highest total: {$credits} credits committed.",
+        };
+    }
+
+    /**
+     * What the winner held when it closed, told on their order.
+     */
+    public function youHeldSentence(int $credits): string
+    {
+        return match ($this) {
+            self::SingleHighest => "You held the highest valid credit bid of {$credits} credits when the auction closed.",
+            self::CumulativeStep => "You held the highest total, {$credits} credits committed, when the auction closed.",
+        };
+    }
+
+    /**
+     * What the figure that won is called, for somebody who lost.
+     */
+    public function winningFigure(): string
+    {
+        return match ($this) {
+            self::SingleHighest => 'winning bid',
+            self::CumulativeStep => 'winning total',
+        };
+    }
+
     /**
      * The line written to the auction's history when it closes with a winner.
      *

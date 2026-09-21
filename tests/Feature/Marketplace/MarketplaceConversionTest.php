@@ -8,7 +8,6 @@ use App\Domain\Orders\Actions\PlaceCartOrder;
 use App\Livewire\Account\Dashboard;
 use App\Livewire\Auctions\AuctionRoom;
 use App\Livewire\Catalog\ProductDetail;
-use App\Models\AuctionRuleset;
 use App\Models\Bid;
 use App\Models\Cart;
 use App\Models\Order;
@@ -159,18 +158,19 @@ it('gives no discount for credits spent on a different auction', function (): vo
 // ----------------------------------------------------------- Bidding UX
 
 it('asks a bidder to confirm before consuming credits', function (): void {
-    $auction = liveAuction();
+    $auction = cumulativeAuction(minimum: 150, increment: 10);
     $bidder = bidder(1_000);
 
     $component = Livewire::actingAs($bidder)
         ->test(AuctionRoom::class, ['auction' => $auction])
-        ->set('amount', '150')
-        ->call('review');
+        ->call('review', 150);
 
     $component->assertSet('confirming', true)
         ->assertSee('You are about to bid')
         ->assertSee('will be consumed immediately')
-        ->assertSee('not be returned if you lose');
+        ->assertSee('not be returned if you lose')
+        // Where the bid leaves them, before they commit to it.
+        ->assertSee('Your total after this bid');
 
     // Nothing has happened yet: reviewing is not bidding.
     expect(Bid::count())->toBe(0)
@@ -183,43 +183,49 @@ it('asks a bidder to confirm before consuming credits', function (): void {
 });
 
 it('lets a bidder back out of the confirmation', function (): void {
-    $auction = liveAuction();
+    $auction = cumulativeAuction(minimum: 150, increment: 10);
     $bidder = bidder(1_000);
 
     Livewire::actingAs($bidder)
         ->test(AuctionRoom::class, ['auction' => $auction])
-        ->set('amount', '150')
-        ->call('review')
+        ->call('review', 150)
         ->call('cancelBid')
-        ->assertSet('confirming', false);
+        ->assertSet('confirming', false)
+        ->assertSet('confirmedAmount', null);
 
     expect(Bid::count())->toBe(0)
         ->and(creditWalletFor($bidder)->fresh()->balance)->toBe(1_000);
 });
 
-it('refuses a bid that is not a whole number of credits', function (): void {
-    $auction = liveAuction();
+it('refuses to review a bid other than the one it showed', function (): void {
+    $auction = cumulativeAuction(minimum: 150, increment: 10);
 
     Livewire::actingAs(bidder(1_000))
         ->test(AuctionRoom::class, ['auction' => $auction])
-        ->set('amount', '150.50')
-        ->call('review')
-        ->assertHasErrors('amount')
+        ->call('review', 149)
+        ->assertHasErrors('bid')
         ->assertSet('confirming', false);
 
     expect(Bid::count())->toBe(0);
 });
 
 it('tells a bidder plainly when they cannot afford it', function (): void {
-    $auction = liveAuction();
+    $auction = cumulativeAuction(minimum: 500, increment: 10);
     $poor = bidder(50);
 
+    // The page says what they are short, and offers no button to press.
     Livewire::actingAs($poor)
         ->test(AuctionRoom::class, ['auction' => $auction])
-        ->set('amount', '500')
-        ->call('review')
+        ->assertSee('You need')
+        ->assertSee('more to bid')
+        ->assertSee('Buy credits');
+
+    // And the domain refuses it regardless, if the request is made anyway.
+    Livewire::actingAs($poor)
+        ->test(AuctionRoom::class, ['auction' => $auction])
+        ->call('review', 500)
         ->call('bid')
-        ->assertHasErrors('amount');
+        ->assertHasErrors('bid');
 
     expect(Bid::count())->toBe(0)
         ->and(creditWalletFor($poor)->fresh()->balance)->toBe(50);
@@ -231,11 +237,7 @@ it('tells a bidder plainly when they cannot afford it', function (): void {
  * the page re-reads authoritative state rather than retrying blindly.
  */
 it('closes the confirmation when a bid is refused', function (): void {
-    $ruleset = AuctionRuleset::factory()->active()->withoutThrottle()->create([
-        'minimum_bid_increment_credits' => 10,
-    ]);
-
-    $auction = liveAuction(ruleset: $ruleset);
+    $auction = cumulativeAuction(minimum: 100, increment: 10);
     $first = bidder(1_000);
     $second = bidder(1_000);
 
@@ -243,46 +245,50 @@ it('closes the confirmation when a bid is refused', function (): void {
 
     $component = Livewire::actingAs($second)
         ->test(AuctionRoom::class, ['auction' => $auction->fresh()])
-        ->set('amount', '105')
-        ->call('review');
+        ->call('review', 110);
 
-    // Somebody else bids higher while the confirmation is open.
-    placeBid($auction->fresh(), $first, 300);
+    // Somebody else takes the lead while the confirmation is open.
+    placeBid($auction->fresh(), bidder(1_000), 110);
 
     $component->call('bid')
-        ->assertHasErrors('amount')
-        ->assertSet('confirming', false);
+        ->assertHasErrors('bid')
+        ->assertSet('confirming', false)
+        ->assertSet('confirmedAmount', null);
 
     expect(creditWalletFor($second)->fresh()->balance)->toBe(1_000);
 });
 
 it('shows a bidder that they have been outbid, without naming anybody', function (): void {
-    $auction = liveAuction();
+    $auction = cumulativeAuction(minimum: 100, increment: 10);
     $me = bidder(1_000);
     $rival = bidder(1_000);
     $rival->update(['name' => 'Kwame Mensah']);
 
     placeBid($auction, $me, 100);
-    placeBid($auction->fresh(), $rival, 300);
+    placeBid($auction->fresh(), $rival, 110);
 
     Livewire::actingAs($me)
         ->test(AuctionRoom::class, ['auction' => $auction->fresh()])
         ->assertSee('You have been outbid')
-        ->assertSee('300')
+        // The figure to beat, and what it takes to take the lead back.
+        ->assertSee('highest total is now')
+        ->assertSee('110')
+        ->assertSee('To take the lead, add')
         // Never who did it.
         ->assertDontSee('Kwame')
         ->assertDontSee($rival->phone);
 });
 
-it('tells the standing highest bidder that they lead', function (): void {
-    $auction = liveAuction();
+it('tells the bidder in the lead that they lead, and gives them nothing to press', function (): void {
+    $auction = cumulativeAuction(minimum: 100, increment: 10);
     $me = bidder(1_000);
 
     placeBid($auction, $me, 100);
 
     Livewire::actingAs($me)
         ->test(AuctionRoom::class, ['auction' => $auction->fresh()])
-        ->assertSee('You hold the highest bid');
+        ->assertSee('You hold the lead')
+        ->assertDontSee('To take the lead, add');
 });
 
 // ------------------------------------------------------------ Dashboard

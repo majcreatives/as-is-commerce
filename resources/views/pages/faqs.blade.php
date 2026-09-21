@@ -10,7 +10,7 @@
     $faqs = [
         [
             'Is this a store or an auction site?',
-            'A store first. Every product has a Buy Now price in cedis and most can be bought outright the moment you pay. Some products are also auctioned, where you bid with credits and the highest valid bid wins when the auction closes.',
+            'A store first. Every product has a Buy Now price in cedis and most can be bought outright the moment you pay. Some products are also auctioned, where you bid with credits and the largest total of credits committed wins when the auction closes.',
         ],
         [
             'What are credits?',
@@ -22,7 +22,11 @@
         ],
         [
             'What decides who wins an auction?',
-            'The highest valid bid when the auction closes. Not the last bid, not the most bids, and not whoever led longest. If two bids are for the same amount, the one placed first leads.',
+            'The largest total of credits committed when the auction closes. Your position is the total you have put into that auction, not the size of any one bid, and each bid puts you exactly one step ahead of the leader, so no two bidders ever hold the same total.',
+        ],
+        [
+            'Can I choose how many credits to bid?',
+            'No. We work out the one bid that puts you exactly one step ahead of the leader and show it on the button; you confirm it before any credits are taken. If somebody bids first, your bid is refused, nothing is consumed, and you are shown the new amount. The leader has no bid to place until somebody overtakes them.',
         ],
         [
             'Does the countdown decide when an auction ends?',

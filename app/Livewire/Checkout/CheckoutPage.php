@@ -173,6 +173,10 @@ class CheckoutPage extends Component
     {
         $this->order->refresh();
 
+        // The win is described in the words of the model the auction was frozen
+        // with, so the auction has to be loaded rather than read lazily.
+        $this->order->loadMissing('auction');
+
         $this->guardPayable();
 
         return view('livewire.checkout.checkout-page', [

@@ -7,8 +7,9 @@
      components so the markup itself keeps them apart. There is no line on this
      card that could be read as "this auction costs 180 cedis".
 
-     No bidder is ever named. The card says what the highest bid is, not whose
-     it is. --}}
+     No bidder is ever named. The card says what the figure to beat is, not whose
+     it is. Its label is the auction's own: "Highest Bid" while a bid is what
+     ranks, "Highest Total" when the running total is. --}}
 
 @php
     $product = $auction->product;
@@ -67,7 +68,7 @@
                      label is what stops the value beside it ever being read as
                      a price -- and "auction price" is a phrase that must never
                      appear anywhere. --}}
-                <dt class="text-slate-600">Highest Bid (Credits)</dt>
+                <dt class="text-slate-600">{{ $auction->rules()->bidModel->leaderLabel() }}</dt>
                 <dd class="font-semibold tabular-nums text-slate-900">
                     @if ($highest)
                         {{ number_format($highest) }}

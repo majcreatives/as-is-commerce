@@ -27,7 +27,7 @@
                  read before they can shop. --}}
             <p class="mt-4 text-base text-brand-100 sm:text-lg">
                 Every product has a Buy Now price in cedis, and most are yours the moment you pay.
-                Some are also auctioned: you bid with credits, and the highest valid bid wins.
+                Some are also auctioned: you bid with credits, and the largest total of credits committed wins.
             </p>
 
             <div class="mt-8 flex flex-wrap gap-3">

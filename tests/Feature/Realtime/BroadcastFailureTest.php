@@ -82,14 +82,14 @@ it('does not roll back a committed bid because delivery failed', function (): vo
 });
 
 it('lets a bidder bid through the auction room when broadcasting throws', function (): void {
-    $auction = liveAuction();
+    $auction = cumulativeAuction(minimum: 150, increment: 10);
     $bidder = bidder(1_000);
 
     // Through the interface, so a transport exception would surface as a 500
     // for a bidder whose credits had already been consumed.
     Livewire::actingAs($bidder)
         ->test(AuctionRoom::class, ['auction' => $auction->fresh()])
-        ->set('amount', '150')
+        ->call('review', 150)
         ->call('bid')
         ->assertHasNoErrors()
         ->assertOk();

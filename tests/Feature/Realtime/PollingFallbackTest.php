@@ -93,7 +93,7 @@ it('preserves the Stage 15 adaptive cadence exactly', function (): void {
 });
 
 it('serves the whole auction experience without any JavaScript', function (): void {
-    $auction = liveAuction();
+    $auction = cumulativeAuction(minimum: 250, increment: 10);
     $bidder = bidder(1_000);
     placeBid($auction->fresh(), $bidder, 250);
 
@@ -103,19 +103,19 @@ it('serves the whole auction experience without any JavaScript', function (): vo
         ->test(AuctionRoom::class, ['auction' => $auction->fresh()])
         ->assertOk()
         ->assertSee('250')
-        ->assertSee('Highest Bid (Credits)')
+        ->assertSee('Highest Total (Credits)')
         ->assertSee('Place a bid');
 });
 
 it('accepts a bid with no socket in sight', function (): void {
     config(['broadcasting.default' => 'null']);
 
-    $auction = liveAuction();
+    $auction = cumulativeAuction(minimum: 175, increment: 10);
     $bidder = bidder(1_000);
 
     Livewire::actingAs($bidder)
         ->test(AuctionRoom::class, ['auction' => $auction->fresh()])
-        ->set('amount', '175')
+        ->call('review', 175)
         ->call('bid')
         ->assertHasNoErrors();
 

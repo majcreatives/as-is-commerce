@@ -17,6 +17,7 @@ use App\Models\Auction;
 use App\Models\AuctionRuleset;
 use App\Models\Bid;
 use App\Models\Product;
+use Livewire\Features\SupportLockedProperties\CannotUpdateLockedPropertyException;
 use Livewire\Livewire;
 
 /*
@@ -97,7 +98,7 @@ it('shows the three figures without conflating them', function (): void {
 });
 
 it('says plainly that credits are not cash', function (): void {
-    $auction = liveAuction();
+    $auction = cumulativeAuction();
 
     Livewire::actingAs(bidder())
         ->test(AuctionRoom::class, ['auction' => $auction])
@@ -161,45 +162,80 @@ it('offers a Buy Now button that opens a checkout without ending the auction', f
 // --------------------------------------------------------------- Bidding
 
 it('places a bid from the auction page', function (): void {
-    $auction = liveAuction();
+    // The bidder does not type an amount. The server works out the one valid
+    // bid, the button shows it, and the bidder confirms that figure.
+    $auction = cumulativeAuction(minimum: 150, increment: 10);
     $user = bidder(1_000);
 
     Livewire::actingAs($user)
         ->test(AuctionRoom::class, ['auction' => $auction])
-        ->set('amount', '150')
+        ->assertSee('Bid 150 credits')
+        ->call('review', 150)
+        ->assertSet('confirming', true)
         ->call('bid')
         ->assertHasNoErrors();
 
     expect(Bid::count())->toBe(1)
         ->and(Bid::first()->amount_credits)->toBe(150)
+        ->and(Bid::first()->cumulative_credits)->toBe(150)
         ->and(creditWalletFor($user)->fresh()->balance)->toBe(850);
 });
 
 it('reports the domain reason when a bid is refused', function (): void {
-    $ruleset = AuctionRuleset::factory()->active()->withoutThrottle()
-        ->withBidRules(minimum: 100)->create();
-    $auction = liveAuction(ruleset: $ruleset);
+    $auction = cumulativeAuction(minimum: 100, increment: 10);
+    $second = bidder(1_000);
+
+    placeBid($auction, bidder(1_000), 100);
+
+    // The second bidder is shown 110 and opens the confirmation...
+    $component = Livewire::actingAs($second)
+        ->test(AuctionRoom::class, ['auction' => $auction->fresh()])
+        ->call('review', 110);
+
+    // ...and somebody else takes the lead on that very figure first.
+    placeBid($auction->fresh(), bidder(1_000), 110);
+
+    $component->call('bid')
+        ->assertHasErrors('bid')
+        ->assertSet('confirming', false);
+
+    // The domain's own words, naming the figure that is right now.
+    expect($component->errors()->first('bid'))->toContain('add exactly 120 credits');
+
+    expect(Bid::count())->toBe(2)
+        ->and(creditWalletFor($second)->fresh()->balance)->toBe(1_000);
+});
+
+it('will not open a confirmation for a figure the server did not show', function (int $crafted): void {
+    // What used to be "refuses an amount that is not a whole number" tested a
+    // text box that no longer exists. What can arrive now is a figure that is
+    // not the one the server worked out, and every such figure is refused.
+    $auction = cumulativeAuction(minimum: 100, increment: 10);
 
     Livewire::actingAs(bidder(1_000))
         ->test(AuctionRoom::class, ['auction' => $auction])
-        ->set('amount', '20')
-        ->call('bid')
-        ->assertHasErrors('amount');
+        ->call('review', $crafted)
+        ->assertHasErrors('bid')
+        ->assertSet('confirming', false);
+
+    expect(Bid::count())->toBe(0);
+})->with([1, 99, 101, 1_000, -5, 0]);
+
+it('does not let the confirmed amount be written from the browser', function (): void {
+    $auction = cumulativeAuction(minimum: 100, increment: 10);
+
+    $component = Livewire::actingAs(bidder(1_000))
+        ->test(AuctionRoom::class, ['auction' => $auction]);
+
+    // Locked: a request cannot set it, so it is only ever what the server chose.
+    expect(fn () => $component->set('confirmedAmount', 1))
+        ->toThrow(CannotUpdateLockedPropertyException::class);
+
+    // And with nothing confirmed, placing a bid does nothing at all.
+    $component->call('bid');
 
     expect(Bid::count())->toBe(0);
 });
-
-it('refuses a bid amount that is not a whole number of credits', function (string $amount): void {
-    $auction = liveAuction();
-
-    Livewire::actingAs(bidder(1_000))
-        ->test(AuctionRoom::class, ['auction' => $auction])
-        ->set('amount', $amount)
-        ->call('bid')
-        ->assertHasErrors('amount');
-
-    expect(Bid::count())->toBe(0);
-})->with(['', '12.50', '-5', 'GHS 150', 'abc']);
 
 it('consumes the credits once when the same bid is submitted twice', function (): void {
     $auction = liveAuction();
@@ -217,12 +253,12 @@ it('consumes the credits once when the same bid is submitted twice', function ()
 });
 
 it('issues a new key after a bid succeeds so the next one is a real bid', function (): void {
-    $auction = liveAuction();
+    $auction = cumulativeAuction(minimum: 100, increment: 10);
 
     $component = Livewire::actingAs(bidder(1_000))->test(AuctionRoom::class, ['auction' => $auction]);
     $before = $component->get('bidKey');
 
-    $component->set('amount', '100')->call('bid')->assertHasNoErrors();
+    $component->call('review', 100)->call('bid')->assertHasNoErrors();
 
     expect($component->get('bidKey'))->not->toBe($before);
 });
@@ -237,9 +273,11 @@ it('does not offer a bid form on a closed auction', function (): void {
 });
 
 it('asks a guest to sign in rather than showing a bid form', function (): void {
-    Livewire::test(AuctionRoom::class, ['auction' => liveAuction()])
+    Livewire::test(AuctionRoom::class, ['auction' => cumulativeAuction(minimum: 25)])
         ->assertSee('to bid on this auction')
-        ->assertDontSee('Commit credits');
+        // A visitor sees what joining costs, but there is nothing to press.
+        ->assertSee('The opening bid on this auction is')
+        ->assertDontSee('Bid 25 credits');
 });
 
 it('explains a Buy Now ending to the bidders who lost', function (): void {
@@ -257,7 +295,7 @@ it('explains a Buy Now ending to the bidders who lost', function (): void {
         // say outright that there is no auction winner. The behaviour is
         // unchanged; only the sentence is.
         ->assertSee('There is no auction winner')
-        ->assertSee('the highest bidder did not win');
+        ->assertSee('the bidder who was leading did not win');
 });
 
 // ------------------------------------------------------------ Admin index
@@ -273,7 +311,7 @@ it('lists auctions for an administrator', function (): void {
 
 it('creates a draft auction from the admin form', function (): void {
     $product = Product::factory()->active()->pricedAt(550_000)->create();
-    $ruleset = AuctionRuleset::factory()->active()->create();
+    $ruleset = AuctionRuleset::factory()->active()->cumulative()->create();
 
     Livewire::actingAs($this->admin)
         ->test(AuctionManager::class)
@@ -301,7 +339,7 @@ it('converts the settlement amount without a float', function (): void {
         ->test(AuctionManager::class)
         ->call('create')
         ->set('product_id', $product->id)
-        ->set('auction_ruleset_id', AuctionRuleset::factory()->active()->create()->id)
+        ->set('auction_ruleset_id', AuctionRuleset::factory()->active()->cumulative()->create()->id)
         ->set('settlement_amount', '0.29')
         ->call('save')
         ->assertHasNoErrors();

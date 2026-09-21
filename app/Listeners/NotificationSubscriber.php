@@ -86,12 +86,20 @@ class NotificationSubscriber
             $auction = $bid->auction;
             $name = $auction->product->name;
 
+            // Under the cumulative model a bid is the gap it closes, and what
+            // matters to the bidder is where it leaves them -- which is always
+            // the lead, since every bid lands one step ahead. Said, so the
+            // message is not "a bid of 2" with no hint that it won the lead.
+            $leadNote = $auction->rules()->bidModel->isCumulative()
+                ? " You now lead with {$this->credits($bid->rankingValue())}."
+                : '';
+
             $this->notifications->send(
                 recipient: $bid->user,
                 type: NotificationType::BidPlaced,
                 title: 'Bid placed',
                 message: "Your bid of {$this->credits($bid->amount_credits)} on {$name} was "
-                    .'accepted. Those Credits are now consumed and are not refunded.',
+                    ."accepted.{$leadNote} Those Credits are now consumed and are not refunded.",
                 // The bid's own id: one bid, one confirmation, however many
                 // times a retried request is delivered.
                 eventKey: "bid.placed:{$bid->id}",
@@ -121,13 +129,20 @@ class NotificationSubscriber
         }
 
         $auction = $event->bid->auction;
+        $model = $auction->rules()->bidModel;
+
+        // What happened, in the model's own terms. Under the cumulative model
+        // nobody "bid higher": somebody closed the gap and took the lead, and
+        // the figure that matters is the new total to beat, not the credits
+        // that bid happened to add.
+        $what = $model->isCumulative() ? 'taken the lead on' : 'bid higher on';
 
         $this->notifications->send(
             recipient: $previous->user,
             type: NotificationType::Outbid,
             title: 'You were outbid',
-            message: "Someone has bid higher on {$auction->product->name}. The highest bid is now "
-                ."{$this->credits($event->bid->amount_credits)}. Your earlier Credits stay "
+            message: "Someone has {$what} {$auction->product->name}. The {$model->leaderNoun()} is now "
+                ."{$this->credits($event->bid->rankingValue())}. Your earlier Credits stay "
                 .'consumed whether or not you bid again.',
             // Keyed on the displacing bid and the displaced person, so one
             // bid produces one message per person it overtook.
@@ -180,14 +195,14 @@ class NotificationSubscriber
             }
 
             $this->notifyLosers($auction, NotificationType::AuctionLost, function (Auction $a): string {
-                $winning = $a->winningBid?->amount_credits;
+                $winning = $a->winningBid?->rankingValue();
 
                 return $winning === null
                     ? "The auction for {$a->product->name} has ended without a winning bid. The "
                         .'Credits you committed remain consumed.'
-                    : "The auction for {$a->product->name} has ended. You did not win. The winning "
-                        ."bid was {$this->credits($winning)}. The Credits you committed remain "
-                        .'consumed and are not refunded.';
+                    : "The auction for {$a->product->name} has ended. You did not win. The "
+                        ."{$a->rules()->bidModel->winningFigure()} was {$this->credits($winning)}. "
+                        .'The Credits you committed remain consumed and are not refunded.';
             });
         }, 'auction_closed');
     }
@@ -211,14 +226,15 @@ class NotificationSubscriber
         // Not nullsafe: an auction with a winner always has the bid they won
         // with. The guard above establishes the winner, and a CHECK constraint
         // refuses a row carrying one without the other.
-        $credits = $this->credits($auction->winningBid->amount_credits);
+        $credits = $this->credits($auction->winningBid->rankingValue());
         $settlement = $this->money($auction->settlementAmount()->format());
         $deadline = $auction->settlement_due_at
             ?->timezone(settings()->getString('display_timezone', 'UTC'))
             ->format('j M Y, H:i');
 
-        $message = "You won the auction for {$auction->product->name}. Your winning bid was "
-            ."{$credits}, which are already consumed. Your Auction Settlement Amount is "
+        $message = "You won the auction for {$auction->product->name}. Your "
+            ."{$auction->rules()->bidModel->winningFigure()} was {$credits}, which are already consumed. "
+            .'Your Auction Settlement Amount is '
             ."{$settlement}, payable separately.";
 
         if ($deadline !== null) {

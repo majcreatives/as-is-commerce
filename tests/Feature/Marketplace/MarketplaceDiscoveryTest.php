@@ -289,7 +289,7 @@ it('explains the platform without conflating credits and cedis', function (): vo
     $this->get(route('how-it-works'))
         ->assertOk()
         ->assertSee('Credits are not money')
-        ->assertSee('The highest valid bid wins')
+        ->assertSee('The largest total wins')
         ->assertSee('This is a discount, not a refund')
         // The settlement is its own figure, and said to be.
         ->assertSee('separate figure in cedis');

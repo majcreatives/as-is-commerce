@@ -8,7 +8,7 @@
 <div>
     <x-page-header
         title="Auctions"
-        description="Bid with credits, or buy outright. The highest valid bid wins when an auction closes." />
+        description="Bid with credits, or buy outright. The largest total of credits committed wins when an auction closes." />
 
     {{-- The one thing a bidder most needs to understand, said once, plainly,
          and not in small print. --}}

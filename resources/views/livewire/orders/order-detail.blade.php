@@ -149,9 +149,7 @@
             @if ($order->source === App\Enums\OrderSource::AuctionWin)
                 <x-card title="How you won this">
                     <p class="text-sm text-slate-700">
-                        You held the highest valid credit bid of
-                        <strong>{{ number_format($pricing->winningBidCredits ?? 0) }} credits</strong>
-                        when the auction closed.
+                        {{ $order->auction->rules()->bidModel->youHeldSentence($pricing->winningBidCredits ?? 0) }}
                     </p>
                     <p class="mt-2 text-sm text-slate-600">
                         Those credits were consumed when you bid. They were not charged again here,

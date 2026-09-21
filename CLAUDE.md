@@ -21,6 +21,13 @@ auction engine, and checkout: `orders`, `order_items`, `order_payments`,
 Paystack payments for products, verified idempotent fulfilment, and the
 inventory and auction completion that follows.
 
+**Two bidding models exist, and every new auction follows the cumulative one.** A
+bidder's position is the total credits they have consumed on the auction; the
+server works out the one bid that lands them exactly one step ahead of the
+leader; the largest total wins (see *The auction model*). Auctions made earlier
+follow the single-highest-bid model and are read, explained and finished under
+it. Nothing in the product starts one.
+
 Both acquisition paths run end to end, without anybody watching. Scheduled
 auctions open themselves, close on their own clock, hand the winner a
 settlement checkout at the moment they win, and forfeit it if the deadline
@@ -75,7 +82,9 @@ Credits never become cash. Credits spent bidding are gone — for losing and
 winning bidders alike, and the Buy Now discount does not give them back, it
 only reduces a separate purchase price.
 
-Terminology: say **Highest Bid (Credits)**, never "auction price"; say
+Terminology: say the auction's own leading-figure label — **Highest Total
+(Credits)** under the cumulative model, **Highest Bid (Credits)** under the
+earlier one — never "auction price"; say
 **Credits**, **Credit Package**, **Credit Balance**, never "credit value" in
 money.
 
@@ -350,38 +359,97 @@ These exist because this application handles money and competitive outcomes.
 
 ## The auction model
 
-**The highest valid credit bid wins** when an auction closes normally. Not the
-last bidder, not whoever bid most often, not whoever held the lead longest. A
-bidder who is overtaken and later bids higher still wins on that highest bid.
+An auction follows one of two bidding models, chosen when it is created and
+frozen into its snapshot as `bid_model`. **Every rule below says which model it
+belongs to. Never state a rule of one as if it were true of both** — that is how
+a customer gets told the wrong thing about the auction in front of them.
 
-**A successful Buy Now purchase ends the auction immediately**, and the
-standing highest bidder does not win.
+**Cumulative step (`cumulative_step`) — every new auction.** A bidder's position
+is the total credits they have consumed on that auction. The **largest total
+wins** when it closes normally: not the last bidder, not the largest single bid,
+not whoever led longest. The bidder never chooses an amount; the server works out
+the one valid bid.
 
-This model replaced Last Bidder Standing in a dedicated correction stage. If
-you find anything implying a last-bidder winner, a "leader" who must be
-unique, or a fixed cost per bid, it is wrong — those columns were dropped, and
-tests assert they stay gone.
+```
+opening bid    the minimum bid, exactly
+catch-up bid   leader's total + step − your own total      (you land exactly one step ahead)
+the leader     has no bid to place until somebody overtakes them
+```
+
+Every bid lands strictly ahead of everybody, so no two bidders ever hold the same
+total. The business owner's worked example is a test and the canonical
+illustration: minimum 1, step 1 — A opens with 1; B must bid 2; A must bid 2 (to
+3); C must bid 4; B must bid 3 (to 5). If a change makes any of those figures
+differ, the change is wrong.
+
+**Single highest (`single_highest`) — the earlier model.** The highest valid
+*single* credit bid wins. The bidder chooses the amount, subject to a minimum, an
+optional lower-bound increment over the leader, and an optional bar on raising
+your own bid. It stays in the engine, untouched, for two reasons: every auction
+made before the cumulative model was made under it and must stay explainable, and
+several hundred tests place arbitrary amounts to set up known consumed credits and
+are the regression proof that nothing financial moved. **It is not offered**: no
+admin path lists or accepts a ruleset that follows it for a new auction, and the
+room does not bid on an auction that follows it.
+
+**A successful Buy Now purchase ends the auction immediately**, under either
+model, and whoever was leading does not win.
+
+The single-highest model replaced Last Bidder Standing in a dedicated correction
+stage. Anything implying a last-bidder winner or a fixed `bid_cost_credits` is
+wrong — those columns were dropped, and tests assert they stay gone. (The
+cumulative model's leader *is* unique, but by construction, since totals cannot
+tie; that is not the dropped `unique_leader` rule, which was a different idea.)
 
 ### Bids carry their own amounts
 
-There is no fixed cost per bid. A bidder commits however many credits they
-choose, and every accepted bid consumes exactly that many, permanently.
-Losing bidders do not get them back, and neither does the winner.
+There is no fixed cost per bid and never a cost per bid *action*. Every accepted
+bid consumes exactly its own `amount_credits`, permanently: a bid of 150 consumes
+150, and a bid of 2 consumes 2. Losing bidders do not get them back, and neither
+does the winner. Under the single-highest model the bidder chooses the amount;
+under the cumulative model it is the catch-up bid.
 
-The future bid record must therefore hold an explicit amount. Never write code
-that assumes one credit per bid, or reads a per-bid price from the ruleset —
-there is no such field.
+**Two facts, never confused.** `amount_credits` is what this bid *consumed*.
+`cumulative_credits` is where it *left its bidder*: the credits that bidder had
+consumed on the auction, this bid included. It is written once, at insert, under
+the auction lock, and is NULL under the single-highest model, which ranks by the
+amount and never needed a running total. Anything showing "the figure that leads"
+or "the figure that won" reads `Bid::rankingValue()` (the total under the
+cumulative model, the amount under the other); anything showing what a bid *cost*
+reads `amount_credits`. Confusing them is how a customer is shown "highest bid:
+22" beside a history row that says 2.
 
-### Undecided rules stay null
+Never write code that assumes one credit per bid, or reads a per-bid price from
+the ruleset — there is no such field.
 
-`minimum_bid_credits`, `minimum_bid_increment_credits` and
-`allow_bid_increase` are nullable, and are null. The business has not chosen
-these values.
+### Undecided rules stay null — and the cumulative model decided its two
+
+**The cumulative model has decided its two values, by requiring them.** The
+minimum bid (the opening bid, the only opening figure that is not invented) and
+`bid_increment_credits` (the exact step) must both be set before a ruleset can be
+activated. There is no default, no fallback and no "no minimum". A cumulative
+ruleset carries none of the single-highest fields — a lower-bound increment, or
+the raise-your-own-bid option, which has no meaning when a leader cannot bid — and
+the rules object and three CHECK constraints refuse them beside it.
+
+**Under the single-highest model** `minimum_bid_credits`,
+`minimum_bid_increment_credits` and `allow_bid_increase` are nullable, and are
+null. The business has not chosen these values.
 
 **Do not invent one.** Null means "no rule", which is different from any
 number, and a value seeded to fill the schema becomes the number everyone
 designs around. `AuctionRules::smallestValidBid()` returns null when nothing
-is configured; the engine must not substitute a floor of its own.
+is configured; the engine must not substitute a floor of its own. (It also
+returns null under the cumulative model, where there is one valid bid and not a
+floor — that is `catchUpBid()`.)
+
+**A ruleset adopts the cumulative model deliberately.** Which model a ruleset
+follows is set in code by the caller (`bid_model` is not fillable), never by a
+field or a request. Drafting a new version of an older ruleset moves it to the
+cumulative model: the earlier rule's fields are cleared, the opening bid carries
+over, and the step is *not* carried over from the old field — its meaning was
+different — so the draft cannot be activated until somebody has chosen one.
+Nothing invents a number.
 
 ### Settlement is a per-auction amount, not a ruleset field
 
@@ -459,17 +527,31 @@ unexplainable.
 
 Rules are read from the snapshot, always. `AuctionRuleset` is mutable
 configuration for *creating* auctions; `AuctionRules` is what the engine runs
-on. Every snapshot records `winner_rule` explicitly, so the engine reads that
-from the auction rather than inferring it from the code of the day.
+on. Every snapshot records `bid_model`, and the winner rule is **derived from
+it** (`AuctionRules::winnerRule()`), so the engine reads how an auction picks its
+winner from the auction itself, never from the code of the day. `winner_rule` is
+still written, as a label, and checked against the model on the way back in: a
+snapshot that says two different things is refused rather than guessed at.
 
 Consequences to respect:
 
 - `AuctionRules` is a `readonly` class. Keep it that way.
 - Bump `AuctionRules::SNAPSHOT_VERSION` if its serialized shape changes.
-  Version 3 is the corrected model — the flat-rate Buy Now discount is gone
-  and consumed credits are valued lot by lot; version 2 carried that flat rate
-  and is rewritten to version 3 by a migration; version 1 was the last-bidder
-  shape and is refused rather than reinterpreted.
+  Version 4 records `bid_model`. Every version 3 snapshot was single-highest, and
+  a migration rewrote them: it stops on any version or winner rule it does not
+  understand, runs the rewrite and a check that only two keys changed as one
+  transaction, and restores the freeze trigger in a `finally`. Version 3 was the
+  corrected model — the flat-rate Buy Now discount is gone and consumed credits
+  are valued lot by lot — and is now refused rather than reinterpreted, as
+  version 2 (which carried that flat rate) and version 1 (the last-bidder shape)
+  were before it.
+- **Never give an existing snapshot key a new meaning.**
+  `minimum_bid_increment_credits` means "a lower bound over the leader" in every
+  ruleset and every frozen snapshot, and always has. The cumulative model's exact
+  step is a separate `bid_increment_credits`. Reading the old key as an exact step
+  would rewrite what a frozen snapshot says about how its auction was decided —
+  staging had three auctions frozen under "at least 5 above the leader", and their
+  recorded bids would have looked like rule violations.
 - Only **draft** rulesets are editable. Changing an active one means drafting
   a new version, never mutating it.
 - Archived rulesets are never deleted.
@@ -489,6 +571,13 @@ be trusted.
 Ties go to the earliest bid at the winning amount, ordered by the per-auction
 `sequence` allocated under the auction row lock. Not by timestamp: two bids in
 the same millisecond would be genuinely ambiguous.
+
+**Ranking follows the auction's model.** `HighestBidResolver` ranks by the column
+the frozen model names — `amount_credits` under single-highest,
+`cumulative_credits` under cumulative — so the two rules cannot mix within one
+auction. Under the cumulative model the tie-break never has anything to decide,
+because an exact step means no two bidders share a total; it stays, so the order
+is total whatever the data.
 
 ### The lock order — observe it everywhere
 
@@ -520,6 +609,19 @@ the projection, apply any extension.
 - **Never read the standing highest bid without the lock.** Two bidders would
   measure themselves against the same figure and both clear an increment only
   one of them actually cleared.
+- **Under the cumulative model the validator demands exactly the catch-up bid**,
+  against a locking read of the leader, under the auction lock. Two bidders who
+  each worked out the same catch-up from the same leader cannot both clear it:
+  the first commits, the second reads the leader the first left behind and is
+  refused, having consumed nothing.
+- **A stale figure is refused, never substituted.** The refusal names the amount
+  that is right now. Swapping it in silently would spend more credits than the
+  bidder agreed to.
+- **A leader has no bid to place**, and the domain refuses one even on a crafted
+  request.
+- **The catch-up bid is computed in one place.** `AuctionRules::catchUpBid()` is
+  the definition and `BidValidator::nextBid()` is its display twin, which decides
+  nothing. Never compute it in Blade, JavaScript or a component.
 
 ### Bids are append-only
 
@@ -540,6 +642,14 @@ query, guarded exactly like wallet balances and stock:
 - `rebuild()` recomputes from the bid records alone,
 - `verify()` **reports** a mismatch and never repairs it. Report it; a human
   decides.
+
+`highest_bid_credits` holds the leader's *ranking value* — their total under the
+cumulative model, their bid's amount under the other — which is what listing
+pages show as the figure to beat. Under the cumulative model `verify()` also
+checks the running totals themselves, because every ranking decision rests on
+them: each bid must carry a total, and each total must equal the sum of that
+bidder's bids up to and including it. `php artisan auctions:verify-snapshots`
+runs this, and checks every snapshot still loads, across all auctions.
 
 ### The clock
 
@@ -563,8 +673,8 @@ auction. Only `CompleteBuyNow`, called after a server-confirmed payment.
 
 A completed Buy Now records `closure_reason = buy_now`, puts the buyer in
 `buy_now_user_id`, and leaves `winner_user_id` and `winning_bid_id` null. A
-CHECK constraint refuses a row claiming both. The standing highest bidder does
-not win and gets nothing back.
+CHECK constraint refuses a row claiming both. Whoever was leading does not win
+and gets nothing back.
 
 Nothing calls it yet, and the customer page quotes a price rather than
 offering a purchase button.
@@ -578,6 +688,9 @@ Never a wallet balance. Never credits bought and not bid, promotional credits
 not bid, credits spent on another auction, or another user's credits. A
 balance moves with everything else the user does; bids are historical facts
 chained to the transactions that paid for them.
+
+Under the cumulative model this equals the bidder's total on that auction — the
+same number, from the same records — and a test holds the two together.
 
 ### What is frozen
 
@@ -606,7 +719,7 @@ That interface exists for a reason: the orders domain already depends on the
 auction domain, so a direct call back would couple them both ways. **Do not
 replace it with a direct call to `StartSettlementCheckout`.**
 
-A handoff failure must never reopen a closed auction. The highest bid won and
+A handoff failure must never reopen a closed auction. The winner was decided and
 the credits are consumed; closing stands, and the missing order is an
 administrative problem rather than a reason to un-close.
 
@@ -690,8 +803,8 @@ decided at step 1. Do not reorder it.
 
 ### Opening a checkout ends nothing
 
-It creates an obligation. The auction stays live, bidding continues, and the
-highest bidder is still in the running until a payment is verified. A click, a
+It creates an obligation. The auction stays live, bidding continues, and
+whoever is leading is still in the running until a payment is verified. A click, a
 checkout screen, a redirect and a payment attempt are none of them the point
 of no return.
 
@@ -766,9 +879,19 @@ resolves this for a whole page in one query; do not fetch per card.
 - `x-credits` renders a count.
 
 Never render a credit figure through `x-money`, and never write GH₵ in front of
-one. On cards the locked label is **Highest Bid (Credits)** — naming the unit
-in the label is what stops the number beside it reading as a price. "Auction
-price" must appear nowhere.
+one. One number leads on every auction card and page, and its label is the
+auction's own, from `BidModel::leaderLabel()`: **Highest Bid (Credits)** while a
+single bid is what ranks, **Highest Total (Credits)** under the cumulative model.
+Naming the unit in the label is what stops the number beside it reading as a
+price, and naming the *noun* correctly is what stops "Highest Bid: 22" sitting
+beside a history row of "+2". "Auction price" must appear nowhere.
+
+Rule sentences and result sentences come from the same enum
+(`ruleSentence()`, `winnerSentence()`, `youWonSentence()`), so no view states a
+rule that is true of only one model. Where a sentence can be neutral ("whoever is
+leading", "the winner"), make it neutral instead of branching. The general pages
+(home, About, FAQs, How It Works, the auction index) describe the platform's
+current rule, which is the cumulative one.
 
 ### Read models, not queries in views
 
@@ -789,15 +912,21 @@ second says plainly it is not coming back.
 
 ### Bidding takes two deliberate actions
 
-`review()` validates the shape of the amount and opens a confirmation showing
-what it costs and that the credits go immediately. `bid()` places it. Every
-business rule is still the domain's, checked against a locked auction row — so
-a confirmation left open cannot commit credits against state that has moved on,
-and a refused bid closes the confirmation and re-reads the auction.
+The bidder does not type an amount. The room shows the one valid bid on a button;
+`review($shown)` compares the figure on the button with the server's reading of it
+right now, and opens a confirmation showing what it costs, where it leaves them,
+and that the credits go immediately; `bid()` places `confirmedAmount`. That
+property is `#[Locked]` and is set only by `review()`. Every business rule is
+still the domain's, checked against a locked auction row — so a stale page is told
+so, a confirmation left open cannot commit credits against state that has moved
+on, and a refused bid closes the confirmation, consumes nothing and re-reads the
+auction. A refused attempt and its retry are different intended bids, so the
+idempotency key is renewed after a refusal.
 
-Do not move any of that logic into the component, and do not compute a minimum
-bid or a discount in Blade or JavaScript. `BidValidator` and `BuyNowPricer` are
-the answers; the page displays them.
+Do not move any of that logic into the component, and do not compute the next
+bid, a minimum or a discount in Blade or JavaScript. `BidValidator`,
+`AuctionRules::catchUpBid()` and `BuyNowPricer` are the answers; the page
+displays them. An auction that follows the earlier model is shown, not bid on.
 
 ### The countdown decides nothing
 
@@ -1213,6 +1342,11 @@ Three things to get right, because they are the three easiest to get wrong:
 - A blocked payment promises nothing. It says the money arrived and somebody
   is looking, never that a refund is coming -- one may follow, once a person
   decides, and the customer hears about it then.
+- Under the cumulative model a bid is the gap it closes, not the figure that
+  matters. Say where it *left* them ("You now lead with 22 Credits"), and tell
+  somebody overtaken that a rival "took the lead" and what the new total to beat
+  is -- never that they "bid higher". Name the figure that decided a result in
+  the model's own terms ("winning total" or "winning bid"), from `BidModel`.
 
 ### Refund messages say only what has happened
 

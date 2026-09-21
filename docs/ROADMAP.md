@@ -18,9 +18,11 @@ work today. Nothing in this roadmap relaxes any rule in `AGENTS.md`.
    application logic. A manual change made on staging for investigation is
    reproduced in local source before it counts as part of the product.
 3. **No golden rule is relaxed.** Server-authority, ledger authority, append-only
-   financial history, integer minor units, credit/cash separation, highest valid
-   credit bid, frozen auction snapshots, idempotency, and no-silent-financial-
-   repair all continue to bind every stage below.
+   financial history, integer minor units, credit/cash separation, the winner
+   rule frozen into each auction's snapshot (the largest total under the
+   cumulative model; the highest single bid under the earlier one), frozen
+   auction snapshots, idempotency, and no-silent-financial-repair all continue
+   to bind every stage below.
 4. **Production is a separate controlled operation.** Nothing here authorizes a
    production migration or financial change by inference. Each production stage
    requires explicit approval when reached.
@@ -51,6 +53,28 @@ work today. Nothing in this roadmap relaxes any rule in `AGENTS.md`.
 | **29** | Soft launch | Very High | Go visible without advertising; observe behaviour; exception centre stays clean; verified payment/refund paths behave |
 | **30** | Post-launch monitoring/reconciliation | Very High | Wallets, credits, refunds and referrals reconciled; exceptions actioned; financial invariants re-verified; discrepancies reported, not silently repaired |
 | **31+** | Growth, UX, gamification and optimization | Variable | Each feature separately approved before implementation. Ideas already deferred here: admin left-side navigation, product image gallery (multiple images, first as featured), and editable auction end dates (a business decision, not an implementation choice) |
+
+## What has actually been built under the 31+ row
+
+The stage numbers above were planned as a production launch sequence. In
+practice the work since Stage 28 went into the shop and the auction channel, and
+the labels below are what the commits and tags say. Each is independently
+reviewable and none changed a financial, inventory or payment rule except where
+stated.
+
+| Label | What | State |
+|---|---|---|
+| 30.0–30.3 | Shop cart: multi-item basket, atomic placement, one badge for the basket plus an owed checkout | deployed |
+| 30.4 | Product image galleries | deployed |
+| 30.5 | OTP email verification and password reset | deployed |
+| 31.1 | Auction-first product page, linked brand/category/condition, image viewer | deployed |
+| 31.2 | Bid history numbered by participant, not by bid | deployed |
+| 31.3 (part) | About, Contact, FAQs, grouped footer, How It Works as the one home for the explanation | deployed |
+| 31.6 | Notification badge on the mobile menu button | deployed |
+| — | Header menu dead on pages that are not Livewire components (Alpine ships inside Livewire's bundle) | fixed, deployed |
+| 31.4, 31.5, 31.7, 31.2b | Homepage discovery, registration redesign, newsletter popup, conditions as data | not started; see `PLAN_31_UX_BIDCAP_SHARING.md` |
+| **32** | **Cumulative bidding model** — a bidder's position is their total credits consumed; the server works out the one bid that lands them a step ahead; the largest total wins. `PLAN_32_FIXED_BID_INCREMENT.md` | steps 1–3 deployed; steps 4–6 committed; **deploy pending**, see `VERIFY_32_CUMULATIVE_BIDDING.md` |
+| 33 | Auction sharing and referral qualification | planned, not started; needs decisions in `PLAN_31_UX_BIDCAP_SHARING.md` |
 
 ## Reference-model reframe (recorded, not a stage change)
 

@@ -130,10 +130,20 @@ class BidValidator
 
     /**
      * The amount satisfies whichever bid rules the auction actually has.
+     *
+     * Which rules those are is decided by the bid model frozen into the
+     * auction's snapshot, never by anything else.
      */
     private function assertAmountSatisfiesRules(Auction $auction, User $user, int $amountCredits): void
     {
         $rules = $auction->rules();
+
+        if ($rules->bidModel->isCumulative()) {
+            $this->assertCatchUpBid($auction, $user, $amountCredits);
+
+            return;
+        }
+
         $highest = $this->bids->highestBidForUpdate($auction);
 
         if ($rules->hasMinimumBid() && $amountCredits < $rules->minimumBidCredits) {
@@ -159,6 +169,49 @@ class BidValidator
             if ($amountCredits < $required) {
                 throw BidRejected::belowIncrement($amountCredits, $required, $highest->amount_credits);
             }
+        }
+    }
+
+    /**
+     * The cumulative model: the bid must be EXACTLY the one that lands the
+     * bidder one step ahead of the leader.
+     *
+     * The bidder does not choose the amount, and this is where that is
+     * enforced rather than merely displayed. It runs under the auction row lock
+     * against a locking read of the leader, so two bidders who each worked out
+     * the same catch-up bid from the same leader cannot both clear it: the
+     * first commits, and the second reads the leader the first left behind and
+     * finds their amount is no longer the right one. That refusal consumes
+     * nothing, and the message names the figure that is right now.
+     *
+     * Order matters. A leader is told they already lead before being shown an
+     * amount they could never place, and the opening bid -- the only bid with
+     * no leader to measure against -- is the minimum and nothing else.
+     */
+    private function assertCatchUpBid(Auction $auction, User $user, int $amountCredits): void
+    {
+        $rules = $auction->rules();
+        $leader = $this->bids->highestBidForUpdate($auction);
+
+        if ($leader === null) {
+            $opening = $rules->catchUpBid(null);
+
+            if ($amountCredits !== $opening) {
+                throw BidRejected::notTheOpeningBid($amountCredits, $opening);
+            }
+
+            return;
+        }
+
+        if ($leader->user_id === $user->id) {
+            throw BidRejected::leaderCannotBid($leader->rankingValue());
+        }
+
+        $mine = $this->bids->standingOf($auction, $user->id);
+        $expected = $rules->catchUpBid($leader->rankingValue(), $mine);
+
+        if ($amountCredits !== $expected) {
+            throw BidRejected::notTheCatchUpBid($amountCredits, $expected, $leader->rankingValue(), $mine);
         }
     }
 
@@ -222,6 +275,48 @@ class BidValidator
      */
     public function smallestValidBid(Auction $auction): ?int
     {
+        // Null under the cumulative model, by the rules object's own answer:
+        // there is exactly one valid bid, it depends on who is asking, and it
+        // is {@see self::nextBid()}.
         return $auction->rules()->smallestValidBid($this->bids->highestAmount($auction));
+    }
+
+    /**
+     * The one bid this person could place right now under the cumulative model,
+     * or null when there is none to show them.
+     *
+     * FOR DISPLAY. This is an unlocked read, made for a page to show, and it is
+     * never what decides a bid: {@see self::assertValid()} re-derives the figure
+     * under the auction lock at the moment of placing, and refuses anything else.
+     * A page that is seconds out of date shows a number that is slightly wrong,
+     * and the domain, not the page, is what says so.
+     *
+     * Null means "no bid to offer": the auction is not cumulative, or this person
+     * holds the lead and has nothing to place until they are overtaken.
+     *
+     * A visitor who is not signed in is measured as having placed nothing, so a
+     * guest sees the cost of joining: the leader's total plus one step.
+     */
+    public function nextBid(Auction $auction, ?User $user): ?int
+    {
+        $rules = $auction->rules();
+
+        if (! $rules->bidModel->isCumulative()) {
+            return null;
+        }
+
+        $leader = $this->bids->highestBid($auction);
+
+        if ($leader === null) {
+            return $rules->catchUpBid(null);
+        }
+
+        if ($user !== null && $leader->user_id === $user->id) {
+            return null;
+        }
+
+        $mine = $user === null ? 0 : $this->bids->standingOf($auction, $user->id);
+
+        return $rules->catchUpBid($leader->rankingValue(), $mine);
     }
 }

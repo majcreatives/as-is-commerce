@@ -66,7 +66,7 @@ it('reports a bid model the engine cannot honour', function (): void {
 
     DB::table('auctions')->where('id', $draft->id)->update([
         'rules_snapshot' => DB::raw(
-            "JSON_SET(rules_snapshot, '\$.rules.bid_model', 'cumulative_step', '\$.rules.winner_rule', 'highest_cumulative_credits')"
+            "JSON_SET(rules_snapshot, '\$.rules.bid_model', 'auto_bid', '\$.rules.winner_rule', 'highest_auto_bid')"
         ),
     ]);
 

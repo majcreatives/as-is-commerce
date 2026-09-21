@@ -9,6 +9,7 @@ use App\Domain\Shared\Money\Money;
 use App\Enums\BidModel;
 use App\Enums\ForfeitPolicy;
 use JsonSerializable;
+use LogicException;
 
 /**
  * The complete, self-contained rule set governing a single auction.
@@ -115,6 +116,13 @@ final readonly class AuctionRules implements JsonSerializable
         // always built; the model is chosen deliberately, never by omission of
         // something else.
         public BidModel $bidModel = BidModel::SingleHighest,
+
+        // The exact step of the cumulative model: how far ahead of the leader a
+        // bid must land you. Meaningful ONLY under that model, and null under
+        // the other, where `minimumBidIncrementCredits` is the lower bound it
+        // has always been. Two fields rather than one reinterpreted, so neither
+        // name ever says something the field does not mean.
+        public ?int $bidIncrementCredits = null,
     ) {
         $this->assertValid();
     }
@@ -157,6 +165,14 @@ final readonly class AuctionRules implements JsonSerializable
      */
     public function smallestValidBid(?int $currentHighestBid = null): ?int
     {
+        // Under the cumulative model there is no "smallest valid bid": there is
+        // exactly one, it depends on who is asking, and it is
+        // {@see self::catchUpBid()}. Answering with a floor here would invite a
+        // caller to treat a range as valid when only one number is.
+        if ($this->bidModel->isCumulative()) {
+            return null;
+        }
+
         $floors = [];
 
         if ($this->minimumBidCredits !== null) {
@@ -168,6 +184,54 @@ final readonly class AuctionRules implements JsonSerializable
         }
 
         return $floors === [] ? null : max($floors);
+    }
+
+    /**
+     * The one bid that is valid for somebody who is NOT leading, under the
+     * cumulative model.
+     *
+     *   nobody has bid yet   the minimum bid: the opening bid, exactly
+     *   somebody leads       the leader's total + the step - your own total
+     *
+     * so that the bidder lands exactly one step ahead. Pure arithmetic on
+     * integers, and the single definition: the validator enforces it under the
+     * auction lock, and the room displays it, and neither may compute it
+     * independently.
+     *
+     * A leader is not asked. They have no bid to place until somebody overtakes
+     * them, which is a fact about who leads and not something arithmetic can
+     * express, so the caller decides that before calling.
+     *
+     * @param  ?int  $leaderTotal  The leader's total, or null when nobody has bid.
+     * @param  int  $myTotal  The bidder's own total on this auction; 0 if none.
+     *
+     * @throws InvalidAuctionRules When called on a model that has no catch-up bid.
+     * @throws LogicException When a non-leader's total is not below the leader's --
+     *                        an impossible state, which is reported rather than
+     *                        turned into a bid.
+     */
+    public function catchUpBid(?int $leaderTotal, int $myTotal = 0): int
+    {
+        if (! $this->bidModel->isCumulative()) {
+            throw InvalidAuctionRules::because('Only the cumulative model has a catch-up bid.');
+        }
+
+        if ($leaderTotal === null) {
+            return (int) $this->minimumBidCredits;
+        }
+
+        // Totals only ever grow, and a leader is always strictly ahead of
+        // everyone else, so a bidder who is not leading is below the leader. A
+        // total at or above it means the records disagree with the rule --
+        // exactly the case where inventing a bid would compound the damage.
+        if ($myTotal >= $leaderTotal) {
+            throw new LogicException(
+                "A bidder holding {$myTotal} credits is not below the leader's {$leaderTotal}, "
+                .'so there is no catch-up bid to compute. The bid records need looking at.'
+            );
+        }
+
+        return $leaderTotal + (int) $this->bidIncrementCredits - $myTotal;
     }
 
     // -------------------------------------------------------------- Timing
@@ -225,6 +289,7 @@ final readonly class AuctionRules implements JsonSerializable
 
             'minimum_bid_credits' => $this->minimumBidCredits,
             'minimum_bid_increment_credits' => $this->minimumBidIncrementCredits,
+            'bid_increment_credits' => $this->bidIncrementCredits,
             'allow_bid_increase' => $this->allowBidIncrease,
             'minimum_bid_interval_ms' => $this->minimumBidIntervalMs,
 
@@ -318,6 +383,10 @@ final readonly class AuctionRules implements JsonSerializable
             rulesetVersion: isset($data['ruleset_version']) ? (int) $data['ruleset_version'] : null,
 
             bidModel: $model,
+            // Absent from every snapshot written before the cumulative model
+            // existed, and null in every single-highest one: read tolerantly,
+            // like the other optional rules, so those stay valid untouched.
+            bidIncrementCredits: isset($data['bid_increment_credits']) ? (int) $data['bid_increment_credits'] : null,
         );
     }
 
@@ -414,6 +483,63 @@ final readonly class AuctionRules implements JsonSerializable
         if ($this->buyNowCreditDiscountEnabled && ! $this->buyNowEnabled) {
             throw InvalidAuctionRules::because(
                 'A Buy Now credit discount cannot be enabled while Buy Now itself is disabled.'
+            );
+        }
+
+        $this->assertBidModelFields();
+    }
+
+    /**
+     * Each model carries its own bid rules and none of the other's.
+     *
+     * Mixing them would leave a configuration that says two things: a
+     * lower-bound increment beside an exact step, or a step on a model that
+     * ignores it. Which to believe is the guess this refuses to make.
+     */
+    private function assertBidModelFields(): void
+    {
+        if ($this->bidIncrementCredits !== null && $this->bidIncrementCredits < 1) {
+            throw InvalidAuctionRules::because('A bid increment, if set, must be at least 1 credit.');
+        }
+
+        if (! $this->bidModel->isCumulative()) {
+            if ($this->bidIncrementCredits !== null) {
+                throw InvalidAuctionRules::because(
+                    'A bid increment belongs to the cumulative model. A single-highest auction '
+                    .'has a minimum increment instead, and the two mean different things.'
+                );
+            }
+
+            return;
+        }
+
+        // The opening bid is the minimum bid, and nothing else can be: any
+        // other figure would be invented, and every later bid is measured
+        // from the leader, so this is the only bid with no leader to measure.
+        if ($this->minimumBidCredits === null) {
+            throw InvalidAuctionRules::because(
+                'The cumulative model needs a minimum bid: it is the opening bid.'
+            );
+        }
+
+        if ($this->bidIncrementCredits === null) {
+            throw InvalidAuctionRules::because(
+                'The cumulative model needs a bid increment: how far ahead of the leader a bid must land.'
+            );
+        }
+
+        if ($this->minimumBidIncrementCredits !== null) {
+            throw InvalidAuctionRules::because(
+                'The cumulative model has a bid increment, not a minimum increment. '
+                .'The lower-bound rule belongs to single-highest auctions.'
+            );
+        }
+
+        // A leader cannot bid under this model, so an option to let them raise
+        // their own bid has nothing to switch.
+        if ($this->allowBidIncrease !== null) {
+            throw InvalidAuctionRules::because(
+                'Raising your own bid has no meaning under the cumulative model: a leader has no bid to place.'
             );
         }
     }

@@ -85,7 +85,7 @@ final class StartSettlementCheckout
                 'winner_id' => $winner->id,
                 // Recorded side by side because they are unrelated quantities
                 // and the log is where somebody checks that they stayed so.
-                'winning_bid_credits' => $winningBid->amount_credits,
+                'winning_bid_credits' => $winningBid->rankingValue(),
                 'settlement_amount_minor' => $locked->settlement_amount_minor,
                 'total_minor' => $pricing->total->minor,
             ]);
@@ -199,7 +199,7 @@ final class StartSettlementCheckout
         // Kept as evidence of what was won with, never of what is owed.
         $item->metadata = [
             'winning_bid_id' => $winningBid->id,
-            'winning_bid_credits' => $winningBid->amount_credits,
+            'winning_bid_credits' => $winningBid->rankingValue(),
         ];
         $item->save();
 
@@ -208,7 +208,7 @@ final class StartSettlementCheckout
             'from_status' => null,
             'to_status' => OrderStatus::PendingPayment,
             'reason' => "Settlement checkout opened for auction #{$auction->id}, won with "
-                ."{$winningBid->amount_credits} credits.",
+                ."{$winningBid->rankingValue()} credits.",
             'caused_by' => $winner->id,
         ]);
 

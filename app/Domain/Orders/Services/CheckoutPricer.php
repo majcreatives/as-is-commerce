@@ -236,7 +236,7 @@ class CheckoutPricer
             delivery: $rules->deliveryFee,
             taxBps: $rules->taxBps,
             discountCredits: 0,
-            winningBidCredits: $winningBid->amount_credits,
+            winningBidCredits: $winningBid->rankingValue(),
         );
     }
 

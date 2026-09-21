@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Domain\Auction\Actions\CreateAuction;
 use App\Domain\Auction\Actions\PlaceBid;
 use App\Domain\Auction\Services\AuctionLifecycle;
+use App\Domain\Auction\Services\BidValidator;
 use App\Domain\Catalog\Services\InventoryService;
 use App\Domain\Credit\Services\CreditLedgerService;
 use App\Domain\Delivery\Services\DeliveryLifecycle;
@@ -287,6 +288,37 @@ function placeBid(Auction $auction, User $user, int $amountCredits, ?string $key
         amountCredits: $amountCredits,
         idempotencyKey: $key ?? ('bid-'.Str::uuid()->toString()),
     );
+}
+
+/**
+ * A live auction under the cumulative model: an opening bid and an exact step.
+ *
+ * Built through the ruleset and CreateAuction like every other auction, so its
+ * snapshot really does say `cumulative_step`.
+ */
+function cumulativeAuction(int $minimum = 1, int $increment = 1, ?Product $product = null): Auction
+{
+    $ruleset = AuctionRuleset::factory()
+        ->active()
+        ->withoutThrottle()
+        ->cumulative($minimum, $increment)
+        ->create();
+
+    return liveAuction(product: $product, ruleset: $ruleset);
+}
+
+/**
+ * The bid a bidder would be shown, placed -- the way a bidder actually bids
+ * under the cumulative model, where the server works out the amount.
+ *
+ * Asks the same method the room asks, so a test that uses it is proving the
+ * displayed figure is the accepted one, not merely that some number works.
+ */
+function catchUp(Auction $auction, User $user): Bid
+{
+    $amount = app(BidValidator::class)->nextBid($auction->fresh(), $user);
+
+    return placeBid($auction, $user, (int) $amount);
 }
 
 /**

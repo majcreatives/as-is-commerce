@@ -31,6 +31,15 @@ final class ActivateRuleset
             throw RulesetNotEditable::transition($ruleset->status, RulesetStatus::Active);
         }
 
+        // A draft may be half-finished; an ACTIVE ruleset creates auctions, so
+        // it must be one an auction can actually be created from. Building the
+        // rules object runs every invariant the engine relies on, and throws
+        // with the reason -- for the cumulative model, a missing opening bid or
+        // step -- before anything about the ruleset changes. The database
+        // refuses the same thing, but a CHECK violation is a poor way to tell an
+        // administrator what to fill in.
+        $ruleset->toRules();
+
         return app(CauserResolver::class)->withCauser(
             $actor,
             fn (): AuctionRuleset => $this->persist($ruleset, $actor, $makeDefault),

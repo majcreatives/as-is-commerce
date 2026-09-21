@@ -80,8 +80,14 @@ it('does not let editing the ruleset afterwards change an auction that already e
     $auction = liveAuction(ruleset: $ruleset);
 
     // Whatever happens to the ruleset row -- even a change made by hand --
-    // the auction reads the model from its own snapshot.
-    DB::table('auction_rulesets')->where('id', $ruleset->id)->update(['bid_model' => 'cumulative_step']);
+    // the auction reads the model from its own snapshot. (The values a
+    // complete cumulative ruleset needs go with it: the database refuses an
+    // active one that lacks them.)
+    DB::table('auction_rulesets')->where('id', $ruleset->id)->update([
+        'bid_model' => 'cumulative_step',
+        'minimum_bid_credits' => 1,
+        'bid_increment_credits' => 1,
+    ]);
 
     expect($auction->fresh()->rules()->bidModel)->toBe(BidModel::SingleHighest);
 });

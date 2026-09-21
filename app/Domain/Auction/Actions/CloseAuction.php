@@ -106,7 +106,9 @@ final class CloseAuction
             $auction = $this->lifecycle->apply(
                 $locked,
                 AuctionStatus::PendingSettlement,
-                "Closed on the clock. Won by the highest valid credit bid of {$winningBid->amount_credits} credits.",
+                // What actually decided it, by the model this auction was frozen
+                // with: a single bid's size, or the total committed.
+                $locked->rules()->bidModel->closingNote($winningBid->rankingValue()),
                 null,
             );
 
@@ -128,6 +130,9 @@ final class CloseAuction
                 'winner_user_id' => $winningBid->user_id,
                 'winning_bid_id' => $winningBid->id,
                 'winning_amount_credits' => $winningBid->amount_credits,
+                // The figure that ranked them first: their total under the
+                // cumulative model, which is not what any one bid consumed.
+                'winning_standing_credits' => $winningBid->rankingValue(),
                 // The credits are gone; this is what the winner owes in money.
                 'settlement_amount_minor' => $auction->settlement_amount_minor,
                 'settlement_due_at' => $auction->settlement_due_at?->toIso8601String(),

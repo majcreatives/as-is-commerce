@@ -38,6 +38,7 @@ class AuctionRulesetFactory extends Factory
             // the number everybody tests against.
             'minimum_bid_credits' => null,
             'minimum_bid_increment_credits' => null,
+            'bid_increment_credits' => null,
             'allow_bid_increase' => null,
             'bid_model' => BidModel::SingleHighest,
             'minimum_bid_interval_ms' => 3000,
@@ -92,6 +93,22 @@ class AuctionRulesetFactory extends Factory
         return $this->state(fn (array $attributes): array => [
             'minimum_bid_credits' => $minimum,
             'minimum_bid_increment_credits' => $increment,
+        ]);
+    }
+
+    /**
+     * A cumulative-model ruleset: an opening bid and an exact step, and none of
+     * the single-highest rules, which the database and the rules object both
+     * refuse to see beside them.
+     */
+    public function cumulative(int $minimum = 1, int $increment = 1): static
+    {
+        return $this->state(fn (array $attributes): array => [
+            'bid_model' => BidModel::CumulativeStep,
+            'minimum_bid_credits' => $minimum,
+            'bid_increment_credits' => $increment,
+            'minimum_bid_increment_credits' => null,
+            'allow_bid_increase' => null,
         ]);
     }
 

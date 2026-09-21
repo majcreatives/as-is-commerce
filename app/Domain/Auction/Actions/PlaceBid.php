@@ -30,9 +30,14 @@ use Illuminate\Support\Facades\Log;
  * can survive alone. If anything fails -- validation, the ledger, the insert
  * -- everything rolls back and nothing happened.
  *
- * VARIABLE AMOUNTS. The bidder chooses how many credits to commit. Exactly
- * that many are consumed: a bid of 150 consumes 150, not one. There is no cost
- * per bid action anywhere in this path.
+ * VARIABLE AMOUNTS. Exactly the credits the bid commits are consumed: a bid of
+ * 150 consumes 150, not one. There is no cost per bid action anywhere in this
+ * path. Under the single-highest model the bidder chooses the amount. Under the
+ * cumulative model there is exactly one valid amount -- the credits that land
+ * the bidder one step ahead of the leader -- which the validator works out
+ * under the lock and this action does not: it receives the amount the bidder
+ * confirmed and the validator either accepts that figure or refuses it, and
+ * nothing here ever substitutes another.
  *
  * PERMANENTLY CONSUMED. Nothing here or anywhere else gives them back. A
  * bidder who is overtaken keeps no claim on the credits they spent, and
@@ -142,6 +147,16 @@ final class PlaceBid
 
             $sequence = $this->bids->nextSequence($locked);
 
+            // Where this bid leaves the bidder, under the cumulative model:
+            // what they had already consumed on this auction plus what this bid
+            // consumes. Read under the same auction lock the validator just
+            // used, so it is the very figure the bid was checked against and
+            // cannot have moved since. Null under the single-highest model,
+            // which ranks by the amount and has no running total to record.
+            $standing = $locked->rules()->bidModel->isCumulative()
+                ? $this->bids->standingOf($locked, $user->id) + $amountCredits
+                : null;
+
             // Steps 2 and 3 of the lock order, inside the ledger: the wallet,
             // then its lots by id. The reference is the auction, so an auditor
             // reading the credit ledger alone can see what the credits went to.
@@ -155,6 +170,10 @@ final class PlaceBid
                     'auction_id' => $locked->id,
                     'product_id' => $locked->product_id,
                     'sequence' => $sequence,
+                    // Only under the cumulative model, so an auditor reading the
+                    // credit ledger alone can see where the credits left the
+                    // bidder without opening the bid.
+                    ...($standing !== null ? ['standing_credits' => $standing] : []),
                 ],
                 actor: $user,
                 idempotencyKey: $idempotencyKey.':credits',
@@ -166,6 +185,7 @@ final class PlaceBid
             $bid->auction_id = $locked->id;
             $bid->user_id = $user->id;
             $bid->amount_credits = $amountCredits;
+            $bid->cumulative_credits = $standing;
             $bid->sequence = $sequence;
             $bid->status = BidStatus::Accepted;
             $bid->credit_transaction_id = $transaction->id;
@@ -191,6 +211,7 @@ final class PlaceBid
                 'bid_id' => $bid->id,
                 'user_id' => $user->id,
                 'amount_credits' => $amountCredits,
+                'standing_credits' => $standing,
                 'sequence' => $sequence,
                 'credit_transaction_id' => $transaction->id,
                 'highest_bid_credits' => $locked->highest_bid_credits,

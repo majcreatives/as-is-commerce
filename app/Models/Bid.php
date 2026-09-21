@@ -9,14 +9,19 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
+use InvalidArgumentException;
 
 /**
  * One bid: a number of credits a user committed to an auction.
  *
  * VARIABLE AMOUNTS. `amount_credits` is what this bid committed -- 20, 50,
  * 100, 150. There is no fixed cost per bid anywhere in the system, and one
- * bid never means one credit. The bidder chooses the amount, subject to the
- * auction's frozen bid rules.
+ * bid never means one credit. Under the single-highest model the bidder
+ * chooses the amount, subject to the auction's frozen bid rules. Under the
+ * cumulative model the SERVER works out the one valid amount -- the credits
+ * that put the bidder exactly one step ahead of the leader -- and the bidder
+ * confirms it. Either way this is what the bid CONSUMED; where it leaves the
+ * bidder is `cumulative_credits`, a separate fact.
  *
  * CREDITS ARE GONE. Those credits were consumed when the bid was accepted,
  * permanently, whether this bid wins or loses. Losing bidders get nothing
@@ -92,9 +97,28 @@ class Bid extends Model
         return [
             'status' => BidStatus::class,
             'amount_credits' => 'integer',
+            'cumulative_credits' => 'integer',
             'sequence' => 'integer',
             'created_at' => 'datetime',
         ];
+    }
+
+    /**
+     * The figure this bid is ranked by, under the model it was placed in.
+     *
+     * The total it left its bidder on, when the auction ranks by total, and
+     * the amount it committed when it ranks by the largest single bid. This is
+     * the number to show as "where this bid stands"; `amount_credits` stays
+     * what this bid CONSUMED, which is a different fact and never changes
+     * meaning. Mixing the two up is how a customer is shown "highest bid: 22"
+     * beside a history row that says 2.
+     *
+     * A bid placed under the single-highest model has no total (the column is
+     * null, deliberately), so its amount is what ranked it.
+     */
+    public function rankingValue(): int
+    {
+        return $this->cumulative_credits ?? $this->amount_credits;
     }
 
     /**
@@ -168,6 +192,30 @@ class Bid extends Model
      */
     public function scopeLeadingFirst(Builder $query): Builder
     {
-        return $query->orderByDesc('amount_credits')->orderBy('sequence');
+        return $this->scopeLeadingFirstBy($query, 'amount_credits');
+    }
+
+    /**
+     * Leading first, by whichever column the auction's model ranks on.
+     *
+     * The tie-break is the same either way. Under the cumulative model it never
+     * decides anything -- an exact step means no two bidders share a total --
+     * but it stays, so the order is total and the same query always returns the
+     * same row whatever the data.
+     *
+     * `$column` is one of the two fixed strings {@see BidModel::rankColumn()}
+     * returns, never anything from a request, because it is interpolated into
+     * an ORDER BY. A value outside that pair is refused rather than trusted.
+     *
+     * @param  Builder<self>  $query
+     * @return Builder<self>
+     */
+    public function scopeLeadingFirstBy(Builder $query, string $column): Builder
+    {
+        if (! in_array($column, ['amount_credits', 'cumulative_credits'], true)) {
+            throw new InvalidArgumentException("Cannot rank bids by [{$column}].");
+        }
+
+        return $query->orderByDesc($column)->orderBy('sequence');
     }
 }

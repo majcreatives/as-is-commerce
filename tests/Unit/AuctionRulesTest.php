@@ -366,11 +366,11 @@ it('reads its winner rule from the model, not from a constant', function (): voi
 });
 
 it('refuses a snapshot that names a bid model this engine cannot honour', function (): void {
-    // `cumulative_step` is defined in the database but not yet in the engine.
-    // Ranking such an auction as single-highest would name the wrong winner
-    // without any error, so it is refused loudly.
+    // A model this engine has no rule for. Ranking such an auction as
+    // something it is not would name the wrong winner without any error, so it
+    // is refused loudly.
     $data = rules()->toArray();
-    $data['bid_model'] = 'cumulative_step';
+    $data['bid_model'] = 'auto_bid';
 
     expect(fn (): AuctionRules => AuctionRules::fromArray($data))
         ->toThrow(InvalidAuctionRules::class, 'cannot honour');
@@ -397,4 +397,92 @@ it('cannot be mutated after construction', function (): void {
     $rules = rules();
 
     expect(fn () => $rules->minimumBidCredits = 99)->toThrow(Error::class);
+});
+
+// ------------------------------------------------- The cumulative model
+
+/**
+ * Rules under the cumulative model, with the fields it needs.
+ *
+ * @param  array<string, mixed>  $overrides
+ */
+function cumulativeRules(array $overrides = []): AuctionRules
+{
+    return rules(array_merge([
+        'bidModel' => BidModel::CumulativeStep,
+        'minimumBidCredits' => 1,
+        'bidIncrementCredits' => 1,
+    ], $overrides));
+}
+
+it('derives the cumulative winner rule from the model', function (): void {
+    expect(cumulativeRules()->winnerRule())->toBe('highest_cumulative_credits')
+        ->and(cumulativeRules()->toArray()['winner_rule'])->toBe('highest_cumulative_credits')
+        ->and(cumulativeRules()->toArray()['bid_model'])->toBe('cumulative_step');
+});
+
+it('round-trips a cumulative snapshot with its step', function (): void {
+    $original = cumulativeRules(['minimumBidCredits' => 5, 'bidIncrementCredits' => 2]);
+
+    $back = AuctionRules::fromArray($original->toArray());
+
+    expect($back->toArray())->toBe($original->toArray())
+        ->and($back->bidModel)->toBe(BidModel::CumulativeStep)
+        ->and($back->bidIncrementCredits)->toBe(2);
+});
+
+it('reads a version 4 snapshot written before the step existed', function (): void {
+    // Every single-highest snapshot on staging was written without this key.
+    // It reads as null, which is exactly what it is.
+    $data = rules()->toArray();
+    unset($data['bid_increment_credits']);
+
+    expect(AuctionRules::fromArray($data)->bidIncrementCredits)->toBeNull();
+});
+
+it('computes the catch-up bid as leader plus step minus your own total', function (int $leader, int $mine, int $step, int $expected): void {
+    expect(cumulativeRules(['bidIncrementCredits' => $step])->catchUpBid($leader, $mine))->toBe($expected);
+})->with([
+    'B joins behind A on 1' => [1, 0, 1, 2],
+    'A retakes the lead from B' => [2, 1, 1, 2],
+    'C joins behind A on 3' => [3, 0, 1, 4],
+    'B retakes the lead from C' => [4, 2, 1, 3],
+    'a step of two, from nothing' => [5, 0, 2, 7],
+    'a step of two, catching up' => [7, 5, 2, 4],
+    'a newcomer pays the whole standing plus one step' => [100, 0, 1, 101],
+]);
+
+it('opens with the minimum bid when nobody has bid', function (): void {
+    expect(cumulativeRules(['minimumBidCredits' => 5])->catchUpBid(null))->toBe(5);
+});
+
+it('refuses to invent a catch-up bid for somebody who is not below the leader', function (): void {
+    // A non-leader is always below the leader. A total at or above it means the
+    // records disagree with the rule, which is reported, not turned into a bid.
+    expect(fn () => cumulativeRules()->catchUpBid(5, 5))->toThrow(LogicException::class);
+    expect(fn () => cumulativeRules()->catchUpBid(5, 9))->toThrow(LogicException::class);
+});
+
+it('has no catch-up bid on the single-highest model', function (): void {
+    expect(fn () => rules()->catchUpBid(5, 0))->toThrow(InvalidAuctionRules::class);
+});
+
+it('has no smallest valid bid under the cumulative model, only one valid bid', function (): void {
+    expect(cumulativeRules()->smallestValidBid(20))->toBeNull();
+});
+
+it('refuses cumulative rules that are incomplete or that mix in the other model\'s fields', function (array $overrides, string $message): void {
+    expect(fn () => cumulativeRules($overrides))
+        ->toThrow(InvalidAuctionRules::class, $message);
+})->with([
+    'no opening bid' => [['minimumBidCredits' => null], 'needs a minimum bid'],
+    'no step' => [['bidIncrementCredits' => null], 'needs a bid increment'],
+    'a step of zero' => [['bidIncrementCredits' => 0], 'at least 1 credit'],
+    'a lower-bound increment beside a step' => [['minimumBidIncrementCredits' => 5], 'not a minimum increment'],
+    'raising your own bid, where a leader cannot bid' => [['allowBidIncrease' => true], 'no meaning under the cumulative model'],
+]);
+
+it('refuses a step on a single-highest ruleset', function (): void {
+    expect(fn () => rules(['bidIncrementCredits' => 2]))
+        ->toThrow(InvalidAuctionRules::class, 'belongs to the cumulative model');
 });

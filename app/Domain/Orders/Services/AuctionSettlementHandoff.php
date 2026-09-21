@@ -67,7 +67,7 @@ final class AuctionSettlementHandoff implements SettlementHandoff
             'order_number' => $order->order_number,
             // Recorded together because they are unrelated quantities and this
             // is where somebody checks that they stayed so.
-            'winning_bid_credits' => $auction->winningBid?->amount_credits,
+            'winning_bid_credits' => $auction->winningBid?->rankingValue(),
             'settlement_amount_minor' => $auction->settlement_amount_minor,
         ]);
 

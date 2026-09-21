@@ -35,6 +35,7 @@ use Spatie\Activitylog\Support\LogOptions;
  * @property RulesetStatus $status
  * @property int|null $minimum_bid_credits
  * @property int|null $minimum_bid_increment_credits
+ * @property int|null $bid_increment_credits
  * @property bool|null $allow_bid_increase
  * @property BidModel $bid_model
  * @property int $minimum_bid_interval_ms
@@ -100,6 +101,7 @@ class AuctionRuleset extends Model
         // producing a different kind of auction.
         'minimum_bid_credits',
         'minimum_bid_increment_credits',
+        'bid_increment_credits',
         'allow_bid_increase',
         'minimum_bid_interval_ms',
         'base_duration_seconds',
@@ -132,6 +134,7 @@ class AuctionRuleset extends Model
             'version' => 'integer',
             'minimum_bid_credits' => 'integer',
             'minimum_bid_increment_credits' => 'integer',
+            'bid_increment_credits' => 'integer',
             'minimum_bid_interval_ms' => 'integer',
             'base_duration_seconds' => 'integer',
             'closing_window_seconds' => 'integer',
@@ -188,6 +191,7 @@ class AuctionRuleset extends Model
         return new AuctionRules(
             minimumBidCredits: $this->minimum_bid_credits,
             minimumBidIncrementCredits: $this->minimum_bid_increment_credits,
+            bidIncrementCredits: $this->bid_increment_credits,
             allowBidIncrease: $this->allow_bid_increase,
             minimumBidIntervalMs: $this->minimum_bid_interval_ms,
 
@@ -271,6 +275,7 @@ class AuctionRuleset extends Model
                 'status',
                 'minimum_bid_credits',
                 'minimum_bid_increment_credits',
+                'bid_increment_credits',
                 'allow_bid_increase',
                 'bid_model',
                 'minimum_bid_interval_ms',

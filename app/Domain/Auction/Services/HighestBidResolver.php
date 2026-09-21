@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\Auction\Services;
 
+use App\Enums\BidModel;
 use App\Models\Auction;
 use App\Models\Bid;
 use Illuminate\Database\Eloquent\Builder;
@@ -12,11 +13,24 @@ use Illuminate\Support\Collection;
 /**
  * The authority on which bid is highest.
  *
- * THE RULE. The leading bid is the one with the largest `amount_credits`. Not
- * the most recent, not the most frequent bidder, not the largest total
- * committed across several bids -- a single bid's amount, and nothing else.
- * A bidder who bids 20, is overtaken by 100, and later bids 150 leads on that
- * 150.
+ * THE RULE DEPENDS ON THE AUCTION'S FROZEN BID MODEL, and is read from the
+ * snapshot, never from the code of the day.
+ *
+ *   single highest   the leading bid is the one with the largest
+ *                    `amount_credits`. Not the most recent, not the most
+ *                    frequent bidder, not the largest total committed across
+ *                    several bids -- a single bid's amount, and nothing else.
+ *                    A bidder who bids 20, is overtaken by 100, and later bids
+ *                    150 leads on that 150.
+ *
+ *   cumulative step  the leading bid is the one that left its bidder with the
+ *                    largest `cumulative_credits`: the total they have consumed
+ *                    on this auction. Here the largest TOTAL is exactly what
+ *                    wins, and a bidder's biggest single bid decides nothing.
+ *
+ * Every method below ranks by whichever column the auction's model names
+ * ({@see BidModel::rankColumn()}), so the two rules cannot be mixed within one
+ * auction.
  *
  * THE TIE-BREAK. Two users can commit the same highest amount, and "the
  * highest bid wins" has to name one of them. Among equal amounts the earliest
@@ -24,9 +38,11 @@ use Illuminate\Support\Collection;
  * auction row lock rather than by a timestamp -- two bids in the same
  * millisecond would otherwise be genuinely ambiguous.
  *
- * This does not change the winner rule. The winner is still the highest valid
- * credit bid; the tie-break only makes equal values deterministic, so the
- * same question always gets the same answer.
+ * This does not change the winner rule. The tie-break only makes equal values
+ * deterministic, so the same question always gets the same answer. Under the
+ * cumulative model it never has anything to decide -- an exact step means no
+ * two bidders hold the same total -- but it stays, so the order is total
+ * whatever the data.
  *
  * THE PROJECTION. `auctions.highest_bid_id`, `highest_bid_credits` and
  * `bid_count` cache what these queries return, so a listing page does not
@@ -38,6 +54,35 @@ use Illuminate\Support\Collection;
 class HighestBidResolver
 {
     /**
+     * The bids column this auction ranks by, read from its frozen snapshot.
+     *
+     * A fixed string chosen by the model, never from input.
+     */
+    private function rankColumn(Auction $auction): string
+    {
+        return $auction->rules()->bidModel->rankColumn();
+    }
+
+    /**
+     * Where this bidder stands on this auction right now: the credits they have
+     * consumed on it.
+     *
+     * The sum of their accepted bids, which is exactly the total their latest
+     * bid recorded under the cumulative model -- {@see self::verify()} checks
+     * that they agree. Read from the bid records rather than from a column
+     * somebody could have to keep in step, and zero for somebody who has not
+     * bid, which is a real standing rather than a missing one.
+     *
+     * Inside bid placement this is read under the auction lock, so the figure a
+     * bid is measured against cannot move between reading it and writing the
+     * bid.
+     */
+    public function standingOf(Auction $auction, int $userId): int
+    {
+        return $this->consumedCreditsBy($auction, $userId);
+    }
+
+    /**
      * The leading bid, straight from the bid records.
      *
      * This is the authoritative answer. Callers deciding a winner use it;
@@ -48,7 +93,7 @@ class HighestBidResolver
         return Bid::query()
             ->where('auction_id', $auction->getKey())
             ->counting()
-            ->leadingFirst()
+            ->leadingFirstBy($this->rankColumn($auction))
             ->first();
     }
 
@@ -63,7 +108,7 @@ class HighestBidResolver
         $amount = Bid::query()
             ->where('auction_id', $auction->getKey())
             ->counting()
-            ->max('amount_credits');
+            ->max($this->rankColumn($auction));
 
         return $amount === null ? null : (int) $amount;
     }
@@ -81,7 +126,7 @@ class HighestBidResolver
         return Bid::query()
             ->where('auction_id', $auction->getKey())
             ->counting()
-            ->leadingFirst()
+            ->leadingFirstBy($this->rankColumn($auction))
             ->lockForUpdate()
             ->first();
     }
@@ -97,7 +142,7 @@ class HighestBidResolver
             ->where('auction_id', $auction->getKey())
             ->where('user_id', $userId)
             ->counting()
-            ->leadingFirst()
+            ->leadingFirstBy($this->rankColumn($auction))
             ->first();
     }
 
@@ -219,7 +264,10 @@ class HighestBidResolver
 
         Auction::permittingHighestBidWrites(function () use ($auction, $highest, $count): void {
             $auction->highest_bid_id = $highest?->id;
-            $auction->highest_bid_credits = $highest?->amount_credits;
+            // The figure the leader is ranked by: their total under the
+            // cumulative model, their bid's amount under the other. It is what
+            // listing pages show as the standing to beat.
+            $auction->highest_bid_credits = $highest?->rankingValue();
             $auction->bid_count = $count;
             $auction->save();
         });
@@ -234,22 +282,63 @@ class HighestBidResolver
      * separate act from noticing it is wrong, and conflating the two hides
      * the fact that it happened.
      *
-     * @return array{matches: bool, projected_highest_bid_id: int|null, actual_highest_bid_id: int|null, projected_bid_count: int, actual_bid_count: int}
+     * Under the cumulative model it also checks the running totals themselves,
+     * because every ranking decision rests on them: each bid must carry a total,
+     * and each total must be the sum of that bidder's bids up to and including
+     * it. A total that drifts from the credits actually consumed would name the
+     * wrong leader with no error, so it is reported here.
+     *
+     * @return array{matches: bool, projected_highest_bid_id: int|null, actual_highest_bid_id: int|null, projected_bid_count: int, actual_bid_count: int, standing_problems: int}
      */
     public function verify(Auction $auction): array
     {
         $highest = $this->highestBid($auction);
         $count = $this->bidCount($auction);
+        $standingProblems = $this->standingProblems($auction);
 
         return [
             'matches' => $auction->highest_bid_id === $highest?->id
-                && $auction->highest_bid_credits === $highest?->amount_credits
-                && $auction->bid_count === $count,
+                && $auction->highest_bid_credits === $highest?->rankingValue()
+                && $auction->bid_count === $count
+                && $standingProblems === 0,
             'projected_highest_bid_id' => $auction->highest_bid_id,
             'actual_highest_bid_id' => $highest?->id,
             'projected_bid_count' => $auction->bid_count,
             'actual_bid_count' => $count,
+            'standing_problems' => $standingProblems,
         ];
+    }
+
+    /**
+     * How many bids carry a running total that disagrees with the credits their
+     * bidder had actually consumed by then. Zero for an auction that does not
+     * rank by total, which has no totals to be wrong.
+     */
+    private function standingProblems(Auction $auction): int
+    {
+        if (! $auction->rules()->bidModel->isCumulative()) {
+            return 0;
+        }
+
+        $problems = 0;
+        $running = [];
+
+        // In bid order, so each bidder's running sum is what their total should
+        // have been at that point. Streamed, so a long auction is not held in
+        // memory.
+        foreach (Bid::query()
+            ->where('auction_id', $auction->getKey())
+            ->orderBy('sequence')
+            ->select(['user_id', 'amount_credits', 'cumulative_credits'])
+            ->cursor() as $bid) {
+            $running[$bid->user_id] = ($running[$bid->user_id] ?? 0) + $bid->amount_credits;
+
+            if ($bid->cumulative_credits !== $running[$bid->user_id]) {
+                $problems++;
+            }
+        }
+
+        return $problems;
     }
 
     /**

@@ -32,12 +32,36 @@ it('produces single-highest auctions unless a ruleset says otherwise', function 
         ->and($ruleset->fresh()->toRules()->bidModel)->toBe(BidModel::SingleHighest);
 });
 
-it('carries the model into a new version of the ruleset', function (): void {
-    $source = AuctionRuleset::factory()->active()->create();
+it('moves a ruleset to the cumulative model when a new version is drafted', function (): void {
+    // The deliberate step by which an older ruleset adopts the new rules. The
+    // version it was copied from is untouched and keeps producing what it did.
+    $source = AuctionRuleset::factory()->active()->withBidRules(minimum: 5, increment: 3)
+        ->create(['allow_bid_increase' => true]);
 
-    $draft = app(CreateRulesetVersion::class)->handle($source);
+    $draft = app(CreateRulesetVersion::class)->handle($source)->fresh();
 
-    expect($draft->fresh()->bid_model)->toBe($source->bid_model);
+    expect($draft->bid_model)->toBe(BidModel::CumulativeStep)
+        // The earlier rule's fields do not carry over: they have no meaning
+        // under the new model, and the database refuses them beside it.
+        ->and($draft->minimum_bid_increment_credits)->toBeNull()
+        ->and($draft->allow_bid_increase)->toBeNull()
+        // The opening bid carries over. The step is NOT invented: it stays
+        // empty, so the draft cannot be activated until somebody chooses one.
+        ->and($draft->minimum_bid_credits)->toBe(5)
+        ->and($draft->bid_increment_credits)->toBeNull();
+
+    expect($source->fresh()->bid_model)->toBe(BidModel::SingleHighest)
+        ->and($source->fresh()->minimum_bid_increment_credits)->toBe(3);
+});
+
+it('carries a cumulative ruleset\'s step into its next version', function (): void {
+    $source = AuctionRuleset::factory()->active()->cumulative(minimum: 5, increment: 2)->create();
+
+    $draft = app(CreateRulesetVersion::class)->handle($source)->fresh();
+
+    expect($draft->bid_model)->toBe(BidModel::CumulativeStep)
+        ->and($draft->minimum_bid_credits)->toBe(5)
+        ->and($draft->bid_increment_credits)->toBe(2);
 });
 
 it('cannot have its model set through mass assignment', function (): void {

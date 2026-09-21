@@ -11,11 +11,13 @@ use App\Domain\Auction\Services\AuctionClock;
 use App\Domain\Auction\Services\AuctionLifecycle;
 use App\Domain\Auction\Services\HighestBidResolver;
 use App\Domain\Shared\Money\Money;
+use App\Enums\BidModel;
 use App\Enums\OrderSource;
 use App\Models\Auction;
 use App\Models\AuctionRuleset;
 use DomainException;
 use Illuminate\Support\Carbon;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -56,7 +58,7 @@ class AuctionDetail extends Component
 
         $this->auction = $auction;
         $this->relistSettlementAmount = $auction->settlementAmount()->toDecimalString();
-        $this->relistRulesetId = AuctionRuleset::query()->active()
+        $this->relistRulesetId = AuctionRuleset::query()->active()->acceptingNewAuctions()
             ->orderByDesc('is_default')->value('id');
     }
 
@@ -131,7 +133,8 @@ class AuctionDetail extends Component
         $this->authorize('auctions.relist');
 
         $validated = $this->validate([
-            'relistRulesetId' => ['required', 'integer', 'exists:auction_rulesets,id'],
+            'relistRulesetId' => ['required', 'integer', Rule::exists('auction_rulesets', 'id')
+                ->where('bid_model', BidModel::CumulativeStep->value)],
             'relistSettlementAmount' => ['required', 'string', 'regex:/^\d{1,12}(\.\d{1,2})?$/'],
         ], [
             'relistSettlementAmount.regex' => 'Enter an amount in cedis, such as 100 or 100.50.',
@@ -183,7 +186,7 @@ class AuctionDetail extends Component
             // facing history withholds.
             'history' => $bids->history($this->auction, 100, withBidder: true),
             'secondsRemaining' => $clock->secondsRemaining($this->auction),
-            'rulesets' => AuctionRuleset::query()->active()->orderBy('name')->get(),
+            'rulesets' => AuctionRuleset::query()->active()->acceptingNewAuctions()->orderBy('name')->get(),
             // The winner's settlement checkout, and every Buy Now order opened
             // against this auction. Several of the latter can exist at once --
             // opening one reserves nothing -- so operations needs to see which

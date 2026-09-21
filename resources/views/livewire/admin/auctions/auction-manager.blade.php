@@ -46,6 +46,18 @@
                             @endforeach
                         </select>
                     </x-field>
+
+                    @if ($this->rulesets()->isEmpty())
+                        {{-- Only rulesets that use the current bidding rules are
+                             offered. Rulesets made under the earlier rule still
+                             exist and still explain their auctions, but do not
+                             start new ones. --}}
+                        <x-alert variant="warning" class="sm:col-span-2">
+                            No active ruleset uses the current bidding rules, so there is nothing to create
+                            an auction from. Draft a new version of an existing ruleset, set its minimum bid
+                            and bid increment, and activate it.
+                        </x-alert>
+                    @endif
                 </div>
 
                 {{-- The three numbers, side by side and clearly labelled. --}}
@@ -159,7 +171,7 @@
                         <tr>
                             <th class="px-5 py-3 font-semibold">Auction</th>
                             <th class="px-5 py-3 font-semibold">Status</th>
-                            <th class="px-5 py-3 font-semibold">Highest Bid (Credits)</th>
+                            <th class="px-5 py-3 font-semibold">Highest Bid / Total (Credits)</th>
                             <th class="px-5 py-3 font-semibold">Settlement</th>
                             <th class="px-5 py-3 font-semibold">Buy Now</th>
                             <th class="px-5 py-3 font-semibold">Ends</th>

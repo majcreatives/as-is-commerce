@@ -218,6 +218,23 @@ class AuctionRuleset extends Model
         );
     }
 
+    /**
+     * Rulesets that may govern a NEW auction.
+     *
+     * Only the cumulative model. Rulesets made under the earlier rule are still
+     * stored, still readable, and still explain every auction already created
+     * from them -- but nothing in the product offers one for a new auction, so
+     * the earlier rule cannot be started afresh. The domain still honours it
+     * for auctions that exist; this is about what an administrator is offered.
+     *
+     * @param  Builder<self>  $query
+     * @return Builder<self>
+     */
+    public function scopeAcceptingNewAuctions(Builder $query): Builder
+    {
+        return $query->where('bid_model', BidModel::CumulativeStep);
+    }
+
     // --------------------------------------------------------------- State
 
     public function isEditable(): bool

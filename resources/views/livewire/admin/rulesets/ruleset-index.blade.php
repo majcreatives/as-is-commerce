@@ -40,7 +40,7 @@
                         <th scope="col" class="px-4 py-3 font-semibold">Name</th>
                         <th scope="col" class="px-4 py-3 font-semibold">Version</th>
                         <th scope="col" class="px-4 py-3 font-semibold">Status</th>
-                        <th scope="col" class="px-4 py-3 font-semibold">Minimum bid</th>
+                        <th scope="col" class="px-4 py-3 font-semibold">Bidding</th>
                         <th scope="col" class="px-4 py-3 font-semibold">Duration</th>
                         <th scope="col" class="px-4 py-3 font-semibold">Extensions</th>
                         <th scope="col" class="px-4 py-3 font-semibold">Created</th>
@@ -64,12 +64,23 @@
                                 <x-badge :classes="$ruleset->status->badgeClasses()">{{ $ruleset->status->label() }}</x-badge>
                             </td>
 
-                            <td class="px-4 py-3 tabular-nums text-slate-600">
-                                @if ($ruleset->minimum_bid_credits)
-                                    {{ number_format($ruleset->minimum_bid_credits) }}
-                                    {{ Str::plural('credit', $ruleset->minimum_bid_credits) }}
+                            <td class="px-4 py-3 text-slate-600">
+                                @if ($ruleset->bid_model->isCumulative())
+                                    <span class="font-medium text-slate-900">{{ $ruleset->bid_model->label() }}</span>
+                                    <span class="block text-xs tabular-nums text-slate-500">
+                                        @if ($ruleset->minimum_bid_credits !== null && $ruleset->bid_increment_credits !== null)
+                                            opens at {{ number_format($ruleset->minimum_bid_credits) }},
+                                            step {{ number_format($ruleset->bid_increment_credits) }}
+                                        @else
+                                            <span class="text-amber-700">incomplete &mdash; set an opening bid and a step</span>
+                                        @endif
+                                    </span>
                                 @else
-                                    <span class="text-slate-400">No minimum</span>
+                                    {{-- An older ruleset. It still produces what it always did,
+                                         and it is not offered when an auction is created: a
+                                         new version moves it to the cumulative model. --}}
+                                    <span class="font-medium text-slate-900">{{ $ruleset->bid_model->label() }}</span>
+                                    <span class="block text-xs text-slate-500">earlier rule &mdash; draft a new version to move it on</span>
                                 @endif
                             </td>
 

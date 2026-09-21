@@ -32,10 +32,10 @@
                 <dl class="grid gap-5 sm:grid-cols-3">
                     <div>
                         <dt class="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                            Highest Bid (Credits)
+                            {{ $auction->rules()->bidModel->leaderLabel() }}
                         </dt>
                         <dd class="mt-1 text-2xl font-bold tabular-nums text-slate-900">
-                            {{ $highestBid ? number_format($highestBid->amount_credits) : '—' }}
+                            {{ $highestBid ? number_format($highestBid->rankingValue()) : '—' }}
                         </dd>
                         <dd class="text-xs text-slate-500">a count of credits, not money</dd>
                     </div>
@@ -98,14 +98,13 @@
                     </dl>
 
                     <x-alert variant="info" class="mt-4">
-                        The standing highest bidder did <strong>not</strong> win. Credits already
+                        The bidder who was leading did <strong>not</strong> win. Credits already
                         committed to this auction stay consumed.
                     </x-alert>
                 @elseif ($auction->hasBidWinner())
                     <p class="text-sm text-slate-700">
-                        <strong>Won by the highest valid credit bid.</strong>
-                        {{ $auction->winner?->name }} bid
-                        {{ number_format($auction->winningBid?->amount_credits ?? 0) }} credits and owes
+                        <strong>{{ $auction->rules()->bidModel->winnerSentence($auction->winningBid?->rankingValue() ?? 0) }}</strong>
+                        {{ $auction->winner?->name }} owes
                         <x-money :amount="$auction->settlementAmount()" /> plus applicable charges.
                     </p>
 
@@ -204,34 +203,57 @@
                 <dl class="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
                     @php($rules = $auction->rules())
 
+                    {{-- Which rule governed this auction, read from its frozen
+                         snapshot -- so anybody reading an old auction can see
+                         whether it was decided by a single bid or a total. --}}
+                    <div class="flex justify-between gap-4 sm:col-span-2">
+                        <dt class="text-slate-600">Bidding model</dt>
+                        <dd class="font-semibold text-slate-900">{{ $rules->bidModel->label() }}</dd>
+                    </div>
+
                     <div class="flex justify-between gap-4 sm:col-span-2">
                         <dt class="text-slate-600">Winner rule</dt>
                         <dd class="font-semibold text-slate-900">{{ $auction->winnerRule() }}</dd>
                     </div>
 
-                    <div class="flex justify-between gap-4">
-                        <dt class="text-slate-600">Minimum bid</dt>
-                        <dd class="tabular-nums text-slate-900">
-                            {{ $rules->minimumBidCredits === null
-                                ? 'No minimum' : number_format($rules->minimumBidCredits).' credits' }}
-                        </dd>
-                    </div>
+                    @if ($rules->bidModel->isCumulative())
+                        <div class="flex justify-between gap-4">
+                            <dt class="text-slate-600">Opening bid</dt>
+                            <dd class="tabular-nums text-slate-900">{{ number_format((int) $rules->minimumBidCredits) }} credits</dd>
+                        </div>
 
-                    <div class="flex justify-between gap-4">
-                        <dt class="text-slate-600">Bid increment</dt>
-                        <dd class="tabular-nums text-slate-900">
-                            {{ $rules->minimumBidIncrementCredits === null
-                                ? 'No increment' : number_format($rules->minimumBidIncrementCredits).' credits' }}
-                        </dd>
-                    </div>
+                        <div class="flex justify-between gap-4">
+                            <dt class="text-slate-600">Bid increment</dt>
+                            <dd class="tabular-nums text-slate-900">{{ number_format((int) $rules->bidIncrementCredits) }} credits</dd>
+                        </div>
+                    @else
+                        <div class="flex justify-between gap-4">
+                            <dt class="text-slate-600">Minimum bid</dt>
+                            <dd class="tabular-nums text-slate-900">
+                                {{ $rules->minimumBidCredits === null
+                                    ? 'No minimum' : number_format($rules->minimumBidCredits).' credits' }}
+                            </dd>
+                        </div>
 
-                    <div class="flex justify-between gap-4">
-                        <dt class="text-slate-600">Raising your own bid</dt>
-                        <dd class="text-slate-900">
-                            {{ $rules->allowBidIncrease === null
-                                ? 'Not decided' : ($rules->allowBidIncrease ? 'Allowed' : 'Not allowed') }}
-                        </dd>
-                    </div>
+                        {{-- The earlier rule's field, named for what it is: a lower
+                             bound over the leader, not the exact step the newer
+                             model uses under the name "Bid increment". --}}
+                        <div class="flex justify-between gap-4">
+                            <dt class="text-slate-600">Minimum increment (earlier rule)</dt>
+                            <dd class="tabular-nums text-slate-900">
+                                {{ $rules->minimumBidIncrementCredits === null
+                                    ? 'No increment' : number_format($rules->minimumBidIncrementCredits).' credits' }}
+                            </dd>
+                        </div>
+
+                        <div class="flex justify-between gap-4">
+                            <dt class="text-slate-600">Raising your own bid</dt>
+                            <dd class="text-slate-900">
+                                {{ $rules->allowBidIncrease === null
+                                    ? 'Not decided' : ($rules->allowBidIncrease ? 'Allowed' : 'Not allowed') }}
+                            </dd>
+                        </div>
+                    @endif
 
                     <div class="flex justify-between gap-4">
                         <dt class="text-slate-600">Bid interval</dt>
@@ -303,7 +325,12 @@
                                     <tr>
                                         <th class="px-5 py-3 font-semibold">#</th>
                                         <th class="px-5 py-3 font-semibold">Bidder</th>
-                                        <th class="px-5 py-3 font-semibold">Credits</th>
+                                        @if ($auction->rules()->bidModel->isCumulative())
+                                            <th class="px-5 py-3 font-semibold">Credits added</th>
+                                            <th class="px-5 py-3 font-semibold">Total after</th>
+                                        @else
+                                            <th class="px-5 py-3 font-semibold">Credits</th>
+                                        @endif
                                         <th class="px-5 py-3 font-semibold">Ledger</th>
                                         <th class="px-5 py-3 font-semibold">Placed</th>
                                     </tr>
@@ -313,9 +340,18 @@
                                         <tr class="{{ $highestBid && $bid->id === $highestBid->id ? 'bg-emerald-50/60' : '' }}">
                                             <td class="px-5 py-3 tabular-nums text-slate-500">{{ $bid->sequence }}</td>
                                             <td class="px-5 py-3 text-slate-700">{{ $bid->user?->name }}</td>
-                                            <td class="px-5 py-3 font-semibold tabular-nums text-slate-900">
-                                                {{ number_format($bid->amount_credits) }}
-                                            </td>
+                                            @if ($auction->rules()->bidModel->isCumulative())
+                                                <td class="px-5 py-3 tabular-nums text-slate-700">
+                                                    +{{ number_format($bid->amount_credits) }}
+                                                </td>
+                                                <td class="px-5 py-3 font-semibold tabular-nums text-slate-900">
+                                                    {{ number_format($bid->rankingValue()) }}
+                                                </td>
+                                            @else
+                                                <td class="px-5 py-3 font-semibold tabular-nums text-slate-900">
+                                                    {{ number_format($bid->amount_credits) }}
+                                                </td>
+                                            @endif
                                             <td class="px-5 py-3 text-xs text-slate-500">
                                                 credit txn #{{ $bid->credit_transaction_id }}
                                             </td>

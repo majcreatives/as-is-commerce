@@ -35,38 +35,44 @@
 
         {{-- -------------------------------------------------------- Bidding --}}
         <x-card title="Bidding"
-                subtitle="Bidders choose how many credits to commit. These rules decide which amounts are valid.">
+                subtitle="A bidder's position is the total credits they have consumed. Every bid lands exactly one step ahead of the leader.">
+            @if ($movesToCumulative)
+                {{-- An older draft, made under the earlier rule. Saving here
+                     moves it to the cumulative model; said plainly, so nobody is
+                     surprised by it, and nothing about any auction already
+                     created changes -- an auction copied its rules when it was
+                     made. --}}
+                <x-alert variant="warning" class="mb-5">
+                    <p class="font-semibold">This draft was made under the earlier bidding rule.</p>
+                    <p class="mt-1">
+                        Saving it here moves it to the cumulative rule below, and clears the earlier rule's
+                        lower-bound increment and its raise-your-own-bid option, which have no meaning
+                        under it. Auctions already created keep the rules they were created with.
+                    </p>
+                </x-alert>
+            @endif
+
             <x-alert variant="info" class="mb-5">
-                <strong class="font-semibold">The highest valid credit bid wins</strong> when the auction
-                closes normally &mdash; not the last bidder, and not whoever bid most often. A bidder who is
-                overtaken and later bids higher still wins on that highest bid.
+                <strong class="font-semibold">The largest total wins.</strong> A bidder's position is the
+                total credits they have committed to the auction &mdash; not the size of any one bid. The
+                bidder never chooses an amount: the server works out the one bid that puts them exactly one
+                step ahead of the leader. The first bid is the minimum bid, and a leader has no bid to place
+                until somebody overtakes them.
             </x-alert>
 
             <div class="grid gap-5 sm:grid-cols-2">
                 <x-field label="Minimum bid (credits)" name="minimum_bid_credits"
-                         :error="$errors->first('minimum_bid_credits')" optional
-                         hint="The smallest bid that can ever be submitted. Leave blank for no minimum.">
+                         :error="$errors->first('minimum_bid_credits')"
+                         hint="The opening bid: the first bid on every auction made from this ruleset, exactly.">
                     <x-input id="minimum_bid_credits" inputmode="numeric" wire:model="minimum_bid_credits"
-                             :error="$errors->has('minimum_bid_credits')" />
+                             :error="$errors->has('minimum_bid_credits')" required />
                 </x-field>
 
-                <x-field label="Bid increment (credits)" name="minimum_bid_increment_credits"
-                         :error="$errors->first('minimum_bid_increment_credits')" optional
-                         hint="How far a new bid must exceed the current highest. Leave blank for no minimum.">
-                    <x-input id="minimum_bid_increment_credits" inputmode="numeric"
-                             wire:model="minimum_bid_increment_credits"
-                             :error="$errors->has('minimum_bid_increment_credits')" />
-                </x-field>
-
-                <x-field label="May a bidder raise their own bid?" name="allow_bid_increase"
-                         :error="$errors->first('allow_bid_increase')" optional
-                         hint="Leave unset while this rule is undecided. Unset is not the same as no.">
-                    <select id="allow_bid_increase" wire:model="allow_bid_increase"
-                            class="block w-full rounded-lg border-0 bg-white px-3 py-2.5 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-inset focus:ring-brand-600 sm:text-sm">
-                        <option value="">Not decided</option>
-                        <option value="yes">Yes</option>
-                        <option value="no">No</option>
-                    </select>
+                <x-field label="Bid increment (credits)" name="bid_increment_credits"
+                         :error="$errors->first('bid_increment_credits')"
+                         hint="Every bid puts a bidder exactly this many credits ahead of the leader. With a minimum of 5 and an increment of 2, the leader's total goes 5, 7, 9, 11 and so on.">
+                    <x-input id="bid_increment_credits" inputmode="numeric" wire:model="bid_increment_credits"
+                             :error="$errors->has('bid_increment_credits')" required />
                 </x-field>
 
                 <x-field label="Minimum bid interval (ms)" name="minimum_bid_interval_ms"
@@ -80,7 +86,7 @@
 
         {{-- -------------------------------------------------------- Buy Now --}}
         <x-card title="Buy Now"
-                subtitle="Buying the product outright ends the auction immediately, whatever the highest bid.">
+                subtitle="Buying the product outright ends the auction immediately, whoever is leading.">
             <div class="space-y-5">
                 <label class="flex items-start gap-3">
                     <input type="checkbox" wire:model="buy_now_enabled"
@@ -89,7 +95,7 @@
                         <span class="block text-sm font-medium text-slate-700">Buy Now available</span>
                         <span class="block text-xs text-slate-500">
                             When a customer completes a Buy Now purchase the auction ends at once and the
-                            standing highest bidder does not win. With this off, the auction runs to its
+                            bidder in the lead does not win. With this off, the auction runs to its
                             normal close.
                         </span>
                     </span>

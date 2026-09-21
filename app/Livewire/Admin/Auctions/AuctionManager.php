@@ -7,6 +7,7 @@ namespace App\Livewire\Admin\Auctions;
 use App\Domain\Auction\Actions\CreateAuction;
 use App\Domain\Shared\Money\Money;
 use App\Enums\AuctionStatus;
+use App\Enums\BidModel;
 use App\Enums\ProductStatus;
 use App\Models\Auction;
 use App\Models\AuctionRuleset;
@@ -131,7 +132,7 @@ class AuctionManager extends Component
 
         $this->reset('product_id', 'auction_ruleset_id', 'settlement_amount');
 
-        $this->auction_ruleset_id = AuctionRuleset::query()->active()
+        $this->auction_ruleset_id = AuctionRuleset::query()->active()->acceptingNewAuctions()
             ->orderByDesc('is_default')->value('id');
 
         $this->showForm = true;
@@ -149,7 +150,11 @@ class AuctionManager extends Component
 
         $validated = $this->validate([
             'product_id' => ['required', 'integer', Rule::exists('products', 'id')],
-            'auction_ruleset_id' => ['required', 'integer', Rule::exists('auction_rulesets', 'id')],
+            // Re-checked here, on the server, as well as offered by the list: a
+            // ruleset id in a request is not a capability to start an auction
+            // under the earlier rule.
+            'auction_ruleset_id' => ['required', 'integer', Rule::exists('auction_rulesets', 'id')
+                ->where('bid_model', BidModel::CumulativeStep->value)],
             // A decimal string validated by shape, so no float is involved.
             'settlement_amount' => ['required', 'string', 'regex:/^\d{1,12}(\.\d{1,2})?$/'],
         ], [
@@ -211,7 +216,9 @@ class AuctionManager extends Component
     {
         // Active only. A draft ruleset is unfinished configuration, and an
         // archived one has been retired -- neither should govern a new auction.
-        return AuctionRuleset::query()->active()->orderBy('name')->get();
+        // And only the cumulative model: a ruleset made under the earlier rule is
+        // not offered for a new auction.
+        return AuctionRuleset::query()->active()->acceptingNewAuctions()->orderBy('name')->get();
     }
 
     public function render(): View

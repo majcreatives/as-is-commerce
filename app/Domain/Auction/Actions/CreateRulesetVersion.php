@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\Auction\Actions;
 
+use App\Enums\BidModel;
 use App\Enums\RulesetStatus;
 use App\Models\AuctionRuleset;
 use App\Models\User;
@@ -48,6 +49,19 @@ final class CreateRulesetVersion
             ]);
 
             $draft->version = (int) AuctionRuleset::where('name', $source->name)->max('version') + 1;
+
+            // A NEW VERSION ADOPTS THE CUMULATIVE MODEL. The version it was copied
+            // from is untouched and keeps producing what it always produced; this
+            // is the deliberate step by which a ruleset moves to the new rules.
+            // The single-highest rules do not carry over -- the database and the
+            // rules object refuse them beside a cumulative model -- and the step
+            // is left as the source had it, which is empty for an older ruleset,
+            // so the draft cannot be activated until an administrator has chosen
+            // one. Nothing here invents a number.
+            $draft->bid_model = BidModel::CumulativeStep;
+            $draft->minimum_bid_increment_credits = null;
+            $draft->allow_bid_increase = null;
+
             $draft->status = RulesetStatus::Draft;
             $draft->is_default = false;
             $draft->activated_at = null;

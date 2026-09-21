@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domain\Auction\Actions;
 
 use App\Domain\Auction\RulesetInvariants;
+use App\Enums\BidModel;
 use App\Enums\RulesetStatus;
 use App\Models\AuctionRuleset;
 use App\Models\User;
@@ -24,7 +25,7 @@ final class CreateRuleset
     /**
      * @param  array<string, mixed>  $attributes
      */
-    public function handle(array $attributes, ?User $actor = null): AuctionRuleset
+    public function handle(array $attributes, ?User $actor = null, BidModel $model = BidModel::SingleHighest): AuctionRuleset
     {
         RulesetInvariants::assert($attributes);
 
@@ -33,16 +34,16 @@ final class CreateRuleset
         // job attributes its changes correctly too.
         return app(CauserResolver::class)->withCauser(
             $actor,
-            fn (): AuctionRuleset => $this->persist($attributes, $actor),
+            fn (): AuctionRuleset => $this->persist($attributes, $actor, $model),
         );
     }
 
     /**
      * @param  array<string, mixed>  $attributes
      */
-    private function persist(array $attributes, ?User $actor): AuctionRuleset
+    private function persist(array $attributes, ?User $actor, BidModel $model): AuctionRuleset
     {
-        return DB::transaction(function () use ($attributes, $actor): AuctionRuleset {
+        return DB::transaction(function () use ($attributes, $actor, $model): AuctionRuleset {
             $ruleset = new AuctionRuleset;
 
             // Filtered rather than passed straight through: a payload carrying
@@ -56,6 +57,13 @@ final class CreateRuleset
             $ruleset->version = $this->nextVersionFor((string) $attributes['name']);
             $ruleset->status = RulesetStatus::Draft;
             $ruleset->is_default = false;
+
+            // Chosen by the caller in code, never read from `$attributes`: which
+            // bidding model a ruleset produces is not a value a request may
+            // set. The admin form passes the cumulative model; the default is
+            // the model every earlier ruleset was made under.
+            $ruleset->bid_model = $model;
+
             $ruleset->created_by = $actor?->id;
             $ruleset->updated_by = $actor?->id;
             $ruleset->save();

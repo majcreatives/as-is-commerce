@@ -8,6 +8,7 @@ use App\Domain\Auction\Actions\CreateRuleset;
 use App\Domain\Auction\Actions\UpdateRuleset;
 use App\Domain\Auction\RulesetInvariants;
 use App\Domain\Shared\Money\Money;
+use App\Enums\BidModel;
 use App\Enums\ForfeitPolicy;
 use App\Models\AuctionRuleset;
 use Illuminate\Validation\Rule;
@@ -26,14 +27,15 @@ class RulesetForm extends Component
 
     public string $description = '';
 
-    // Bidding. Bids carry their own variable amounts; these constrain which
-    // amounts are acceptable. Held as strings so an empty field means "no
-    // rule" rather than collapsing to zero.
+    // Bidding. Under the cumulative model a bidder's position is the total
+    // credits they have consumed, and every bid lands exactly one step ahead of
+    // the leader. Both figures are REQUIRED: the minimum bid is the opening bid,
+    // the only opening figure that is not invented, and the step is what every
+    // later bid is measured by. Held as strings so an empty field is refused
+    // rather than collapsing to zero.
     public string $minimum_bid_credits = '';
 
-    public string $minimum_bid_increment_credits = '';
-
-    public string $allow_bid_increase = '';
+    public string $bid_increment_credits = '';
 
     public int $minimum_bid_interval_ms = 3000;
 
@@ -87,10 +89,7 @@ class RulesetForm extends Component
         $this->description = $ruleset->description ?? '';
 
         $this->minimum_bid_credits = (string) ($ruleset->minimum_bid_credits ?? '');
-        $this->minimum_bid_increment_credits = (string) ($ruleset->minimum_bid_increment_credits ?? '');
-        $this->allow_bid_increase = $ruleset->allow_bid_increase === null
-            ? ''
-            : ($ruleset->allow_bid_increase ? 'yes' : 'no');
+        $this->bid_increment_credits = (string) ($ruleset->bid_increment_credits ?? '');
         $this->minimum_bid_interval_ms = $ruleset->minimum_bid_interval_ms;
 
         $this->base_duration_seconds = $ruleset->base_duration_seconds;
@@ -118,11 +117,11 @@ class RulesetForm extends Component
             'name' => ['required', 'string', 'max:100'],
             'description' => ['nullable', 'string', 'max:2000'],
 
-            // Nullable: these business values are undecided, and an empty
-            // field must mean "no rule" rather than a number nobody chose.
-            'minimum_bid_credits' => ['nullable', 'string', 'regex:/^\d{1,12}$/'],
-            'minimum_bid_increment_credits' => ['nullable', 'string', 'regex:/^\d{1,12}$/'],
-            'allow_bid_increase' => ['nullable', Rule::in(['', 'yes', 'no'])],
+            // Both required, and at least one credit: an empty field must be
+            // refused, never quietly become a number nobody chose. The database
+            // refuses an active ruleset without them as well.
+            'minimum_bid_credits' => ['required', 'string', 'regex:/^[1-9]\d{0,11}$/'],
+            'bid_increment_credits' => ['required', 'string', 'regex:/^[1-9]\d{0,11}$/'],
             'minimum_bid_interval_ms' => ['required', 'integer', 'min:0', 'max:600000'],
 
             'base_duration_seconds' => ['required', 'integer', 'min:1', 'max:2592000'],
@@ -150,8 +149,10 @@ class RulesetForm extends Component
     protected function messages(): array
     {
         return [
-            'minimum_bid_credits.regex' => 'Enter a whole number of credits, or leave blank for no minimum.',
-            'minimum_bid_increment_credits.regex' => 'Enter a whole number of credits, or leave blank for no minimum.',
+            'minimum_bid_credits.required' => 'Enter the opening bid: the smallest bid, and the first one on every auction.',
+            'minimum_bid_credits.regex' => 'Enter a whole number of credits, at least 1.',
+            'bid_increment_credits.required' => 'Enter the bid increment: how far ahead of the leader every bid lands a bidder.',
+            'bid_increment_credits.regex' => 'Enter a whole number of credits, at least 1.',
             'delivery_fee.regex' => 'Enter an amount such as 0 or 25.00, with no currency symbol.',
         ];
     }
@@ -172,11 +173,11 @@ class RulesetForm extends Component
 
         if ($this->isEditing() && $this->ruleset !== null) {
             $this->authorize('auction_rulesets.update');
-            $update->handle($this->ruleset, $attributes, auth()->user());
+            $update->handle($this->ruleset, $attributes, auth()->user(), BidModel::CumulativeStep);
             session()->flash('status', 'Draft ruleset updated.');
         } else {
             $this->authorize('auction_rulesets.create');
-            $created = $create->handle($attributes, auth()->user());
+            $created = $create->handle($attributes, auth()->user(), BidModel::CumulativeStep);
             session()->flash(
                 'status',
                 "Draft ruleset [{$created->name} v{$created->version}] created. Activate it when you are ready."
@@ -194,21 +195,21 @@ class RulesetForm extends Component
         $currency = strtoupper($this->currency);
 
         $minimumBid = trim($this->minimum_bid_credits);
-        $minimumIncrement = trim($this->minimum_bid_increment_credits);
+        $increment = trim($this->bid_increment_credits);
 
         return [
             'name' => $this->name,
             'description' => $this->description !== '' ? $this->description : null,
 
-            // Blank stays null: an unset bid rule is not the same as a rule
-            // of zero, and the business has not chosen either value yet.
-            'minimum_bid_credits' => $minimumBid === '' ? null : (int) $minimumBid,
-            'minimum_bid_increment_credits' => $minimumIncrement === '' ? null : (int) $minimumIncrement,
-            'allow_bid_increase' => match ($this->allow_bid_increase) {
-                'yes' => true,
-                'no' => false,
-                default => null,
-            },
+            'minimum_bid_credits' => (int) $minimumBid,
+            'bid_increment_credits' => (int) $increment,
+
+            // The single-highest rules are cleared, explicitly, not merely left
+            // out: saving here moves a draft to the cumulative model, and the
+            // database refuses those fields beside it. Without the nulls, an
+            // older draft's lower-bound increment would survive the move.
+            'minimum_bid_increment_credits' => null,
+            'allow_bid_increase' => null,
             'minimum_bid_interval_ms' => $this->minimum_bid_interval_ms,
 
             'base_duration_seconds' => $this->base_duration_seconds,
@@ -241,6 +242,11 @@ class RulesetForm extends Component
         return view('livewire.admin.rulesets.ruleset-form', [
             'forfeitPolicies' => ForfeitPolicy::cases(),
             'isEditing' => $this->isEditing(),
+            // An older draft edited here is moved to the cumulative model when
+            // saved. Said on the form, so nobody is surprised by it.
+            'movesToCumulative' => $this->isEditing()
+                && $this->ruleset !== null
+                && $this->ruleset->bid_model !== BidModel::CumulativeStep,
         ]);
     }
 }

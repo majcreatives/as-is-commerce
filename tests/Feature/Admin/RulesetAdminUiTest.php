@@ -35,10 +35,13 @@ it('creates a draft ruleset from the form', function (): void {
 
     $ruleset = AuctionRuleset::firstWhere('name', 'Weekend Special');
 
+    // The form is entered and read in credits; the database stores subcredits.
+    $factor = CreditAmount::SUBCREDITS_PER_CREDIT;
+
     expect($ruleset)->not->toBeNull()
         ->and($ruleset?->status)->toBe(RulesetStatus::Draft)
-        ->and($ruleset?->minimum_bid_credits)->toBe(20)
-        ->and($ruleset?->bid_increment_credits)->toBe(2)
+        ->and($ruleset?->minimum_bid_credits)->toBe(20 * $factor)
+        ->and($ruleset?->bid_increment_credits)->toBe(2 * $factor)
         // Chosen in code by the form, never by a field: a new ruleset made here
         // follows the cumulative model, and none of the earlier rule's fields.
         ->and($ruleset?->bid_model)->toBe(BidModel::CumulativeStep)
@@ -103,13 +106,68 @@ it('offers no option to raise your own bid, because a leader cannot bid', functi
         ->and(property_exists(RulesetForm::class, 'minimum_bid_increment_credits'))->toBeFalse();
 });
 
-it('rejects a minimum bid that is not a whole number of credits', function (): void {
+it('rejects a minimum bid that is not a number at all', function (): void {
     Livewire::actingAs($this->admin)
         ->test(RulesetForm::class)
         ->set('name', 'Invalid')
         ->set('minimum_bid_credits', 'not-a-number')
         ->call('save')
         ->assertHasErrors('minimum_bid_credits');
+
+    expect(AuctionRuleset::count())->toBe(0);
+});
+
+it('accepts a bid figure finer than a whole credit, and stores its exact subcredit count', function (): void {
+    // The entire reason this form takes a decimal string rather than casting
+    // straight to (int): 0.0001 credits is the finest step the re-denomination
+    // exists to allow, and it must reach the database as exactly 1 subcredit,
+    // not be truncated to zero.
+    Livewire::actingAs($this->admin)
+        ->test(RulesetForm::class)
+        ->set('name', 'Fine Step')
+        ->set('minimum_bid_credits', '1')
+        ->set('bid_increment_credits', '0.0001')
+        ->call('save')
+        ->assertHasNoErrors();
+
+    $ruleset = AuctionRuleset::firstWhere('name', 'Fine Step');
+
+    expect($ruleset?->minimum_bid_credits)->toBe(CreditAmount::SUBCREDITS_PER_CREDIT)
+        ->and($ruleset?->bid_increment_credits)->toBe(1);
+});
+
+it('shows an existing fine step back as the decimal an administrator would recognise', function (): void {
+    // The round trip this whole fix exists for: a raw subcredit count that is
+    // not a whole credit must reopen as a legible decimal, not "1" (wrong) or
+    // the raw integer (unreadable).
+    $draft = AuctionRuleset::factory()->cumulative(minimum: CreditAmount::SUBCREDITS_PER_CREDIT, increment: 1)->create();
+
+    Livewire::actingAs($this->admin)
+        ->test(RulesetForm::class, ['ruleset' => $draft])
+        ->assertSet('minimum_bid_credits', '1')
+        ->assertSet('bid_increment_credits', '0.0001');
+});
+
+it('refuses a bid figure finer than a subcredit can represent', function (): void {
+    Livewire::actingAs($this->admin)
+        ->test(RulesetForm::class)
+        ->set('name', 'Too Fine')
+        ->set('minimum_bid_credits', '1')
+        ->set('bid_increment_credits', '0.00001')
+        ->call('save')
+        ->assertHasErrors('bid_increment_credits');
+
+    expect(AuctionRuleset::count())->toBe(0);
+});
+
+it('refuses a fractional amount that rounds to zero subcredits', function (): void {
+    Livewire::actingAs($this->admin)
+        ->test(RulesetForm::class)
+        ->set('name', 'Zero Fraction')
+        ->set('minimum_bid_credits', '1')
+        ->set('bid_increment_credits', '0.0000')
+        ->call('save')
+        ->assertHasErrors('bid_increment_credits');
 
     expect(AuctionRuleset::count())->toBe(0);
 });
@@ -182,7 +240,10 @@ it('reports a contradictory configuration as an invariant error', function (): v
 });
 
 it('edits a draft', function (): void {
-    $draft = AuctionRuleset::factory()->cumulative(minimum: 10, increment: 2)->create();
+    // Seeded at the raw scale a real ruleset would be stored at, so the form
+    // opens showing "10"/"2" -- the human figures -- not their tiny raw ratio.
+    $factor = CreditAmount::SUBCREDITS_PER_CREDIT;
+    $draft = AuctionRuleset::factory()->cumulative(minimum: 10 * $factor, increment: 2 * $factor)->create();
 
     Livewire::actingAs($this->admin)
         ->test(RulesetForm::class, ['ruleset' => $draft])
@@ -193,14 +254,19 @@ it('edits a draft', function (): void {
         ->call('save')
         ->assertHasNoErrors();
 
-    expect($draft->fresh()?->minimum_bid_credits)->toBe(60)
-        ->and($draft->fresh()?->bid_increment_credits)->toBe(2);
+    expect($draft->fresh()?->minimum_bid_credits)->toBe(60 * $factor)
+        ->and($draft->fresh()?->bid_increment_credits)->toBe(2 * $factor);
 });
 
 it('moves an older draft to the cumulative model when it is saved, and says so', function (): void {
     // Made under the earlier rule, with its lower-bound increment and its
-    // raise-your-own-bid option -- both meaningless under the new one.
-    $draft = AuctionRuleset::factory()->withBidRules(minimum: 10, increment: 5)
+    // raise-your-own-bid option -- both meaningless under the new one. Only
+    // `minimum` is seeded at the raw scale: it is the field fillFrom()
+    // converts for display. `increment` here is the old single-highest
+    // field, cleared on save and never read through CreditAmount, so it is
+    // left as a plain raw value, same as the test that checks it unconverted.
+    $factor = CreditAmount::SUBCREDITS_PER_CREDIT;
+    $draft = AuctionRuleset::factory()->withBidRules(minimum: 10 * $factor, increment: 5)
         ->create(['allow_bid_increase' => true]);
 
     Livewire::actingAs($this->admin)
@@ -218,8 +284,8 @@ it('moves an older draft to the cumulative model when it is saved, and says so',
     $draft = $draft->fresh();
 
     expect($draft->bid_model)->toBe(BidModel::CumulativeStep)
-        ->and($draft->minimum_bid_credits)->toBe(10)
-        ->and($draft->bid_increment_credits)->toBe(3)
+        ->and($draft->minimum_bid_credits)->toBe(10 * $factor)
+        ->and($draft->bid_increment_credits)->toBe(3 * $factor)
         // The earlier rule's fields are cleared, not merely hidden.
         ->and($draft->minimum_bid_increment_credits)->toBeNull()
         ->and($draft->allow_bid_increase)->toBeNull();

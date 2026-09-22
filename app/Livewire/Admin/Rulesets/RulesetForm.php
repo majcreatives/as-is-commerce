@@ -7,13 +7,16 @@ namespace App\Livewire\Admin\Rulesets;
 use App\Domain\Auction\Actions\CreateRuleset;
 use App\Domain\Auction\Actions\UpdateRuleset;
 use App\Domain\Auction\RulesetInvariants;
+use App\Domain\Credit\ValueObjects\CreditAmount;
 use App\Domain\Shared\Money\Money;
 use App\Enums\BidModel;
 use App\Enums\ForfeitPolicy;
 use App\Models\AuctionRuleset;
+use Closure;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
+use InvalidArgumentException;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 
@@ -33,6 +36,14 @@ class RulesetForm extends Component
     // the only opening figure that is not invented, and the step is what every
     // later bid is measured by. Held as strings so an empty field is refused
     // rather than collapsing to zero.
+    //
+    // ENTERED AND DISPLAYED IN CREDITS, STORED IN SUBCREDITS. An administrator
+    // types what a customer would recognise -- "1", "0.0001" -- exactly as
+    // CreditAmount::fromDecimalString() parses it; toAttributes() converts to
+    // the raw ledger count the database actually holds, and fillFrom() converts
+    // back the same way when an existing draft is opened. Casting the raw
+    // typed string straight to (int), as this form used to, would silently
+    // truncate any admin figure finer than a whole credit to zero.
     public string $minimum_bid_credits = '';
 
     public string $bid_increment_credits = '';
@@ -88,8 +99,10 @@ class RulesetForm extends Component
         $this->name = $ruleset->name;
         $this->description = $ruleset->description ?? '';
 
-        $this->minimum_bid_credits = (string) ($ruleset->minimum_bid_credits ?? '');
-        $this->bid_increment_credits = (string) ($ruleset->bid_increment_credits ?? '');
+        $this->minimum_bid_credits = $ruleset->minimum_bid_credits === null
+            ? '' : CreditAmount::fromSubcredits($ruleset->minimum_bid_credits)->toDecimalString();
+        $this->bid_increment_credits = $ruleset->bid_increment_credits === null
+            ? '' : CreditAmount::fromSubcredits($ruleset->bid_increment_credits)->toDecimalString();
         $this->minimum_bid_interval_ms = $ruleset->minimum_bid_interval_ms;
 
         $this->base_duration_seconds = $ruleset->base_duration_seconds;
@@ -113,15 +126,24 @@ class RulesetForm extends Component
      */
     protected function rules(): array
     {
+        // As many decimal places as CreditAmount can hold, derived rather than
+        // hardcoded, so this form's validation moves automatically if the
+        // re-denomination factor ever does. 4 places today: "0.0001" is the
+        // finest bid a cumulative ruleset can specify.
+        $places = CreditAmount::decimalPlaces();
+        $creditPattern = $places > 0 ? "/^\d{1,12}(\.\d{1,{$places}})?$/" : '/^\d{1,12}$/';
+
         return [
             'name' => ['required', 'string', 'max:100'],
             'description' => ['nullable', 'string', 'max:2000'],
 
-            // Both required, and at least one credit: an empty field must be
-            // refused, never quietly become a number nobody chose. The database
-            // refuses an active ruleset without them as well.
-            'minimum_bid_credits' => ['required', 'string', 'regex:/^[1-9]\d{0,11}$/'],
-            'bid_increment_credits' => ['required', 'string', 'regex:/^[1-9]\d{0,11}$/'],
+            // Both required, and at least one subcredit: an empty field must be
+            // refused, never quietly become a number nobody chose. The regex
+            // alone cannot refuse a shape-valid zero (it mirrors how
+            // delivery_fee's regex legitimately allows zero), so positivity is
+            // checked separately, after the value can actually be parsed.
+            'minimum_bid_credits' => ['required', 'string', "regex:{$creditPattern}", $this->positiveCreditAmount()],
+            'bid_increment_credits' => ['required', 'string', "regex:{$creditPattern}", $this->positiveCreditAmount()],
             'minimum_bid_interval_ms' => ['required', 'integer', 'min:0', 'max:600000'],
 
             'base_duration_seconds' => ['required', 'integer', 'min:1', 'max:2592000'],
@@ -144,15 +166,38 @@ class RulesetForm extends Component
     }
 
     /**
+     * A shape-valid figure that parses to zero (or negative) is refused here.
+     *
+     * Laravel runs every rule for a field regardless of whether an earlier one
+     * failed (there is no implicit `bail`), so this closure cannot assume the
+     * regex rule beside it already passed -- it catches its own parse failure
+     * defensively rather than letting CreditAmount's exception escape as an
+     * uncaught error instead of a validation message.
+     */
+    private function positiveCreditAmount(): Closure
+    {
+        return function (string $attribute, mixed $value, Closure $fail): void {
+            try {
+                if (! CreditAmount::fromDecimalString((string) $value)->isPositive()) {
+                    $fail('Enter an amount greater than zero.');
+                }
+            } catch (InvalidArgumentException) {
+                // The regex rule on the same field already reports the shape
+                // problem; nothing more to add here.
+            }
+        };
+    }
+
+    /**
      * @return array<string, string>
      */
     protected function messages(): array
     {
         return [
             'minimum_bid_credits.required' => 'Enter the opening bid: the smallest bid, and the first one on every auction.',
-            'minimum_bid_credits.regex' => 'Enter a whole number of credits, at least 1.',
+            'minimum_bid_credits.regex' => 'Enter a number of credits, such as 1 or 0.0001, greater than zero.',
             'bid_increment_credits.required' => 'Enter the bid increment: how far ahead of the leader every bid lands a bidder.',
-            'bid_increment_credits.regex' => 'Enter a whole number of credits, at least 1.',
+            'bid_increment_credits.regex' => 'Enter a number of credits, such as 1 or 0.0001, greater than zero.',
             'delivery_fee.regex' => 'Enter an amount such as 0 or 25.00, with no currency symbol.',
         ];
     }
@@ -194,15 +239,20 @@ class RulesetForm extends Component
     {
         $currency = strtoupper($this->currency);
 
-        $minimumBid = trim($this->minimum_bid_credits);
-        $increment = trim($this->bid_increment_credits);
+        // Parsed the same way Money is elsewhere in this form: from a decimal
+        // string, never by casting, so a figure finer than a whole credit
+        // ("0.0001") is converted to its exact subcredit count rather than
+        // truncated to zero. Validation has already confirmed both parse and
+        // are positive by the time save() reaches this method.
+        $minimumBid = CreditAmount::fromDecimalString(trim($this->minimum_bid_credits))->subcredits;
+        $increment = CreditAmount::fromDecimalString(trim($this->bid_increment_credits))->subcredits;
 
         return [
             'name' => $this->name,
             'description' => $this->description !== '' ? $this->description : null,
 
-            'minimum_bid_credits' => (int) $minimumBid,
-            'bid_increment_credits' => (int) $increment,
+            'minimum_bid_credits' => $minimumBid,
+            'bid_increment_credits' => $increment,
 
             // The single-highest rules are cleared, explicitly, not merely left
             // out: saving here moves a draft to the cumulative model, and the

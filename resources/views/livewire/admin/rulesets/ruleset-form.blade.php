@@ -63,15 +63,15 @@
             <div class="grid gap-5 sm:grid-cols-2">
                 <x-field label="Minimum bid (credits)" name="minimum_bid_credits"
                          :error="$errors->first('minimum_bid_credits')"
-                         hint="The opening bid: the first bid on every auction made from this ruleset, exactly.">
-                    <x-input id="minimum_bid_credits" inputmode="numeric" wire:model="minimum_bid_credits"
+                         hint="The opening bid: the first bid on every auction made from this ruleset, exactly. A decimal such as 0.0001 is a finer step than 1 credit -- enter whatever a bidder should actually pay.">
+                    <x-input id="minimum_bid_credits" inputmode="decimal" wire:model="minimum_bid_credits"
                              :error="$errors->has('minimum_bid_credits')" required />
                 </x-field>
 
                 <x-field label="Bid increment (credits)" name="bid_increment_credits"
                          :error="$errors->first('bid_increment_credits')"
-                         hint="Every bid puts a bidder exactly this many credits ahead of the leader. With a minimum of 5 and an increment of 2, the leader's total goes 5, 7, 9, 11 and so on.">
-                    <x-input id="bid_increment_credits" inputmode="numeric" wire:model="bid_increment_credits"
+                         hint="Every bid puts a bidder exactly this many credits ahead of the leader. With a minimum of 5 and an increment of 2, the leader's total goes 5, 7, 9, 11 and so on. Decimals are allowed, down to 0.0001.">
+                    <x-input id="bid_increment_credits" inputmode="decimal" wire:model="bid_increment_credits"
                              :error="$errors->has('bid_increment_credits')" required />
                 </x-field>
 

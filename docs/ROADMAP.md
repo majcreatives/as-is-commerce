@@ -74,6 +74,7 @@ stated.
 | — | Header menu dead on pages that are not Livewire components (Alpine ships inside Livewire's bundle) | fixed, deployed |
 | 31.4, 31.5, 31.7, 31.2b | Homepage discovery, registration redesign, newsletter popup, conditions as data | not started; see `PLAN_31_UX_BIDCAP_SHARING.md` |
 | **32** | **Cumulative bidding model** — a bidder's position is their total credits consumed; the server works out the one bid that lands them a step ahead; the largest total wins. `PLAN_32_FIXED_BID_INCREMENT.md` | steps 1–3 deployed; steps 4–6 committed; **deploy pending**, see `VERIFY_32_CUMULATIVE_BIDDING.md` |
+| — | **Pot-target bidding** — a second, earlier way to close: the sum of every accepted bid reaching an admin-chosen Credits figure closes the auction at once, whoever is leading wins for their own, much smaller spend. Ships with `CreditAmount`, a display layer for Credits (the raw ledger count is now "subcredits," re-denominated ×10,000 in the same release its divisor changes, so no customer-visible figure moves). Working title only — not yet assigned a stage number; see `PLAN_POT_TARGET_BIDDING.md`. | steps 1–6 committed; sequenced to deploy **after** `stage32.1`, as its own separate release (owner's decision, 2026-09-22); **deploy pending**, see `VERIFY_POT_TARGET_BIDDING.md` |
 | 33 | Auction sharing and referral qualification | planned, not started; needs decisions in `PLAN_31_UX_BIDCAP_SHARING.md` |
 
 ## Reference-model reframe (recorded, not a stage change)

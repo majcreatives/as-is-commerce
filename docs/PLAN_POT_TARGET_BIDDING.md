@@ -480,3 +480,13 @@ choose a re-denomination factor other than the platform default (D-1).
 begin on step 1 of §7. It does not authorize steps 2 onward, and in
 particular does not authorize the re-denomination migration or any staging
 deployment; each of those needs its own go-ahead when its step is reached.
+
+**Status, 2026-09-22: steps 1–6 committed to `main`.** Step 7's own two
+halves are separate: the verification runbook is written
+(`VERIFY_POT_TARGET_BIDDING.md`) and needs no further authorization to exist
+as a document; the actual staging deployment it describes has **not**
+happened and is sequenced to run only after `stage32.1` (a separate,
+already-tagged release, itself still pending on staging) is deployed and
+confirmed first — the owner's own decision, made when this step began, to
+keep two independently-reviewed releases as two separate, independently
+rollback-able deployments rather than bundling them.

@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Domain\Credit\ValueObjects\CreditAmount;
 use App\Livewire\Admin\Customers\CustomerDetail;
 use App\Livewire\Admin\Customers\CustomerIndex;
 use App\Models\User;
@@ -85,9 +86,14 @@ it('shows what the customer bought and what happened to it', function (): void {
 });
 
 it('keeps spendable credits and credits consumed on bids as separate figures', function (): void {
-    $customer = bidder(1_000);
+    // Multiplied by the redenomination factor so the DISPLAYED figures below
+    // -- "850 credits", "150 credits" -- are what actually renders. Bid and
+    // wallet arithmetic is scale-invariant; only what a customer reads depends
+    // on this factor, via CreditAmount.
+    $factor = CreditAmount::SUBCREDITS_PER_CREDIT;
+    $customer = bidder(1_000 * $factor);
     $auction = liveAuction();
-    placeBid($auction, $customer, 150);
+    placeBid($auction, $customer, 150 * $factor);
 
     $rendered = Livewire::actingAs($this->admin)
         ->test(CustomerDetail::class, ['user' => $customer])

@@ -35,7 +35,11 @@
                             {{ $auction->rules()->bidModel->leaderLabel() }}
                         </dt>
                         <dd class="mt-1 text-2xl font-bold tabular-nums text-slate-900">
-                            {{ $highestBid ? number_format($highestBid->rankingValue()) : '—' }}
+                            @if ($highestBid)
+                                <x-credits :amount="$highestBid->rankingValue()" />
+                            @else
+                                —
+                            @endif
                         </dd>
                         <dd class="text-xs text-slate-500">a count of credits, not money</dd>
                     </div>
@@ -80,7 +84,7 @@
                         <div class="flex justify-between gap-4">
                             <dt class="text-slate-600">Eligible consumed bid credits</dt>
                             <dd class="tabular-nums font-semibold text-slate-900">
-                                {{ number_format($auction->buy_now_eligible_credits ?? 0) }}
+                                <x-credits :amount="$auction->buy_now_eligible_credits ?? 0" />
                             </dd>
                         </div>
                         <div class="flex justify-between gap-4">
@@ -219,19 +223,22 @@
                     @if ($rules->bidModel->isCumulative())
                         <div class="flex justify-between gap-4">
                             <dt class="text-slate-600">Opening bid</dt>
-                            <dd class="tabular-nums text-slate-900">{{ number_format((int) $rules->minimumBidCredits) }} credits</dd>
+                            <dd class="tabular-nums text-slate-900"><x-credits :amount="(int) $rules->minimumBidCredits" /></dd>
                         </div>
 
                         <div class="flex justify-between gap-4">
                             <dt class="text-slate-600">Bid increment</dt>
-                            <dd class="tabular-nums text-slate-900">{{ number_format((int) $rules->bidIncrementCredits) }} credits</dd>
+                            <dd class="tabular-nums text-slate-900"><x-credits :amount="(int) $rules->bidIncrementCredits" /></dd>
                         </div>
                     @else
                         <div class="flex justify-between gap-4">
                             <dt class="text-slate-600">Minimum bid</dt>
                             <dd class="tabular-nums text-slate-900">
-                                {{ $rules->minimumBidCredits === null
-                                    ? 'No minimum' : number_format($rules->minimumBidCredits).' credits' }}
+                                @if ($rules->minimumBidCredits === null)
+                                    No minimum
+                                @else
+                                    <x-credits :amount="$rules->minimumBidCredits" />
+                                @endif
                             </dd>
                         </div>
 
@@ -241,8 +248,11 @@
                         <div class="flex justify-between gap-4">
                             <dt class="text-slate-600">Minimum increment (earlier rule)</dt>
                             <dd class="tabular-nums text-slate-900">
-                                {{ $rules->minimumBidIncrementCredits === null
-                                    ? 'No increment' : number_format($rules->minimumBidIncrementCredits).' credits' }}
+                                @if ($rules->minimumBidIncrementCredits === null)
+                                    No increment
+                                @else
+                                    <x-credits :amount="$rules->minimumBidIncrementCredits" />
+                                @endif
                             </dd>
                         </div>
 
@@ -342,14 +352,14 @@
                                             <td class="px-5 py-3 text-slate-700">{{ $bid->user?->name }}</td>
                                             @if ($auction->rules()->bidModel->isCumulative())
                                                 <td class="px-5 py-3 tabular-nums text-slate-700">
-                                                    +{{ number_format($bid->amount_credits) }}
+                                                    +<x-credits :amount="$bid->amount_credits" bare />
                                                 </td>
                                                 <td class="px-5 py-3 font-semibold tabular-nums text-slate-900">
-                                                    {{ number_format($bid->rankingValue()) }}
+                                                    <x-credits :amount="$bid->rankingValue()" bare />
                                                 </td>
                                             @else
                                                 <td class="px-5 py-3 font-semibold tabular-nums text-slate-900">
-                                                    {{ number_format($bid->amount_credits) }}
+                                                    <x-credits :amount="$bid->amount_credits" bare />
                                                 </td>
                                             @endif
                                             <td class="px-5 py-3 text-xs text-slate-500">

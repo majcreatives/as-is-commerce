@@ -137,7 +137,7 @@
                                      quantities, and the page says so. Valued at what the
                                      credits actually cost, never a fixed rate. --}}
                                 <span class="block text-xs text-slate-500">
-                                    {{ number_format($pricing->discountCredits) }} consumed bid credits,
+                                    <x-credits :amount="$pricing->discountCredits" bare /> consumed bid credits,
                                     valued at what those credits actually cost
                                 </span>
                             @endif
@@ -206,7 +206,7 @@
                                 <dt class="text-slate-600">Won with</dt>
                                 {{-- Credits, as a count. Never shown as money. --}}
                                 <dd class="tabular-nums font-semibold text-slate-900">
-                                    {{ number_format($pricing->winningBidCredits ?? 0) }} credits
+                                    <x-credits :amount="$pricing->winningBidCredits ?? 0" />
                                 </dd>
                             </div>
                             <div class="flex justify-between gap-4">

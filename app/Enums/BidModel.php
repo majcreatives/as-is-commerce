@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Enums;
 
+use App\Domain\Credit\ValueObjects\CreditAmount;
+
 /**
  * Which bidding model an auction was created under, and therefore how it ranks
  * bidders, validates a bid, and names its winner.
@@ -148,9 +150,11 @@ enum BidModel: string
      */
     public function winnerSentence(int $credits): string
     {
+        $amount = CreditAmount::fromSubcredits($credits)->format();
+
         return match ($this) {
-            self::SingleHighest => "Won by the highest valid credit bid of {$credits} credits.",
-            self::CumulativeStep => "Won with the highest total: {$credits} credits committed.",
+            self::SingleHighest => "Won by the highest valid credit bid of {$amount}.",
+            self::CumulativeStep => "Won with the highest total: {$amount} committed.",
         };
     }
 
@@ -159,9 +163,11 @@ enum BidModel: string
      */
     public function youWonSentence(int $credits): string
     {
+        $amount = CreditAmount::fromSubcredits($credits)->format();
+
         return match ($this) {
-            self::SingleHighest => "You won this auction with the highest valid credit bid of {$credits} credits.",
-            self::CumulativeStep => "You won this auction with the highest total: {$credits} credits committed.",
+            self::SingleHighest => "You won this auction with the highest valid credit bid of {$amount}.",
+            self::CumulativeStep => "You won this auction with the highest total: {$amount} committed.",
         };
     }
 
@@ -170,9 +176,11 @@ enum BidModel: string
      */
     public function youHeldSentence(int $credits): string
     {
+        $amount = CreditAmount::fromSubcredits($credits)->format();
+
         return match ($this) {
-            self::SingleHighest => "You held the highest valid credit bid of {$credits} credits when the auction closed.",
-            self::CumulativeStep => "You held the highest total, {$credits} credits committed, when the auction closed.",
+            self::SingleHighest => "You held the highest valid credit bid of {$amount} when the auction closed.",
+            self::CumulativeStep => "You held the highest total, {$amount} committed, when the auction closed.",
         };
     }
 
@@ -196,9 +204,11 @@ enum BidModel: string
      */
     public function closingNote(int $credits): string
     {
+        $amount = CreditAmount::fromSubcredits($credits)->format();
+
         return match ($this) {
-            self::SingleHighest => "Closed on the clock. Won by the highest valid credit bid of {$credits} credits.",
-            self::CumulativeStep => "Closed on the clock. Won with the highest total of {$credits} credits committed.",
+            self::SingleHighest => "Closed on the clock. Won by the highest valid credit bid of {$amount}.",
+            self::CumulativeStep => "Closed on the clock. Won with the highest total of {$amount} committed.",
         };
     }
 }

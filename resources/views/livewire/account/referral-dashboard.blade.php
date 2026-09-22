@@ -102,7 +102,7 @@
             <x-card>
                 <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Credits earned</p>
                 <p class="mt-1 text-3xl font-bold tabular-nums text-slate-900">
-                    {{ number_format($creditsEarned) }}
+                    <x-credits :amount="$creditsEarned" />
                 </p>
                 {{-- The material condition, next to the number rather than
                      buried at the bottom of the page. --}}

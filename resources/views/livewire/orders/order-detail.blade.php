@@ -113,7 +113,7 @@
                             <dt class="text-slate-600">
                                 Credit discount
                                 <span class="block text-xs text-slate-500">
-                                    {{ number_format($pricing->discountCredits) }} credits consumed
+                                    <x-credits :amount="$pricing->discountCredits" /> consumed
                                     bidding on this auction
                                 </span>
                             </dt>

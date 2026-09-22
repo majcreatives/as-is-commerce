@@ -69,8 +69,8 @@
                                     <span class="font-medium text-slate-900">{{ $ruleset->bid_model->label() }}</span>
                                     <span class="block text-xs tabular-nums text-slate-500">
                                         @if ($ruleset->minimum_bid_credits !== null && $ruleset->bid_increment_credits !== null)
-                                            opens at {{ number_format($ruleset->minimum_bid_credits) }},
-                                            step {{ number_format($ruleset->bid_increment_credits) }}
+                                            opens at <x-credits :amount="$ruleset->minimum_bid_credits" bare />,
+                                            step <x-credits :amount="$ruleset->bid_increment_credits" bare />
                                         @else
                                             <span class="text-amber-700">incomplete &mdash; set an opening bid and a step</span>
                                         @endif

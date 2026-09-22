@@ -83,7 +83,7 @@
                                 <span class="block font-mono text-xs text-slate-400">{{ $package->slug }}</span>
                             </td>
                             <td class="px-4 py-3 text-right font-semibold tabular-nums text-slate-900">
-                                {{ number_format($package->credit_amount) }}
+                                <x-credits :amount="$package->credit_amount" bare />
                             </td>
                             <td class="px-4 py-3 text-right tabular-nums text-slate-600">
                                 {{ $package->currency }} {{ $package->price()->format() }}

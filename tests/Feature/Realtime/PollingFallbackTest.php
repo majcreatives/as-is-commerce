@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Domain\Auction\Actions\CloseAuction;
 use App\Domain\Auction\Services\AuctionClock;
+use App\Domain\Credit\ValueObjects\CreditAmount;
 use App\Domain\Realtime\AuctionStatePayload;
 use App\Enums\AuctionStatus;
 use App\Events\Broadcast\AuctionStateBroadcast;
@@ -93,9 +94,10 @@ it('preserves the Stage 15 adaptive cadence exactly', function (): void {
 });
 
 it('serves the whole auction experience without any JavaScript', function (): void {
-    $auction = cumulativeAuction(minimum: 250, increment: 10);
-    $bidder = bidder(1_000);
-    placeBid($auction->fresh(), $bidder, 250);
+    $factor = CreditAmount::SUBCREDITS_PER_CREDIT;
+    $auction = cumulativeAuction(250 * $factor, 10 * $factor);
+    $bidder = bidder(1_000 * $factor);
+    placeBid($auction->fresh(), $bidder, 250 * $factor);
 
     // The server renders every figure. No value on this page is computed in a
     // browser, so disabling scripts removes the live updates and nothing else.
@@ -123,13 +125,14 @@ it('accepts a bid with no socket in sight', function (): void {
 });
 
 it('shows a change on the next poll, which is how a slept tab catches up', function (): void {
+    $factor = CreditAmount::SUBCREDITS_PER_CREDIT;
     $auction = liveAuction();
-    $viewer = bidder(1_000);
+    $viewer = bidder(1_000 * $factor);
 
     $page = Livewire::actingAs($viewer)->test(AuctionRoom::class, ['auction' => $auction->fresh()]);
 
     // Somebody else bids while this tab is asleep and receiving nothing.
-    placeBid($auction->fresh(), bidder(1_000), 400);
+    placeBid($auction->fresh(), bidder(1_000 * $factor), 400 * $factor);
 
     // The next poll re-reads authoritative state. No replay, no reconstruction
     // -- the page simply asks again and is told the truth.

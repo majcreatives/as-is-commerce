@@ -154,7 +154,7 @@
                                      comes from what the credits actually cost, not a
                                      fixed per-credit rate. --}}
                                 <span class="block text-xs text-slate-500">
-                                    {{ number_format($pricing->discountCredits) }} credits you already
+                                    <x-credits :amount="$pricing->discountCredits" /> you already
                                     consumed bidding on this auction, valued at what those credits
                                     actually cost
                                 </span>
@@ -204,7 +204,7 @@
 
                 @if ($pricing->hasDiscount())
                     <x-alert variant="warning" class="mt-5">
-                        Your {{ number_format($pricing->discountCredits) }} consumed credits stay
+                        Your <x-credits :amount="$pricing->discountCredits" bare /> consumed credits stay
                         consumed. They reduce this price — they are not refunded, not converted to
                         cash, and not returned to your wallet.
                     </x-alert>

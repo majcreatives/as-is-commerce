@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Domain\Catalog\Services\InventoryService;
+use App\Domain\Credit\ValueObjects\CreditAmount;
 use App\Domain\Marketplace\Queries\AuctionDiscoveryQuery;
 use App\Domain\Marketplace\Queries\ProductDiscoveryQuery;
 use App\Domain\Marketplace\ValueObjects\ListingAvailability;
@@ -244,7 +245,7 @@ it('carries no auction figure from a finished auction', function (): void {
 it('shows a live auction figure on a product card', function (): void {
     $product = Product::factory()->active()->withStock(1)->create(['name' => 'Bid On Item']);
     $auction = liveAuction(product: $product);
-    placeBid($auction, bidder(500), 180);
+    placeBid($auction, bidder(500 * CreditAmount::SUBCREDITS_PER_CREDIT), 180 * CreditAmount::SUBCREDITS_PER_CREDIT);
 
     Livewire::test(ProductCatalog::class)
         ->assertSee('Bid On Item')

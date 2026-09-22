@@ -239,7 +239,7 @@
                             <div class="text-right">
                                 {{-- A count of credits, never money. --}}
                                 <p class="tabular-nums font-semibold {{ $transaction->amount < 0 ? 'text-red-700' : 'text-emerald-700' }}">
-                                    {{ $transaction->amount > 0 ? '+' : '' }}{{ number_format($transaction->amount) }}
+                                    {{ $transaction->signedAmount() }}
                                 </p>
                                 <p class="text-xs text-slate-500">
                                     {{ $transaction->created_at->timezone($timezone)->format('j M, H:i') }}

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Domain\Auction\Actions\CloseAuction;
+use App\Domain\Credit\ValueObjects\CreditAmount;
 use App\Enums\NotificationType;
 use App\Livewire\Account\Dashboard;
 use App\Livewire\Auctions\AuctionIndex;
@@ -57,9 +58,14 @@ it('keeps an earlier auction\'s own words, because they were true of it', functi
 });
 
 it('shows the leader\'s total, not the size of their last bid', function (): void {
-    $auction = cumulativeAuction();
-    $a = bidder(500);
-    $b = bidder(500);
+    // Ruleset and wallets scaled by the redenomination factor together, so
+    // the displayed (bare) total below is still exactly "3" -- the engine's
+    // catch-up arithmetic is scale-invariant, and CreditAmount's bare display
+    // divides the same factor back out.
+    $factor = CreditAmount::SUBCREDITS_PER_CREDIT;
+    $auction = cumulativeAuction($factor, $factor);
+    $a = bidder(500 * $factor);
+    $b = bidder(500 * $factor);
 
     catchUp($auction, $a);   // A = 1
     catchUp($auction, $b);   // B = 2
@@ -67,7 +73,10 @@ it('shows the leader\'s total, not the size of their last bid', function (): voi
 
     // A's last bid was 2. The figure to beat is 3.
     Livewire::test(AuctionRoom::class, ['auction' => $auction->fresh()])
-        ->assertSeeHtml('<span data-auction-highest-credits>3</span>');
+        // Blade's component attribute bag renders a valueless attribute as
+        // attr="attr" -- harmless for the JS presence selector that reads it,
+        // but the exact string this checks.
+        ->assertSeeHtml('<span data-auction-highest-credits="data-auction-highest-credits">3</span>');
 });
 
 it('labels the same figure the same way on every surface that shows it', function (): void {
@@ -88,16 +97,21 @@ it('labels the same figure the same way on every surface that shows it', functio
 // ------------------------------------------------------ Bidding, as a bidder
 
 it('takes the owner\'s example through the room, one confirmed bid at a time', function (): void {
-    $auction = cumulativeAuction();
-    $a = bidder(500);
-    $b = bidder(500);
-    $c = bidder(500);
+    // Ruleset and wallets scaled together, so the raw engine amounts move
+    // with the factor while the DISPLAYED figure -- what $bid() asserts --
+    // stays the owner's original human numbers throughout.
+    $factor = CreditAmount::SUBCREDITS_PER_CREDIT;
+    $auction = cumulativeAuction($factor, $factor);
+    $a = bidder(500 * $factor);
+    $b = bidder(500 * $factor);
+    $c = bidder(500 * $factor);
 
-    $bid = function ($user, int $shown) use ($auction): void {
+    $bid = function ($user, int $humanShown) use ($auction, $factor): void {
         Livewire::actingAs($user)
             ->test(AuctionRoom::class, ['auction' => $auction->fresh()])
-            ->assertSee('Bid '.$shown.' '.($shown === 1 ? 'credit' : 'credits'))
-            ->call('review', $shown)
+            // assertSeeText: the figure renders inside its own <x-credits> span.
+            ->assertSeeText('Bid '.$humanShown.' '.($humanShown === 1 ? 'credit' : 'credits'))
+            ->call('review', $humanShown * $factor)
             ->call('bid')
             ->assertHasNoErrors();
     };
@@ -108,8 +122,10 @@ it('takes the owner\'s example through the room, one confirmed bid at a time', f
     $bid($c, 4);
     $bid($b, 3);
 
-    expect(Bid::query()->orderBy('sequence')->pluck('amount_credits')->all())->toBe([1, 2, 2, 4, 3])
-        ->and(Bid::query()->orderBy('sequence')->pluck('cumulative_credits')->all())->toBe([1, 2, 3, 4, 5]);
+    expect(Bid::query()->orderBy('sequence')->pluck('amount_credits')->all())
+        ->toBe(array_map(fn (int $n): int => $n * $factor, [1, 2, 2, 4, 3]))
+        ->and(Bid::query()->orderBy('sequence')->pluck('cumulative_credits')->all())
+        ->toBe(array_map(fn (int $n): int => $n * $factor, [1, 2, 3, 4, 5]));
 });
 
 it('shows the confirmation the figures the bidder needs to decide', function (): void {
@@ -218,11 +234,13 @@ it('shows an auction under the earlier rule, and does not bid on it through this
 // ---------------------------------------------------------------- History
 
 it('shows what each bid added and where it left the bidder, by participant', function (): void {
-    $auction = cumulativeAuction();
-    $a = bidder(500);
-    $b = bidder(500);
+    // Scaled together so the displayed (bare) "+2" below still reads that way.
+    $factor = CreditAmount::SUBCREDITS_PER_CREDIT;
+    $auction = cumulativeAuction($factor, $factor);
+    $a = bidder(500 * $factor);
+    $b = bidder(500 * $factor);
     $b->update(['name' => 'Kwame Mensah']);
-    $viewer = bidder(500);
+    $viewer = bidder(500 * $factor);
 
     catchUp($auction, $a);   // A: +1 -> 1
     catchUp($auction, $b);   // B: +2 -> 2
@@ -232,7 +250,9 @@ it('shows what each bid added and where it left the bidder, by participant', fun
         ->test(AuctionRoom::class, ['auction' => $auction->fresh()])
         ->assertSee('Credits added')
         ->assertSee('Total after')
-        ->assertSee('+2')
+        // assertSeeText: the figure renders inside its own <x-credits> span,
+        // so "+2" is not a contiguous raw-HTML substring.
+        ->assertSeeText('+2')
         // One person, one number, however many times they bid.
         ->assertSee('Bidder #1')
         ->assertSee('Bidder #2')
@@ -255,10 +275,13 @@ it('keeps the earlier auction\'s history in its own terms', function (): void {
 // ----------------------------------------------------------- The result
 
 it('states the result as a total, to the winner and to the losers', function (): void {
-    $auction = cumulativeAuction();
-    $a = bidder(500);
-    $b = bidder(500);
-    $c = bidder(500);
+    // Scaled together so the sentences below -- built by BidModel's formatted,
+    // customer-facing methods -- still read the owner's original numbers.
+    $factor = CreditAmount::SUBCREDITS_PER_CREDIT;
+    $auction = cumulativeAuction($factor, $factor);
+    $a = bidder(500 * $factor);
+    $b = bidder(500 * $factor);
+    $c = bidder(500 * $factor);
 
     catchUp($auction, $a);
     catchUp($auction, $b);
@@ -283,9 +306,10 @@ it('states the result as a total, to the winner and to the losers', function ():
 });
 
 it('describes the win on the winner\'s checkout and order in the same terms', function (): void {
-    $auction = cumulativeAuction();
-    $a = bidder(500);
-    $b = bidder(500);
+    $factor = CreditAmount::SUBCREDITS_PER_CREDIT;
+    $auction = cumulativeAuction($factor, $factor);
+    $a = bidder(500 * $factor);
+    $b = bidder(500 * $factor);
 
     catchUp($auction, $a);
     catchUp($auction, $b);

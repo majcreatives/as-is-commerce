@@ -71,7 +71,7 @@
                 <dt class="text-slate-600">{{ $auction->rules()->bidModel->leaderLabel() }}</dt>
                 <dd class="font-semibold tabular-nums text-slate-900">
                     @if ($highest)
-                        {{ number_format($highest) }}
+                        <x-credits :amount="$highest" />
                     @else
                         <span class="font-normal text-slate-500">No bids yet</span>
                     @endif

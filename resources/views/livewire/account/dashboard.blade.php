@@ -53,7 +53,7 @@
         <x-card>
             <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Available credits</p>
             <p class="mt-1 text-3xl font-bold tabular-nums text-slate-900">
-                {{ number_format($availableCredits) }}
+                <x-credits :amount="$availableCredits" />
             </p>
             <p class="mt-1 text-xs text-slate-500">Ready to bid with.</p>
             <x-button href="{{ route('credits.packages') }}" wire:navigate variant="secondary" size="sm" class="mt-3">
@@ -64,7 +64,7 @@
         <x-card>
             <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Credits committed</p>
             <p class="mt-1 text-3xl font-bold tabular-nums text-slate-900">
-                {{ number_format($creditsCommitted) }}
+                <x-credits :amount="$creditsCommitted" />
             </p>
             {{-- Said plainly on the dashboard rather than buried. These are
                  spent, and this figure is never added to the one beside it. --}}
@@ -118,7 +118,7 @@
                                     <p class="mt-1 text-sm text-slate-600">
                                         {{ $auction->rules()->bidModel->leaderLabel() }}:
                                         <span class="font-semibold tabular-nums">
-                                            {{ number_format($auction->highest_bid_credits ?? 0) }}
+                                            <x-credits :amount="$auction->highest_bid_credits ?? 0" />
                                         </span>
                                         @if ($remaining[$auction->id] !== null)
                                             · closes in

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Domain\Credit\Services\CreditLedgerService;
+use App\Domain\Credit\ValueObjects\CreditAmount;
 use App\Enums\CreditTransactionType;
 use App\Livewire\Wallet\WalletOverview;
 use App\Models\User;
@@ -55,7 +56,7 @@ it('shows empty states rather than invented activity', function (): void {
 // -------------------------------------------------------------- Real data
 
 it('shows the real credit balance', function (): void {
-    grantCredits($this->customer, 250);
+    grantCredits($this->customer, 250 * CreditAmount::SUBCREDITS_PER_CREDIT);
 
     Livewire::actingAs($this->customer)
         ->test(WalletOverview::class)
@@ -63,8 +64,9 @@ it('shows the real credit balance', function (): void {
 });
 
 it('lists credit transactions with their type and signed amount', function (): void {
-    grantCredits($this->customer, 100, CreditTransactionType::PromotionalCredit);
-    $this->ledger->consumeCredits(creditWalletFor($this->customer), 40);
+    $factor = CreditAmount::SUBCREDITS_PER_CREDIT;
+    grantCredits($this->customer, 100 * $factor, CreditTransactionType::PromotionalCredit);
+    $this->ledger->consumeCredits(creditWalletFor($this->customer), 40 * $factor);
 
     Livewire::actingAs($this->customer)
         ->test(WalletOverview::class)
@@ -123,8 +125,9 @@ it('never shows another user their wallet', function (): void {
 });
 
 it('excludes expired credits from the spendable balance shown', function (): void {
-    grantCredits($this->customer, 60, CreditTransactionType::PromotionalCredit, now()->subDay());
-    grantCredits($this->customer, 40, CreditTransactionType::Purchase);
+    $factor = CreditAmount::SUBCREDITS_PER_CREDIT;
+    grantCredits($this->customer, 60 * $factor, CreditTransactionType::PromotionalCredit, now()->subDay());
+    grantCredits($this->customer, 40 * $factor, CreditTransactionType::Purchase);
 
     // Spendable is 40, even though the ledger still records 100.
     Livewire::actingAs($this->customer)
@@ -132,7 +135,7 @@ it('excludes expired credits from the spendable balance shown', function (): voi
         ->assertSet('tab', 'credits')
         ->assertSee('40');
 
-    expect(creditWalletFor($this->customer)->fresh()->spendableBalance())->toBe(40);
+    expect(creditWalletFor($this->customer)->fresh()->spendableBalance())->toBe(40 * $factor);
 });
 
 // -------------------------------------------------------------- Read-only

@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Domain\Credit\ValueObjects\CreditAmount;
 use App\Enums\BidModel;
 use App\Enums\RulesetStatus;
 use App\Livewire\Admin\Rulesets\RulesetForm;
@@ -257,14 +258,20 @@ it('lists rulesets', function (): void {
 });
 
 it('shows which bidding rule each ruleset follows', function (): void {
-    AuctionRuleset::factory()->cumulative(minimum: 5, increment: 2)->create(['name' => 'Newer One']);
+    // Scaled by the redenomination factor so "opens at 5" / "step 2" below are
+    // what actually renders through CreditAmount.
+    $factor = CreditAmount::SUBCREDITS_PER_CREDIT;
+    AuctionRuleset::factory()->cumulative(minimum: 5 * $factor, increment: 2 * $factor)->create(['name' => 'Newer One']);
     AuctionRuleset::factory()->create(['name' => 'Older One']);
 
     Livewire::actingAs($this->admin)
         ->test(RulesetIndex::class)
         ->assertSee('Cumulative step')
-        ->assertSee('opens at 5')
-        ->assertSee('step 2')
+        // assertSeeText, not assertSee: the number renders inside its own
+        // <x-credits> span, so "opens at 5" is not a contiguous raw-HTML
+        // substring even though it reads that way to a person on the page.
+        ->assertSeeText('opens at 5')
+        ->assertSeeText('step 2')
         ->assertSee('Single highest bid')
         ->assertSee('earlier rule');
 });

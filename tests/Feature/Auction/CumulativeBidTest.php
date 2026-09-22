@@ -8,6 +8,7 @@ use App\Domain\Auction\Exceptions\BidRejected;
 use App\Domain\Auction\Exceptions\InvalidAuctionRules;
 use App\Domain\Auction\Services\BidValidator;
 use App\Domain\Auction\Services\HighestBidResolver;
+use App\Domain\Credit\ValueObjects\CreditAmount;
 use App\Enums\AuctionStatus;
 use App\Enums\BidModel;
 use App\Enums\RulesetStatus;
@@ -250,11 +251,15 @@ it('refuses a bid the bidder cannot afford and consumes nothing', function (): v
 it('is won by the largest total, not the largest single bid', function (): void {
     // The twin of the single-highest test that says the opposite. Here C places
     // the largest single bid of all (4), and B wins with two smaller ones
-    // (2 and 3) that total 5.
-    $auction = cumulativeAuction();
-    $a = bidder(500);
-    $b = bidder(500);
-    $c = bidder(500);
+    // (2 and 3) that total 5. Minimum and step scaled by the redenomination
+    // factor -- the engine's arithmetic is scale-invariant, so the sequence of
+    // catch-up amounts is unchanged, and the closing note (a formatted,
+    // customer-facing figure) reads "5" only if the stored total is 5 * factor.
+    $factor = CreditAmount::SUBCREDITS_PER_CREDIT;
+    $auction = cumulativeAuction($factor, $factor);
+    $a = bidder(500 * $factor);
+    $b = bidder(500 * $factor);
+    $c = bidder(500 * $factor);
 
     catchUp($auction, $a);
     catchUp($auction, $b);
@@ -262,8 +267,8 @@ it('is won by the largest total, not the largest single bid', function (): void 
     $cBid = catchUp($auction, $c);
     $bLast = catchUp($auction, $b);
 
-    expect(Bid::query()->where('auction_id', $auction->id)->max('amount_credits'))->toBe(4)
-        ->and($cBid->amount_credits)->toBe(4);
+    expect(Bid::query()->where('auction_id', $auction->id)->max('amount_credits'))->toBe(4 * $factor)
+        ->and($cBid->amount_credits)->toBe(4 * $factor);
 
     $closed = app(CloseAuction::class)->handle($auction->fresh(), force: true);
 

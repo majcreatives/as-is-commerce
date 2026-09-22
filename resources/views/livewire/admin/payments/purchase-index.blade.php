@@ -55,7 +55,7 @@
                             </td>
                             <td class="px-4 py-3 text-slate-600">{{ $purchase->package_name_snapshot }}</td>
                             <td class="px-4 py-3 text-right font-semibold tabular-nums text-slate-900">
-                                {{ number_format($purchase->credit_amount) }}
+                                <x-credits :amount="$purchase->credit_amount" bare />
                             </td>
                             <td class="px-4 py-3 text-right tabular-nums text-slate-600">
                                 {{ $purchase->currency }} {{ $purchase->amount()->format() }}

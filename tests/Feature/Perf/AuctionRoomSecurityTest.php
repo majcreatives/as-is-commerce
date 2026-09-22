@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Domain\Auction\Actions\CloseAuction;
+use App\Domain\Credit\ValueObjects\CreditAmount;
 use App\Enums\AuctionStatus;
 use App\Livewire\Auctions\AuctionRoom;
 use App\Models\User;
@@ -27,19 +28,20 @@ beforeEach(function (): void {
 // -------------------------------------------------------------- Disclosure
 
 it('names no other bidder, however many times the page is polled', function (): void {
+    $factor = CreditAmount::SUBCREDITS_PER_CREDIT;
     $auction = liveAuction();
 
-    $rival = bidder(1_000);
+    $rival = bidder(1_000 * $factor);
     $rival->forceFill([
         'name' => 'Kwame Asante',
         'email' => 'kwame@example.test',
         'phone' => '+233241112222',
     ])->saveQuietly();
 
-    placeBid($auction->fresh(), $rival, 250);
+    placeBid($auction->fresh(), $rival, 250 * $factor);
 
-    $viewer = bidder(1_000);
-    placeBid($auction->fresh(), $viewer, 100);
+    $viewer = bidder(1_000 * $factor);
+    placeBid($auction->fresh(), $viewer, 100 * $factor);
 
     $html = Livewire::actingAs($viewer)
         ->test(AuctionRoom::class, ['auction' => $auction->fresh()])
@@ -54,9 +56,10 @@ it('names no other bidder, however many times the page is polled', function (): 
 });
 
 it('shows a signed-out visitor no wallet, no credits and no private state', function (): void {
+    $factor = CreditAmount::SUBCREDITS_PER_CREDIT;
     $auction = liveAuction();
-    $bidder = bidder(1_000);
-    placeBid($auction->fresh(), $bidder, 300);
+    $bidder = bidder(1_000 * $factor);
+    placeBid($auction->fresh(), $bidder, 300 * $factor);
 
     $html = Livewire::test(AuctionRoom::class, ['auction' => $auction->fresh()])
         ->call('$refresh')

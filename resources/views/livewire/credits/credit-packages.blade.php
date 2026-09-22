@@ -8,7 +8,7 @@
             <div>
                 <p class="text-sm font-medium text-slate-500">Your credit balance</p>
                 <p class="mt-1 text-3xl font-bold tabular-nums text-slate-900">
-                    {{ number_format($creditBalance) }}
+                    <x-credits :amount="$creditBalance" bare />
                 </p>
             </div>
 
@@ -35,7 +35,7 @@
                     {{-- Credits and price are shown as two separate facts. They
                          are never equated: 500 credits is not GH₵500. --}}
                     <p class="mt-2 text-3xl font-bold tabular-nums text-slate-900">
-                        {{ number_format($package->credit_amount) }}
+                        <x-credits :amount="$package->credit_amount" bare />
                     </p>
                     <p class="text-sm text-slate-500">
                         {{ Str::plural('credit', $package->credit_amount) }}

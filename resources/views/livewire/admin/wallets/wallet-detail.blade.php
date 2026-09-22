@@ -20,7 +20,7 @@
         <x-card>
             <p class="text-sm font-medium text-slate-500">Ledger balance</p>
             <p class="mt-1 text-2xl font-bold tabular-nums text-slate-900">
-                {{ number_format($creditWallet->balance) }}
+                <x-credits :amount="$creditWallet->balance" bare />
             </p>
             <p class="mt-1 text-xs text-slate-500">credits recorded in the ledger</p>
         </x-card>
@@ -28,11 +28,11 @@
         <x-card>
             <p class="text-sm font-medium text-slate-500">Spendable now</p>
             <p class="mt-1 text-2xl font-bold tabular-nums text-slate-900">
-                {{ number_format($spendableCredits) }}
+                <x-credits :amount="$spendableCredits" bare />
             </p>
             @if ($expiredUnclaimed > 0)
                 <p class="mt-1 text-xs font-medium text-accent-800">
-                    {{ number_format($expiredUnclaimed) }} expired, not yet written off
+                    <x-credits :amount="$expiredUnclaimed" bare /> expired, not yet written off
                 </p>
             @else
                 <p class="mt-1 text-xs text-slate-500">excludes expired batches</p>
@@ -67,7 +67,7 @@
                 @if ($report['healthy'])
                     <x-alert variant="success">
                         Consistent. Ledger sum, stored balance and remaining batch credits all agree at
-                        {{ number_format($report['stored_balance']) }}.
+                        <x-credits :amount="$report['stored_balance']" bare />.
                     </x-alert>
                 @else
                     <x-alert variant="danger">
@@ -86,15 +86,15 @@
                 <dl class="mt-4 grid gap-3 text-sm sm:grid-cols-3">
                     <div>
                         <dt class="text-slate-500">Stored balance</dt>
-                        <dd class="font-semibold tabular-nums">{{ number_format($report['stored_balance']) }}</dd>
+                        <dd class="font-semibold tabular-nums"><x-credits :amount="$report['stored_balance']" bare /></dd>
                     </div>
                     <div>
                         <dt class="text-slate-500">Ledger sum</dt>
-                        <dd class="font-semibold tabular-nums">{{ number_format($report['ledger_balance']) }}</dd>
+                        <dd class="font-semibold tabular-nums"><x-credits :amount="$report['ledger_balance']" bare /></dd>
                     </div>
                     <div>
                         <dt class="text-slate-500">Batches remaining</dt>
-                        <dd class="font-semibold tabular-nums">{{ number_format($report['lots_remaining']) }}</dd>
+                        <dd class="font-semibold tabular-nums"><x-credits :amount="$report['lots_remaining']" bare /></dd>
                     </div>
                 </dl>
 
@@ -203,10 +203,10 @@
                                     @endif
                                 </td>
                                 <td class="px-4 py-3 text-right tabular-nums text-slate-500">
-                                    {{ number_format($lot->original_amount) }}
+                                    <x-credits :amount="$lot->original_amount" bare />
                                 </td>
                                 <td class="px-4 py-3 text-right font-semibold tabular-nums text-slate-900">
-                                    {{ number_format($lot->remaining_amount) }}
+                                    <x-credits :amount="$lot->remaining_amount" bare />
                                 </td>
                             </tr>
                         @endforeach
@@ -253,7 +253,7 @@
                                     {{ $transaction->signedAmount() }}
                                 </td>
                                 <td class="px-4 py-3 text-right tabular-nums text-slate-500">
-                                    {{ number_format($transaction->balance_after) }}
+                                    <x-credits :amount="$transaction->balance_after" bare />
                                 </td>
                             </tr>
                         @endforeach

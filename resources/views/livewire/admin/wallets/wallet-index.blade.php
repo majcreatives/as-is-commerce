@@ -37,7 +37,7 @@
                                 {{ app(\App\Domain\Shared\Phone\PhoneNumberNormalizer::class)->forDisplay($user->phone) }}
                             </td>
                             <td class="px-4 py-3 text-right font-semibold tabular-nums text-slate-900">
-                                {{ number_format($user->creditWallet?->balance ?? 0) }}
+                                <x-credits :amount="$user->creditWallet?->balance ?? 0" bare />
                             </td>
                             <td class="px-4 py-3 text-right tabular-nums text-slate-600">
                                 {{ $user->cashWallet?->balance()->format() ?? '0.00' }}

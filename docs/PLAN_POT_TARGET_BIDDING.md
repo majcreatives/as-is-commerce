@@ -261,13 +261,17 @@ where relevant, what is still open underneath it.
   settlement orders → their Store Wallet issuances. That would destroy the
   16 auctions staging tests against.
 
-  **Revision 2 — the inventory was incomplete.** Traced `PlaceBid` end to
-  end (confirming `bids.amount_credits` is set from the exact value debited
-  from the wallet, so it is permanently tied 1:1 to a specific
+  **Revision 2 — the inventory was incomplete, twice.** Traced `PlaceBid` end
+  to end (confirming `bids.amount_credits` is set from the exact value
+  debited from the wallet, so it is permanently tied 1:1 to a specific
   `credit_transactions` row) and then read every migration that defines a
   column with "credit" in its name, and every `BEFORE UPDATE` trigger, to
-  build this list from the schema rather than from memory. It found four
-  columns and two triggers the first pass missed.
+  build this list from the schema rather than from memory. That pass found
+  four columns and two triggers the first draft missed. Writing the
+  migration's own test later surfaced a fifth — `pricing_snapshot`'s
+  `winning_bid_credits` — found only once `CheckoutPricing::toArray()` was
+  read in full rather than grepped for the names already known. Both passes
+  are folded into the table below; neither is corrected quietly.
 
   **The governing principle**, so each column's treatment is a rule rather
   than a one-off judgement call: *a standalone credit count converts by
@@ -296,7 +300,7 @@ where relevant, what is still open underneath it.
   | `auction_rulesets` | `minimum_bid_credits`, `minimum_bid_increment_credits`, `bid_increment_credits` |
   | `auctions.rules_snapshot` (JSON) | `$.rules.minimum_bid_credits`, `$.rules.minimum_bid_increment_credits`, `$.rules.bid_increment_credits` |
   | `orders` | `discount_credits` |
-  | `orders.pricing_snapshot` (JSON) | `$.discount_credits` only — **not** `$.valuation[*].credits` or `$.valuation[*].lot_original_amount`, a stored pair, see below |
+  | `orders.pricing_snapshot` (JSON) | `$.discount_credits`, `$.winning_bid_credits` — **not** `$.valuation[*].credits` or `$.valuation[*].lot_original_amount`, a stored pair, see below |
   | `referrals` | `reward_credits` (where not null) |
   | `settings` | `value` where `key = 'referral_reward_credits'` |
 

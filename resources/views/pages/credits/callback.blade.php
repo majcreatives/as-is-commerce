@@ -6,10 +6,10 @@
                     <p class="text-sm font-medium text-emerald-700">Payment confirmed</p>
 
                     <p class="mt-2 text-3xl font-bold tabular-nums text-slate-900">
-                        +{{ number_format($purchase->credit_amount) }}
+                        +<x-credits :amount="$purchase->credit_amount" bare />
                     </p>
                     <p class="text-sm text-slate-500">
-                        {{ Str::plural('credit', $purchase->credit_amount) }} added to your wallet
+                        added to your wallet
                     </p>
 
                     <p class="mt-4 text-sm text-slate-600">
@@ -55,7 +55,7 @@
 
                     <p class="mt-4 text-xs text-slate-500">
                         {{ $purchase->package_name_snapshot }} &middot;
-                        {{ number_format($purchase->credit_amount) }} credits &middot;
+                        <x-credits :amount="$purchase->credit_amount" /> &middot;
                         <span class="font-mono">{{ $purchase->provider_reference }}</span>
                     </p>
 

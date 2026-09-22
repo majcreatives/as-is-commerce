@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Domain\Credit\ValueObjects\CreditAmount;
 use App\Domain\Referrals\Actions\AttributeReferral;
 use App\Domain\Referrals\Services\ReferralCodes;
 use App\Livewire\Account\Dashboard;
@@ -25,7 +26,10 @@ beforeEach(function (): void {
     config(['paystack.secret_key' => 'sk_test_orders']);
 
     settings()->set('referrals_enabled', true);
-    settings()->set('referral_reward_credits', 50);
+    // Scaled by the redenomination factor so the reward displays as exactly
+    // "50 credits" below -- what the setting's stored value must be for
+    // CreditAmount to render 50 as the customer-facing figure.
+    settings()->set('referral_reward_credits', 50 * CreditAmount::SUBCREDITS_PER_CREDIT);
 
     $this->codes = app(ReferralCodes::class);
     $this->attribute = app(AttributeReferral::class);

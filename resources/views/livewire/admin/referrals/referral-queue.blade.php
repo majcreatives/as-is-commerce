@@ -36,7 +36,7 @@
         <x-card>
             <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Credits issued</p>
             <p class="mt-1 text-2xl font-bold tabular-nums text-slate-900">
-                {{ number_format($summary['credits_issued'] ?? 0) }}
+                <x-credits :amount="$summary['credits_issued'] ?? 0" bare />
             </p>
             {{-- Counted from the reward snapshots, never from wallet balances:
                  a balance says nothing about how many people were introduced. --}}

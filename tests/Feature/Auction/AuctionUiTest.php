@@ -7,6 +7,7 @@ use App\Domain\Auction\Actions\CompleteBuyNow;
 use App\Domain\Auction\Actions\CreateAuction;
 use App\Domain\Auction\Actions\PlaceBid;
 use App\Domain\Catalog\Services\InventoryService;
+use App\Domain\Credit\ValueObjects\CreditAmount;
 use App\Domain\Shared\Money\Money;
 use App\Enums\AuctionStatus;
 use App\Livewire\Admin\Auctions\AuctionDetail;
@@ -163,22 +164,27 @@ it('offers a Buy Now button that opens a checkout without ending the auction', f
 
 it('places a bid from the auction page', function (): void {
     // The bidder does not type an amount. The server works out the one valid
-    // bid, the button shows it, and the bidder confirms that figure.
-    $auction = cumulativeAuction(minimum: 150, increment: 10);
-    $user = bidder(1_000);
+    // bid, the button shows it, and the bidder confirms that figure. Scaled
+    // by the redenomination factor throughout, so "Bid 150 credits" below is
+    // what actually renders and the stored amounts stay in step with it.
+    $factor = CreditAmount::SUBCREDITS_PER_CREDIT;
+    $auction = cumulativeAuction(minimum: 150 * $factor, increment: 10 * $factor);
+    $user = bidder(1_000 * $factor);
 
     Livewire::actingAs($user)
         ->test(AuctionRoom::class, ['auction' => $auction])
-        ->assertSee('Bid 150 credits')
-        ->call('review', 150)
+        // assertSeeText: the figure renders inside its own <x-credits> span,
+        // so "Bid 150 credits" is not a contiguous raw-HTML substring.
+        ->assertSeeText('Bid 150 credits')
+        ->call('review', 150 * $factor)
         ->assertSet('confirming', true)
         ->call('bid')
         ->assertHasNoErrors();
 
     expect(Bid::count())->toBe(1)
-        ->and(Bid::first()->amount_credits)->toBe(150)
-        ->and(Bid::first()->cumulative_credits)->toBe(150)
-        ->and(creditWalletFor($user)->fresh()->balance)->toBe(850);
+        ->and(Bid::first()->amount_credits)->toBe(150 * $factor)
+        ->and(Bid::first()->cumulative_credits)->toBe(150 * $factor)
+        ->and(creditWalletFor($user)->fresh()->balance)->toBe(850 * $factor);
 });
 
 it('reports the domain reason when a bid is refused', function (): void {
@@ -438,12 +444,13 @@ it('cancels with a reason that is recorded', function (): void {
 });
 
 it('shows the frozen snapshot rather than the live ruleset', function (): void {
+    $factor = CreditAmount::SUBCREDITS_PER_CREDIT;
     $ruleset = AuctionRuleset::factory()->active()->withoutThrottle()
-        ->withBidRules(minimum: 20)->create(['name' => 'Original']);
+        ->withBidRules(minimum: 20 * $factor)->create(['name' => 'Original']);
 
     $auction = liveAuction(ruleset: $ruleset);
 
-    $ruleset->update(['minimum_bid_credits' => 999]);
+    $ruleset->update(['minimum_bid_credits' => 999 * $factor]);
 
     Livewire::actingAs($this->admin)
         ->test(AuctionDetail::class, ['auction' => $auction->fresh()])

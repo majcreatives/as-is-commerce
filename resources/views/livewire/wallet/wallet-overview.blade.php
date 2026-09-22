@@ -9,16 +9,15 @@
         <x-card>
             <p class="text-sm font-medium text-slate-500">Bidding credits</p>
             <p class="mt-1 text-3xl font-bold tabular-nums text-slate-900">
-                {{ number_format($spendableCredits) }}
+                <x-credits :amount="$spendableCredits" bare />
             </p>
             <p class="mt-1 text-xs text-slate-500">
-                {{ Str::plural('credit', $spendableCredits) }} available to bid with
+                available to bid with
             </p>
 
             @if ($expiringSoon > 0)
                 <p class="mt-3 border-t border-slate-100 pt-3 text-xs font-medium text-accent-800">
-                    {{ number_format($expiringSoon) }}
-                    {{ Str::plural('credit', $expiringSoon) }} expiring within a month
+                    <x-credits :amount="$expiringSoon" /> expiring within a month
                 </p>
             @endif
         </x-card>
@@ -90,7 +89,7 @@
                                         {{ $transaction->signedAmount() }}
                                     </td>
                                     <td class="px-4 py-3 text-right tabular-nums text-slate-500">
-                                        {{ number_format($transaction->balance_after) }}
+                                        <x-credits :amount="$transaction->balance_after" bare />
                                     </td>
                                 </tr>
                             @endforeach
@@ -189,8 +188,8 @@
                                         {{ $lot->expires_at?->timezone(settings()->getString('display_timezone', 'UTC'))->format('j M Y') ?? 'Does not expire' }}
                                     </td>
                                     <td class="px-4 py-3 text-right tabular-nums">
-                                        <span class="font-semibold text-slate-900">{{ number_format($lot->remaining_amount) }}</span>
-                                        <span class="text-xs text-slate-400">of {{ number_format($lot->original_amount) }}</span>
+                                        <span class="font-semibold text-slate-900"><x-credits :amount="$lot->remaining_amount" bare /></span>
+                                        <span class="text-xs text-slate-400">of <x-credits :amount="$lot->original_amount" bare /></span>
                                     </td>
                                 </tr>
                             @endforeach

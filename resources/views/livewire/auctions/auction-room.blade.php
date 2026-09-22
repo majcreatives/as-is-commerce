@@ -47,7 +47,10 @@
                          and the next poll re-renders them from the database
                          either way. --}}
                     <p class="text-4xl font-bold tracking-tight text-slate-900">
-                        <span data-auction-highest-credits>{{ number_format($highestBid->rankingValue()) }}</span>
+                        {{-- Bare: auction-stream.js replaces this span's content with a
+                             plain toLocaleString() number on a live update, so the
+                             server-rendered figure must match that shape, unit-free. --}}
+                        <x-credits :amount="$highestBid->rankingValue()" bare data-auction-highest-credits />
                         <span class="text-base font-semibold text-slate-500">credits</span>
                     </p>
 
@@ -106,7 +109,7 @@
                     </x-card>
                 @else
                 <x-card title="Place a bid"
-                        :subtitle="'Each bid puts you exactly '.number_format($stepCredits).' '.Str::plural('credit', $stepCredits).' ahead of the leader. Credits are consumed immediately and permanently.'">
+                        :subtitle="'Each bid puts you exactly '.\App\Domain\Credit\ValueObjects\CreditAmount::fromSubcredits($stepCredits)->format().' ahead of the leader. Credits are consumed immediately and permanently.'">
                     @auth
                         @can('bids.place')
                             @php
@@ -225,7 +228,7 @@
                                     <div class="mt-4 flex flex-wrap items-center gap-3">
                                         @if ($nextBid > $balance)
                                             <x-button type="button" disabled>
-                                                Bid {{ number_format($nextBid) }} {{ Str::plural('credit', $nextBid) }}
+                                                Bid <x-credits :amount="$nextBid" />
                                             </x-button>
 
                                             <p class="text-sm text-slate-600" role="status">
@@ -238,7 +241,7 @@
                                             <x-button wire:click="review({{ $nextBid }})" wire:loading.attr="disabled"
                                                       wire:target="review">
                                                 <span wire:loading.remove wire:target="review">
-                                                    Bid {{ number_format($nextBid) }} {{ Str::plural('credit', $nextBid) }}
+                                                    Bid <x-credits :amount="$nextBid" />
                                                 </span>
                                                 <span wire:loading wire:target="review">Checking…</span>
                                             </x-button>
@@ -298,8 +301,7 @@
                         <x-alert variant="info" class="mt-4">
                             You bid on this auction and it was bought outright before it closed.
                             The
-                            <strong>{{ number_format($committedCredits) }}
-                            credits</strong> you committed remain consumed, as bid credits always
+                            <strong><x-credits :amount="$committedCredits" /></strong> you committed remain consumed, as bid credits always
                             are.
                         </x-alert>
                     @endif
@@ -361,10 +363,8 @@
                             <p class="font-semibold">You did not win this auction.</p>
                             <p class="mt-1">
                                 The {{ $bidModel->winningFigure() }} was
-                                {{ number_format($auction->winningBid?->rankingValue() ?? 0) }}
-                                credits. The
-                                <strong>{{ number_format($committedCredits) }}
-                                credits</strong> you committed remain consumed — bid credits are
+                                <x-credits :amount="$auction->winningBid?->rankingValue() ?? 0" />. The
+                                <strong><x-credits :amount="$committedCredits" /></strong> you committed remain consumed — bid credits are
                                 spent when the bid is accepted and are not returned.
                             </p>
                         </x-alert>
@@ -378,8 +378,7 @@
                     </p>
                     <p class="mt-2 text-sm text-slate-600">
                         The
-                        <strong>{{ number_format($committedCredits) }}
-                        credits</strong> you committed remain consumed.
+                        <strong><x-credits :amount="$committedCredits" /></strong> you committed remain consumed.
                     </p>
                 </x-card>
             @endif
@@ -424,14 +423,14 @@
                                         </td>
                                         @if ($bidModel->isCumulative())
                                             <td class="px-5 py-3 tabular-nums text-slate-700">
-                                                +{{ number_format($bid->amount_credits) }}
+                                                +<x-credits :amount="$bid->amount_credits" bare />
                                             </td>
                                             <td class="px-5 py-3 font-semibold tabular-nums text-slate-900">
-                                                {{ number_format($bid->rankingValue()) }}
+                                                <x-credits :amount="$bid->rankingValue()" bare />
                                             </td>
                                         @else
                                             <td class="px-5 py-3 font-semibold tabular-nums text-slate-900">
-                                                {{ number_format($bid->amount_credits) }}
+                                                <x-credits :amount="$bid->amount_credits" bare />
                                             </td>
                                         @endif
                                         <td class="px-5 py-3 text-slate-500">
@@ -464,7 +463,7 @@
                             <dt class="text-slate-600">
                                 Your credit discount
                                 <span class="block text-xs text-slate-500">
-                                    {{ number_format($quote->eligibleCredits) }} credits you have already
+                                    <x-credits :amount="$quote->eligibleCredits" /> you have already
                                     spent bidding on this auction, each valued at the price it was bought at
                                 </span>
                             </dt>
@@ -540,7 +539,7 @@
             @auth
                 <x-card title="Your credits">
                     <p class="text-2xl font-bold tabular-nums text-slate-900">
-                        {{ number_format(auth()->user()->creditWallet?->balance ?? 0) }}
+                        <x-credits :amount="auth()->user()->creditWallet?->balance ?? 0" bare />
                         <span class="text-sm font-semibold text-slate-500">credits</span>
                     </p>
                     <p class="mt-2 text-xs text-slate-500">
@@ -567,9 +566,9 @@
                                         {{ $bid->created_at->timezone(settings()->getString('display_timezone', 'UTC'))->format('j M, H:i') }}
                                     </span>
                                     <span class="font-semibold tabular-nums text-slate-900">
-                                        {{ number_format($bid->amount_credits) }} credits
+                                        <x-credits :amount="$bid->amount_credits" />
                                         @if ($bidModel->isCumulative())
-                                            <span class="font-normal text-slate-500">(total {{ number_format($bid->rankingValue()) }})</span>
+                                            <span class="font-normal text-slate-500">(total <x-credits :amount="$bid->rankingValue()" bare />)</span>
                                         @endif
                                     </span>
                                 </li>
@@ -577,7 +576,7 @@
                         </ul>
 
                         <p class="mt-4 border-t border-slate-100 pt-3 text-sm text-slate-600">
-                            <strong>{{ number_format($mine->sum('amount_credits')) }} credits</strong>
+                            <strong><x-credits :amount="$mine->sum('amount_credits')" /></strong>
                             consumed on this auction. They are gone whatever happens, and they are what
                             earns your Buy Now discount above.
                         </p>

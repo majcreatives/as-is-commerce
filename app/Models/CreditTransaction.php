@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Domain\Credit\ValueObjects\CreditAmount;
 use App\Enums\CreditTransactionType;
 use App\Models\Concerns\IsAppendOnly;
 use Database\Factories\CreditTransactionFactory;
@@ -127,9 +128,15 @@ class CreditTransaction extends Model
 
     /**
      * Signed amount rendered the way a statement would show it.
+     *
+     * The bare grouped number (`CreditAmount::formatNumber()`), never the
+     * unit word -- every caller shows this in a column already labelled
+     * "Credits", where repeating the word on every row would be clutter.
      */
     public function signedAmount(): string
     {
-        return ($this->amount > 0 ? '+' : '').number_format($this->amount);
+        $amount = CreditAmount::fromSubcredits($this->amount);
+
+        return ($amount->isPositive() ? '+' : '').$amount->formatNumber();
     }
 }

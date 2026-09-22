@@ -206,9 +206,11 @@
 
                                 {{-- A count of credits. No currency symbol, ever. --}}
                                 <td class="px-5 py-3 font-semibold tabular-nums text-slate-900">
-                                    {{ $auction->highest_bid_credits === null
-                                        ? '—'
-                                        : number_format($auction->highest_bid_credits) }}
+                                    @if ($auction->highest_bid_credits === null)
+                                        —
+                                    @else
+                                        <x-credits :amount="$auction->highest_bid_credits" bare />
+                                    @endif
                                 </td>
 
                                 <td class="px-5 py-3 tabular-nums text-slate-700">

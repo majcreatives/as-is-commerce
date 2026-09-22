@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Domain\Auction\Actions\CloseAuction;
 use App\Domain\Catalog\Services\InventoryService;
+use App\Domain\Credit\ValueObjects\CreditAmount;
 use App\Enums\OrderStatus;
 use App\Livewire\Admin\Orders\OrderDetail as AdminOrderDetail;
 use App\Livewire\Admin\Orders\OrderManager;
@@ -54,10 +55,13 @@ it('shows the components separately, not just a total', function (): void {
 });
 
 it('shows the credits behind a discount as a count, never as money', function (): void {
+    // Only the credit counts scale -- 100_000 is real money (pesewas) and must
+    // not move, or the discount's per-credit valuation would be wrong.
+    $factor = CreditAmount::SUBCREDITS_PER_CREDIT;
     $product = Product::factory()->active()->pricedAt(550_000)->create();
     $auction = liveAuction(product: $product);
-    $buyer = customerWithPurchasedCredits(1_000, 100_000);
-    placeBid($auction, $buyer, 150);
+    $buyer = customerWithPurchasedCredits(1_000 * $factor, 100_000);
+    placeBid($auction, $buyer, 150 * $factor);
 
     Livewire::actingAs($buyer)
         ->test(CheckoutPage::class, ['order' => buyNowCheckout($buyer, $product, $auction)])
@@ -72,10 +76,11 @@ it('shows the credits behind a discount as a count, never as money', function ()
 });
 
 it('tells a winner what they owe and what they do not', function (): void {
+    $factor = CreditAmount::SUBCREDITS_PER_CREDIT;
     $product = Product::factory()->active()->pricedAt(550_000)->create();
     $auction = liveAuction(product: $product, settlementMinor: 10_000);
-    $winner = bidder(500);
-    placeBid($auction, $winner, 180);
+    $winner = bidder(500 * $factor);
+    placeBid($auction, $winner, 180 * $factor);
     app(CloseAuction::class)->handle($auction, force: true);
 
     Livewire::actingAs($winner)

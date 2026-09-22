@@ -3,7 +3,6 @@
 declare(strict_types=1);
 
 use App\Domain\Credit\ValueObjects\CreditAmount;
-use Illuminate\Support\Str;
 
 /*
  * CreditAmount separates the number the ledger STORES (subcredits) from the
@@ -11,45 +10,58 @@ use Illuminate\Support\Str;
  * GH₵. It exists so the auction engine can price a catch-up step far finer
  * than one credit without a wallet balance turning into a seven-digit number.
  *
- * The divisor is 1 today. Introducing this type and re-denominating the ledger
- * are deliberately separate steps, so the first group of tests below defends
- * the property that makes that safe: WHILE THE DIVISOR IS 1, NOTHING A
- * CUSTOMER SEES CHANGES. That is the whole claim of this step, and it is
- * asserted rather than intended.
+ * The divisor is 10,000, raised by 2026_09_22_100000_redenominate_credits_to_subcredits,
+ * which converts every stored count by the same factor. This group of tests
+ * replaces the ones that held while the divisor was still 1 (see git history
+ * for that version, which proved the introduction of this type changed
+ * nothing a customer could see) with the conversion behaviour those tests
+ * predicted: a Starter pack is 1,000,000 subcredits and still reads
+ * "100 credits"; a mid-auction figure now genuinely needs its decimal places.
  */
 
-describe('at a divisor of 1, rendering is unchanged', function (): void {
-    /*
-     * The literal implementation this component had before the value object
-     * existed. If CreditAmount ever disagrees with it while the divisor is 1,
-     * this step has broken something on a live screen.
-     */
-    $previousImplementation = fn (int $amount): string => number_format($amount).' '.Str::plural('credit', $amount);
-
-    it('formats exactly as the old component did', function (int $amount) use ($previousImplementation): void {
-        expect(CreditAmount::SUBCREDITS_PER_CREDIT)
-            ->toBe(1, 'These equivalence tests only hold at a divisor of 1. If the re-denomination step has landed, this block should have been replaced by its conversion tests, not edited to pass.');
-
-        expect(CreditAmount::fromSubcredits($amount)->format())
-            ->toBe($previousImplementation($amount));
-    })->with([
-        'zero' => [0],
-        'one is singular' => [1],
-        'two is plural' => [2],
-        'a typical bid' => [150],
-        'a starter pack' => [100],
-        'a pro pack' => [1_000],
-        'crosses a thousands separator' => [1_500],
-        'several separators' => [1_234_567],
-    ]);
-
-    it('treats a whole credit and a subcredit as the same thing', function (): void {
-        expect(CreditAmount::fromCredits(500)->subcredits)->toBe(500);
+describe('at the current divisor, a whole credit reads as it always has', function (): void {
+    it('formats a Starter pack as "100 credits", not a seven-digit number', function (): void {
+        expect(CreditAmount::SUBCREDITS_PER_CREDIT)->toBe(10_000)
+            ->and(CreditAmount::fromCredits(100)->format())->toBe('100 credits')
+            ->and(CreditAmount::fromCredits(100)->subcredits)->toBe(1_000_000);
     });
 
-    it('carries no decimal places to trim', function (): void {
-        expect(CreditAmount::decimalPlaces())->toBe(0)
-            ->and(CreditAmount::fromSubcredits(1_500)->toDecimalString())->toBe('1500');
+    it('formats round credit counts with no decimal point', function (int $credits, string $expected) {
+        expect(CreditAmount::fromCredits($credits)->format())->toBe($expected);
+    })->with([
+        'zero' => [0, '0 credits'],
+        'one is singular' => [1, '1 credit'],
+        'two is plural' => [2, '2 credits'],
+        'a typical bid' => [150, '150 credits'],
+        'a starter pack' => [100, '100 credits'],
+        'a pro pack' => [1_000, '1,000 credits'],
+        'crosses a thousands separator' => [1_500, '1,500 credits'],
+        'several separators' => [1_234_567, '1,234,567 credits'],
+    ]);
+
+    it('carries four decimal places, trimmed to a whole number when the fraction is zero', function (): void {
+        expect(CreditAmount::decimalPlaces())->toBe(4)
+            ->and(CreditAmount::fromSubcredits(1_500 * CreditAmount::SUBCREDITS_PER_CREDIT)->toDecimalString())->toBe('1500');
+    });
+
+    it('gives the bare grouped number for a column already labelled "Credits"', function (): void {
+        expect(CreditAmount::fromCredits(1_500)->formatNumber())->toBe('1,500')
+            ->and(CreditAmount::fromSubcredits(-500 * CreditAmount::SUBCREDITS_PER_CREDIT)->formatNumber())->toBe('-500')
+            ->and(CreditAmount::fromDecimalString('13.84')->formatNumber())->toBe('13.84');
+    });
+});
+
+describe('a mid-auction figure genuinely needs its decimal places', function (): void {
+    it('shows a fine catch-up step as a small decimal, not a raw subcredit count', function (): void {
+        // A single catch-up step, at the fineness the re-denomination exists
+        // to enable: one subcredit is the smallest possible bid.
+        expect(CreditAmount::fromSubcredits(1)->toDecimalString())->toBe('0.0001')
+            ->and(CreditAmount::fromSubcredits(1)->format())->toBe('0.0001 credits');
+    });
+
+    it('shows a bidder\'s running total the way the room would', function (): void {
+        // 13.84 credits committed so far -- legible, not a wall of zeros.
+        expect(CreditAmount::fromDecimalString('13.84')->format())->toBe('13.84 credits');
     });
 });
 

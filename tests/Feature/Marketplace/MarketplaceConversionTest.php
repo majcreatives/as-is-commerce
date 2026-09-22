@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Domain\Auction\Services\BuyNowPricer;
 use App\Domain\Catalog\Services\InventoryService;
+use App\Domain\Credit\ValueObjects\CreditAmount;
 use App\Domain\Orders\Actions\PlaceCartOrder;
 use App\Livewire\Account\Dashboard;
 use App\Livewire\Auctions\AuctionRoom;
@@ -259,13 +260,14 @@ it('closes the confirmation when a bid is refused', function (): void {
 });
 
 it('shows a bidder that they have been outbid, without naming anybody', function (): void {
-    $auction = cumulativeAuction(minimum: 100, increment: 10);
-    $me = bidder(1_000);
-    $rival = bidder(1_000);
+    $factor = CreditAmount::SUBCREDITS_PER_CREDIT;
+    $auction = cumulativeAuction(100 * $factor, 10 * $factor);
+    $me = bidder(1_000 * $factor);
+    $rival = bidder(1_000 * $factor);
     $rival->update(['name' => 'Kwame Mensah']);
 
-    placeBid($auction, $me, 100);
-    placeBid($auction->fresh(), $rival, 110);
+    placeBid($auction, $me, 100 * $factor);
+    placeBid($auction->fresh(), $rival, 110 * $factor);
 
     Livewire::actingAs($me)
         ->test(AuctionRoom::class, ['auction' => $auction->fresh()])
@@ -294,10 +296,11 @@ it('tells the bidder in the lead that they lead, and gives them nothing to press
 // ------------------------------------------------------------ Dashboard
 
 it('shows a customer their two credit figures separately', function (): void {
+    $factor = CreditAmount::SUBCREDITS_PER_CREDIT;
     $auction = liveAuction();
-    $customer = bidder(1_000);
+    $customer = bidder(1_000 * $factor);
 
-    placeBid($auction, $customer, 150);
+    placeBid($auction, $customer, 150 * $factor);
 
     Livewire::actingAs($customer)
         ->test(Dashboard::class)

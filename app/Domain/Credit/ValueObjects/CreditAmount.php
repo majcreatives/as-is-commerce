@@ -48,12 +48,17 @@ final readonly class CreditAmount implements JsonSerializable
      * every rendered figure is byte-for-byte what it was before this class
      * existed, and there is a test asserting exactly that.
      *
-     * Raising it is the re-denomination step, and raising it is the only
-     * change that step needs to make to this file. It must stay a power of
-     * ten: the display logic derives its decimal places from the number of
-     * zeros, and the constructor refuses anything else.
+     * Raised to 10,000 as part of `2026_09_22_100000_redenominate_credits_to_subcredits`,
+     * which converts every existing stored count by the same factor -- the two
+     * move together, in the same change, or not at all. The migration
+     * hardcodes its own copy of this number rather than reading it (every
+     * migration in this codebase is self-contained); its test asserts the two
+     * agree.
+     *
+     * Must stay a power of ten: the display logic derives its decimal places
+     * from the number of zeros, and the constructor refuses anything else.
      */
-    public const SUBCREDITS_PER_CREDIT = 1;
+    public const SUBCREDITS_PER_CREDIT = 10_000;
 
     private function __construct(
         /** The raw, authoritative count. What the ledger stores. */
@@ -205,14 +210,14 @@ final readonly class CreditAmount implements JsonSerializable
     }
 
     /**
-     * The figure a customer reads, with thousands separators and its unit.
+     * The bare number, grouped with thousands separators, no unit word.
      *
-     * "100 credits", "1 credit", "1,500 credits", "13.84 credits".
-     *
-     * The unit is named because a bare number beside a price is how a credit
-     * count gets read as cedis. Singular only when the figure is exactly one.
+     * "100", "1,500", "13.84", "-500". For a column already labelled
+     * "Credits" (a statement, a balance figure), where repeating the unit on
+     * every row would be clutter rather than clarity. Everywhere the unit
+     * would otherwise be ambiguous, use `format()` instead.
      */
-    public function format(): string
+    public function formatNumber(): string
     {
         $decimal = $this->toDecimalString();
 
@@ -224,11 +229,20 @@ final readonly class CreditAmount implements JsonSerializable
             $rendered .= '.'.$fraction;
         }
 
-        if (str_starts_with($decimal, '-')) {
-            $rendered = '-'.$rendered;
-        }
+        return str_starts_with($decimal, '-') ? '-'.$rendered : $rendered;
+    }
 
-        return $rendered.' '.($this->subcredits === self::SUBCREDITS_PER_CREDIT ? 'credit' : 'credits');
+    /**
+     * The figure a customer reads, with thousands separators and its unit.
+     *
+     * "100 credits", "1 credit", "1,500 credits", "13.84 credits".
+     *
+     * The unit is named because a bare number beside a price is how a credit
+     * count gets read as cedis. Singular only when the figure is exactly one.
+     */
+    public function format(): string
+    {
+        return $this->formatNumber().' '.($this->subcredits === self::SUBCREDITS_PER_CREDIT ? 'credit' : 'credits');
     }
 
     /**

@@ -6,6 +6,7 @@ use App\Domain\Auction\Actions\CloseAuction;
 use App\Domain\Auction\Actions\CreateAuction;
 use App\Domain\Auction\Services\AuctionLifecycle;
 use App\Domain\Catalog\Services\InventoryService;
+use App\Domain\Credit\ValueObjects\CreditAmount;
 use App\Domain\Shared\Money\Money;
 use App\Enums\ProductCondition;
 use App\Livewire\Catalog\ProductDetail;
@@ -37,7 +38,10 @@ it('leads with the auction when one is holding the product', function (): void {
     $product = Product::factory()->active()->create(['name' => 'Nokia Handset']);
     $auction = liveAuction(product: $product);
 
-    placeBid($auction, bidder(500), 150);
+    // Multiplied by the redenomination factor so "150 credits" below is what
+    // actually renders -- see CustomerSupportTest for the same pattern.
+    $factor = CreditAmount::SUBCREDITS_PER_CREDIT;
+    placeBid($auction, bidder(500 * $factor), 150 * $factor);
 
     $rendered = Livewire::test(ProductDetail::class, ['slug' => $product->slug])
         ->assertOk()
@@ -57,7 +61,8 @@ it('never prints a credit figure as money', function (): void {
     $product = Product::factory()->active()->create();
     $auction = liveAuction(product: $product);
 
-    placeBid($auction, bidder(500), 150);
+    $factor = CreditAmount::SUBCREDITS_PER_CREDIT;
+    placeBid($auction, bidder(500 * $factor), 150 * $factor);
 
     Livewire::test(ProductDetail::class, ['slug' => $product->slug])
         ->assertOk()

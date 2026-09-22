@@ -78,7 +78,7 @@
                     {{-- The platform's own locked wording, and a count. Never
                          beside the cedis figure in a way that could read as
                          one price. --}}
-                    {{ $availability->auction->rules()->bidModel->leaderLabel() }}: <span class="font-semibold">{{ number_format($highest) }}</span>
+                    {{ $availability->auction->rules()->bidModel->leaderLabel() }}: <span class="font-semibold"><x-credits :amount="$highest" /></span>
                 @else
                     Auction open — no bids yet
                 @endif

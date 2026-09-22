@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Domain\Auction\Actions\CloseAuction;
 use App\Domain\Auction\Actions\ForfeitAuction;
+use App\Domain\Credit\ValueObjects\CreditAmount;
 use App\Enums\AuctionStatus;
 use App\Enums\OrderStatus;
 use App\Livewire\Admin\Auctions\AuctionDetail;
@@ -29,10 +30,12 @@ beforeEach(function (): void {
 // -------------------------------------------------------------- The winner
 
 it('sends the winner to a checkout that already exists', function (): void {
+    // Scaled so "180 credits" below is what actually renders.
+    $factor = CreditAmount::SUBCREDITS_PER_CREDIT;
     $product = Product::factory()->active()->pricedAt(550_000)->create();
     $auction = liveAuction(product: $product, settlementMinor: 10_000);
-    $winner = bidder(500);
-    placeBid($auction, $winner, 180);
+    $winner = bidder(500 * $factor);
+    placeBid($auction, $winner, 180 * $factor);
 
     $closed = $this->close->handle($auction, force: true);
 
@@ -150,7 +153,7 @@ it('shows an auction bought outright as sold via Buy Now', function (): void {
 
 it('shows a bidder their credit balance on the auction page', function (): void {
     $auction = liveAuction();
-    $user = bidder(1_234);
+    $user = bidder(1_234 * CreditAmount::SUBCREDITS_PER_CREDIT);
 
     Livewire::actingAs($user)
         ->test(AuctionRoom::class, ['auction' => $auction])

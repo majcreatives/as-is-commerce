@@ -125,6 +125,16 @@ asserting that; deriving a credit figure from a cedi price in code would
 quietly break it — and would also require inventing exactly the kind of fixed
 credit-to-money rate D-10 rules out.
 
+**Clarified before step 6 was built: the guideline is internal, and stays out
+of the product's UI entirely.** The owner confirmed this explicitly. The form
+shows the Buy Now price beside the field, exactly as above — nothing about
+that changes — but no screen anywhere prints the words "2x", "twice", "guideline"
+or any computed suggested figure. The ratio lives in the owner's own judgement
+and in this document, never as copy an admin reads off the form. This is a
+narrower reading than "never a computed suggestion" already gave (D-4 above)
+— it also rules out a bare textual hint carrying no number, which that
+sentence alone did not explicitly foreclose.
+
 **Precise definition of "the target" (D-2, decided; unit corrected by
 D-10):** the sum of every accepted bid's `amount_credits`, in Credits, across
 every bidder including the eventual winner's own winning bid. This is what
@@ -445,8 +455,9 @@ the gap lasted. Reversing them means no intermediate state is ever ugly.
    per-account rate limit (D-7).
 5. **Room and customer wording:** a live "committed so far" figure, the
    target explained honestly, updated notification text.
-6. **Admin:** the target field on auction creation, the 2× guideline hint
-   beside the product's Buy Now price.
+6. **Admin:** the target field on auction creation, with the product's own
+   Buy Now price shown beside it purely for reference -- no hint text, no
+   ratio, no computed suggestion anywhere on the form (§3).
 7. **Verification runbook and staging deployment**, mirroring
    `VERIFY_32_CUMULATIVE_BIDDING.md`.
 

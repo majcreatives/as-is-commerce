@@ -247,42 +247,79 @@ where relevant, what is still open underneath it.
   refuse anything it doesn't recognise. `SNAPSHOT_VERSION` stays 4.
 
 - **D-9 — the credit re-denomination happens now, on staging, by conversion
-  rather than reset.** *Revised after checking the schema — see the note
-  below.* This is explicitly *not* a decision about production; doing the
-  same thing after real money exists is a separate, higher-stakes operation
-  this plan does not authorize.
+  rather than reset.** *Revised twice while verifying against the real
+  schema before writing the migration — both revisions below.* Explicitly
+  *not* a decision about production; doing the same thing after real money
+  exists is a separate, higher-stakes operation this plan does not
+  authorize.
 
-  **Why the original "just reset staging" answer was wrong.** It was offered
-  on the assumption that wiping test wallets is a small, contained act. The
-  schema says otherwise: `bids.credit_transaction_id` is a NOT NULL foreign
-  key with a unique index, so every bid is chained to the ledger row that
-  paid for it. Clearing credit data therefore cascades — credit transactions
-  → the 51 bids on staging → the auctions whose projections and winners
-  those bids decide → the settlement orders those auctions opened → the
-  Store Wallet issuances they produced. That would destroy the 16 auctions
-  staging currently uses for testing, including every Stage 32 acceptance
-  case.
+  **Revision 1 — why "just reset staging" was wrong.** It assumed wiping
+  test wallets is a small, contained act. `bids.credit_transaction_id` is a
+  NOT NULL foreign key with a unique index, so every bid is chained to the
+  ledger row that paid for it. Clearing credit data cascades — transactions
+  → the 51 bids on staging → the auctions those bids decide → their
+  settlement orders → their Store Wallet issuances. That would destroy the
+  16 auctions staging tests against.
 
-  **Conversion instead**, multiplying stored credit counts by D-1's factor.
-  The tables involved: `credit_wallets.balance`, `credit_transactions`
-  (amount and `balance_after`), `credit_lots` (`original_amount`,
-  `remaining_amount`), `credit_lot_consumptions`, `credit_packages`,
-  `credit_purchases`, `bids` (`amount_credits`, `cumulative_credits`),
-  `auctions.highest_bid_credits`, the three ruleset bid columns, the credit
-  figures inside `auctions.rules_snapshot`, and the
-  `referral_reward_credits` setting.
+  **Revision 2 — the inventory was incomplete.** Traced `PlaceBid` end to
+  end (confirming `bids.amount_credits` is set from the exact value debited
+  from the wallet, so it is permanently tied 1:1 to a specific
+  `credit_transactions` row) and then read every migration that defines a
+  column with "credit" in its name, and every `BEFORE UPDATE` trigger, to
+  build this list from the schema rather than from memory. It found four
+  columns and two triggers the first pass missed.
 
-  Several of these are append-only or frozen by database trigger —
-  `credit_transactions_no_update`, `credit_lot_consumptions_no_update`,
-  `bids_no_update`, `credit_lots_acquisition_frozen`,
-  `auctions_frozen_configuration` — so the migration drops and restores them
-  in a `finally`, exactly the pattern the Stage 32 v3→v4 snapshot migration
-  already established and proved.
+  **The governing principle**, so each column's treatment is a rule rather
+  than a one-off judgement call: *a standalone credit count converts by
+  D-1's factor, so it stays honest about what it describes; a credit count
+  stored specifically alongside its own frozen denominator — so that leaving
+  both untouched together still reproduces an already-computed money figure
+  exactly — is left alone.* The algebra: `floor(credits × acquisition ÷
+  original)` is unchanged by scaling `credits` and `original` by the same
+  factor, because it cancels inside the division before the floor is taken
+  — so a *pair* stored together can equally be left alone or scaled
+  together; only a lone count, with no stored denominator to protect, has to
+  move to stay consistent with what it describes.
 
-  **Store Wallet issuance lines are deliberately left alone.** Each records
-  its own `credits` and `lot_original_amount` together, so the ratio that
-  produced a past valuation stays self-consistent untouched; scaling one
-  side would corrupt a historical record of money already issued.
+  **Converts** (multiply by D-1's factor):
+
+  | Table | Column(s) |
+  |---|---|
+  | `credit_wallets` | `balance` |
+  | `credit_transactions` | `amount`, `balance_after` |
+  | `credit_lots` | `original_amount`, `remaining_amount` — **not** `acquisition_amount_minor` or `acquisition_currency`, which are money |
+  | `credit_lot_consumptions` | `amount` |
+  | `credit_packages` | `credit_amount` |
+  | `credit_purchases` | `credit_amount` |
+  | `bids` | `amount_credits`, `cumulative_credits` (where not null) |
+  | `auctions` | `highest_bid_credits`, `buy_now_eligible_credits` (both nullable) |
+  | `auction_rulesets` | `minimum_bid_credits`, `minimum_bid_increment_credits`, `bid_increment_credits` |
+  | `auctions.rules_snapshot` (JSON) | `$.rules.minimum_bid_credits`, `$.rules.minimum_bid_increment_credits`, `$.rules.bid_increment_credits` |
+  | `orders` | `discount_credits` |
+  | `orders.pricing_snapshot` (JSON) | `$.discount_credits` only — **not** `$.valuation[*].credits` or `$.valuation[*].lot_original_amount`, a stored pair, see below |
+  | `referrals` | `reward_credits` (where not null) |
+  | `settings` | `value` where `key = 'referral_reward_credits'` |
+
+  **Left alone**, as stored pairs whose ratio (not their absolute size)
+  produces an already-computed money figure: `store_wallet_credit_sources`
+  (`credits` and `lot_original_amount` together — confirmed by reading
+  `LotValuation::toArray()`, which the table mirrors exactly) and each entry
+  of `orders.pricing_snapshot`'s `$.valuation` array (same shape, same
+  reasoning — confirmed from `CheckoutPricing::toArray()`).
+
+  **Triggers to drop and restore**, because each would fire given the
+  updates above — checked one by one against what each actually guards,
+  not dropped wholesale: `credit_transactions_no_update` (unconditional),
+  `credit_lot_consumptions_no_update` (unconditional), `bids_no_update`
+  (unconditional), `auctions_frozen_configuration` (fires because
+  `rules_snapshot` is in its guarded list), `orders_frozen_after_payment`
+  (fires because `discount_credits` and `pricing_snapshot` are in its
+  guarded list), `referrals_frozen_relationship` (fires on `reward_credits`
+  for a referral already `rewarded`). **Not dropped**:
+  `credit_lots_acquisition_frozen` only guards `acquisition_amount_minor`
+  and `acquisition_currency`, neither of which this migration touches, so
+  it never fires and stays in place undisturbed — confirmed from its exact
+  `IF` condition, not assumed.
 
 ## 6. What was tried and rejected, and why
 

@@ -59,6 +59,7 @@ use Spatie\Activitylog\Support\LogOptions;
  * @property array<string, mixed> $rules_snapshot
  * @property int $snapshot_version
  * @property int $settlement_amount_minor
+ * @property int|null $pot_target_credits
  * @property string $currency
  * @property AuctionStatus $status
  * @property AuctionClosureReason|null $closure_reason
@@ -111,6 +112,7 @@ class Auction extends Model
             'closure_reason' => AuctionClosureReason::class,
             'snapshot_version' => 'integer',
             'settlement_amount_minor' => 'integer',
+            'pot_target_credits' => 'integer',
             'extensions_applied' => 'integer',
             'extension_seconds_applied' => 'integer',
             'highest_bid_credits' => 'integer',
@@ -403,6 +405,7 @@ class Auction extends Model
                 'winning_bid_id',
                 'buy_now_user_id',
                 'settlement_amount_minor',
+                'pot_target_credits',
             ])
             ->logOnlyDirty()
             ->dontLogEmptyChanges();

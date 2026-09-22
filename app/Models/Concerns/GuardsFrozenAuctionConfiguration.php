@@ -30,6 +30,7 @@ trait GuardsFrozenAuctionConfiguration
         'rules_snapshot',
         'snapshot_version',
         'settlement_amount_minor',
+        'pot_target_credits',
         'product_id',
         'currency',
     ];

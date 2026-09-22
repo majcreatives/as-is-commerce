@@ -69,6 +69,38 @@
                 </x-alert>
             </x-card>
 
+            {{-- This auction can close early once enough is bid, in addition to the
+                 clock below. Shown only for an auction that carries a target --
+                 null for every auction until an administrator sets one. --}}
+            @if ($potTargetCredits !== null)
+                <x-card title="This auction can close early"
+                        subtitle="Once every bid together reaches the target, it closes at once and whoever is leading wins.">
+                    <p class="text-2xl font-bold tabular-nums text-slate-900" data-auction-pot-progress>
+                        <x-credits :amount="$potTotal" bare />
+                        <span class="text-base font-semibold text-slate-500">
+                            of <x-credits :amount="$potTargetCredits" bare /> credits committed
+                        </span>
+                    </p>
+
+                    @php
+                        $potProgress = $potTargetCredits > 0
+                            ? min(100, intdiv($potTotal * 100, $potTargetCredits))
+                            : 0;
+                    @endphp
+                    <div class="mt-3 h-2 w-full overflow-hidden rounded-full bg-slate-100"
+                         role="progressbar" aria-valuenow="{{ $potProgress }}" aria-valuemin="0" aria-valuemax="100">
+                        <div class="h-full rounded-full bg-brand-600" style="width: {{ $potProgress }}%"></div>
+                    </div>
+
+                    <p class="mt-3 text-sm text-slate-500">
+                        This is everybody's bids added together — not any one person's spend. The
+                        countdown below still applies, but this auction closes the moment this figure
+                        reaches the target, whichever comes first. Whoever is leading at that instant
+                        wins, for their own total, which stays far below this figure.
+                    </p>
+                </x-card>
+            @endif
+
             @if ($auction->status->isOpen())
                 <x-card title="Time remaining"
                         subtitle="Counted by our servers. Closing your browser does not affect this auction.">

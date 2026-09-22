@@ -6,6 +6,7 @@ use App\Domain\Auction\Actions\CloseAuction;
 use App\Domain\Auction\Actions\ForfeitAuction;
 use App\Domain\Auction\Exceptions\BidRejected;
 use App\Domain\Catalog\Services\InventoryService;
+use App\Domain\Credit\ValueObjects\CreditAmount;
 use App\Domain\Notifications\Services\NotificationDispatcher;
 use App\Domain\Orders\Services\OrderLifecycle;
 use App\Enums\InventoryTransactionType;
@@ -40,14 +41,14 @@ beforeEach(function (): void {
 it('confirms an accepted bid to the bidder', function (): void {
     $product = Product::factory()->active()->create(['name' => 'Nokia Handset']);
     $auction = liveAuction(product: $product);
-    $bidder = bidder(1_000);
+    $bidder = bidder(1_000 * CreditAmount::SUBCREDITS_PER_CREDIT);
 
-    placeBid($auction, $bidder, 150);
+    placeBid($auction, $bidder, 150 * CreditAmount::SUBCREDITS_PER_CREDIT);
 
     $notification = notificationsFor($bidder, NotificationType::BidPlaced)->first();
 
     expect($notification)->not->toBeNull()
-        ->and($notification->message)->toContain('150 Credits')
+        ->and($notification->message)->toContain('150 credits')
         ->and($notification->message)->toContain('Nokia Handset')
         // Credits are a count. They never appear as money.
         ->and($notification->message)->not->toContain('GH₵150')
@@ -57,16 +58,16 @@ it('confirms an accepted bid to the bidder', function (): void {
 
 it('tells the displaced bidder they were outbid', function (): void {
     $auction = liveAuction();
-    $first = bidder(1_000);
-    $second = bidder(1_000);
+    $first = bidder(1_000 * CreditAmount::SUBCREDITS_PER_CREDIT);
+    $second = bidder(1_000 * CreditAmount::SUBCREDITS_PER_CREDIT);
 
-    placeBid($auction, $first, 100);
-    placeBid($auction, $second, 300);
+    placeBid($auction, $first, 100 * CreditAmount::SUBCREDITS_PER_CREDIT);
+    placeBid($auction, $second, 300 * CreditAmount::SUBCREDITS_PER_CREDIT);
 
     $outbid = notificationsFor($first, NotificationType::Outbid)->first();
 
     expect($outbid)->not->toBeNull()
-        ->and($outbid->message)->toContain('300 Credits');
+        ->and($outbid->message)->toContain('300 credits');
 });
 
 /*
@@ -119,16 +120,16 @@ it('writes nothing when a bid is refused', function (): void {
 it('tells the winner what they won and what they owe, in different units', function (): void {
     $product = Product::factory()->active()->pricedAt(550_000)->create();
     $auction = liveAuction(product: $product, settlementMinor: 10_000);
-    $winner = bidder(500);
+    $winner = bidder(500 * CreditAmount::SUBCREDITS_PER_CREDIT);
 
-    placeBid($auction, $winner, 180);
+    placeBid($auction, $winner, 180 * CreditAmount::SUBCREDITS_PER_CREDIT);
     $this->close->handle($auction, force: true);
 
     $won = notificationsFor($winner, NotificationType::AuctionWon)->first();
 
     expect($won)->not->toBeNull()
         // The bid, as Credits.
-        ->and($won->message)->toContain('180 Credits')
+        ->and($won->message)->toContain('180 credits')
         ->and($won->message)->toContain('already consumed')
         // The settlement, as money, and named as its own thing.
         ->and($won->message)->toContain('Auction Settlement Amount')
@@ -140,18 +141,18 @@ it('tells the winner what they won and what they owe, in different units', funct
 
 it('tells losing bidders plainly, and promises them nothing', function (): void {
     $auction = liveAuction();
-    $winner = bidder(500);
-    $loser = bidder(500);
+    $winner = bidder(500 * CreditAmount::SUBCREDITS_PER_CREDIT);
+    $loser = bidder(500 * CreditAmount::SUBCREDITS_PER_CREDIT);
 
-    placeBid($auction, $loser, 80);
-    placeBid($auction, $winner, 200);
+    placeBid($auction, $loser, 80 * CreditAmount::SUBCREDITS_PER_CREDIT);
+    placeBid($auction, $winner, 200 * CreditAmount::SUBCREDITS_PER_CREDIT);
     $this->close->handle($auction, force: true);
 
     $lost = notificationsFor($loser, NotificationType::AuctionLost)->first();
 
     expect($lost)->not->toBeNull()
         ->and($lost->message)->toContain('did not win')
-        ->and($lost->message)->toContain('200 Credits')
+        ->and($lost->message)->toContain('200 credits')
         ->and($lost->message)->toContain('remain consumed')
         ->and($lost->message)->toContain('not refunded')
         // No refund is offered, promised, or hinted at.

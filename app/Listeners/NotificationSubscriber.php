@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Listeners;
 
+use App\Domain\Credit\ValueObjects\CreditAmount;
 use App\Domain\Notifications\Services\NotificationDispatcher;
+use App\Enums\AuctionClosureReason;
 use App\Enums\DeliveryStatus;
 use App\Enums\NotificationType;
 use App\Enums\OrderStatus;
@@ -201,8 +203,9 @@ class NotificationSubscriber
                     ? "The auction for {$a->product->name} has ended without a winning bid. The "
                         .'Credits you committed remain consumed.'
                     : "The auction for {$a->product->name} has ended. You did not win. The "
-                        ."{$a->rules()->bidModel->winningFigure()} was {$this->credits($winning)}. "
-                        .'The Credits you committed remain consumed and are not refunded.';
+                        ."{$a->rules()->bidModel->winningFigure()} was {$this->credits($winning)}."
+                        .$this->potTargetNote($a)
+                        .' The Credits you committed remain consumed and are not refunded.';
             });
         }, 'auction_closed');
     }
@@ -233,8 +236,9 @@ class NotificationSubscriber
             ->format('j M Y, H:i');
 
         $message = "You won the auction for {$auction->product->name}. Your "
-            ."{$auction->rules()->bidModel->winningFigure()} was {$credits}, which are already consumed. "
-            .'Your Auction Settlement Amount is '
+            ."{$auction->rules()->bidModel->winningFigure()} was {$credits}, which are already consumed."
+            .$this->potTargetNote($auction)
+            .' Your Auction Settlement Amount is '
             ."{$settlement}, payable separately.";
 
         if ($deadline !== null) {
@@ -701,10 +705,36 @@ class NotificationSubscriber
 
     /**
      * Credits, written as a count and never with a currency symbol.
+     *
+     * Every integer this class handles -- `amount_credits`, `rankingValue()`,
+     * `reward_credits` -- is stored in subcredits, exactly like every other
+     * post-redenomination credit column. Routed through {@see CreditAmount}
+     * so a notification reads the same figure the room and the wallet show,
+     * rather than the raw stored count.
      */
     private function credits(int $amount): string
     {
-        return number_format($amount).' Credits';
+        return CreditAmount::fromSubcredits($amount)->format();
+    }
+
+    /**
+     * The honest reason a normal close happened early, or nothing.
+     *
+     * docs/PLAN_POT_TARGET_BIDDING.md, step 5: "the target explained
+     * honestly." Empty for every auction that ran its ordinary course --
+     * which is every auction until an administrator sets a target at all --
+     * so this changes nothing about a message that does not apply to. Never
+     * says what the target was: the pot is an aggregate across everybody who
+     * bid, and stating it here would invite a reader to work out how much
+     * other people spent, which is not this platform's business to disclose.
+     */
+    private function potTargetNote(Auction $auction): string
+    {
+        if ($auction->closure_reason !== AuctionClosureReason::PotTargetReached) {
+            return '';
+        }
+
+        return ' This auction closed early because enough bidders joined in to reach its target.';
     }
 
     /**

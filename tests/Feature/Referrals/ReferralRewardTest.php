@@ -6,6 +6,7 @@ use App\Domain\Auction\Actions\CloseAuction;
 use App\Domain\Auction\Services\BuyNowPricer;
 use App\Domain\Catalog\Services\InventoryService;
 use App\Domain\Credit\Services\CreditLedgerService;
+use App\Domain\Credit\ValueObjects\CreditAmount;
 use App\Domain\Notifications\Services\NotificationDispatcher;
 use App\Domain\Orders\Services\OrderLifecycle;
 use App\Domain\Referrals\Actions\AttributeReferral;
@@ -488,6 +489,11 @@ it('treats spent referral credits like any other bid credits', function (): void
 // -------------------------------------------------------- Notification
 
 it('tells a referrer their reward arrived, in credits', function (): void {
+    // Overrides the file's default 50 (subcredits) so the notification's
+    // displayed figure is a clean, meaningful number rather than the fraction
+    // 50 raw subcredits would actually format to.
+    settings()->set('referral_reward_credits', 50 * CreditAmount::SUBCREDITS_PER_CREDIT);
+
     [$referrer, $joiner] = referralPair();
 
     qualifyingPurchase($joiner);
@@ -495,8 +501,9 @@ it('tells a referrer their reward arrived, in credits', function (): void {
     $notification = notificationsFor($referrer, NotificationType::ReferralRewarded)->first();
 
     expect($notification)->not->toBeNull()
-        // The platform's locked capitalisation for a credit count.
-        ->and($notification->message)->toContain('50 Credits')
+        // CreditAmount::format()'s own convention -- lowercase "credits",
+        // the same one every other sentence built through it already uses.
+        ->and($notification->message)->toContain('50 credits')
         ->and($notification->message)->toContain('not cash')
         // Never a cedis figure, and never the referred customer's name.
         ->and($notification->message)->not->toContain('GH₵')

@@ -198,17 +198,26 @@ enum BidModel: string
     /**
      * The line written to the auction's history when it closes with a winner.
      *
-     * Says what actually decided it. "The highest bid of 4 credits" would be
-     * false under the cumulative model, where the winner's biggest single bid
-     * may be smaller than somebody else's.
+     * Says what actually decided it, both HOW it closed and, from the model,
+     * WHAT figure won. "The highest bid of 4 credits" would be false under
+     * the cumulative model, where the winner's biggest single bid may be
+     * smaller than somebody else's. `$potTargetReached` distinguishes a
+     * pot-target close from an ordinary clock-driven one
+     * (docs/PLAN_POT_TARGET_BIDDING.md, D-6) -- false for every auction that
+     * ran its ordinary course, which is every auction without a target at
+     * all.
      */
-    public function closingNote(int $credits): string
+    public function closingNote(int $credits, bool $potTargetReached): string
     {
         $amount = CreditAmount::fromSubcredits($credits)->format();
 
-        return match ($this) {
-            self::SingleHighest => "Closed on the clock. Won by the highest valid credit bid of {$amount}.",
-            self::CumulativeStep => "Closed on the clock. Won with the highest total of {$amount} committed.",
+        $how = $potTargetReached
+            ? 'Closed early: the pot target was reached.'
+            : 'Closed on the clock.';
+
+        return $how.' '.match ($this) {
+            self::SingleHighest => "Won by the highest valid credit bid of {$amount}.",
+            self::CumulativeStep => "Won with the highest total of {$amount} committed.",
         };
     }
 }

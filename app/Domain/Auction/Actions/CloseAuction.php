@@ -135,9 +135,10 @@ final class CloseAuction
             $auction = $this->lifecycle->apply(
                 $locked,
                 AuctionStatus::PendingSettlement,
-                // What actually decided it, by the model this auction was frozen
-                // with: a single bid's size, or the total committed.
-                $locked->rules()->bidModel->closingNote($winningBid->rankingValue()),
+                // What actually decided it: how it closed, from $potReached,
+                // and what figure won, by the model this auction was frozen
+                // with -- a single bid's size, or the total committed.
+                $locked->rules()->bidModel->closingNote($winningBid->rankingValue(), $potReached),
                 null,
             );
 

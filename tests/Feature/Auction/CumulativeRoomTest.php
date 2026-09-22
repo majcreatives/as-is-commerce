@@ -332,49 +332,58 @@ it('describes the win on the winner\'s checkout and order in the same terms', fu
 // -------------------------------------------------------- Notifications
 
 it('tells a bidder where their bid left them', function (): void {
-    $auction = cumulativeAuction(minimum: 100, increment: 10);
-    $me = bidder(1_000);
+    $auction = cumulativeAuction(
+        minimum: 100 * CreditAmount::SUBCREDITS_PER_CREDIT,
+        increment: 10 * CreditAmount::SUBCREDITS_PER_CREDIT,
+    );
+    $me = bidder(1_000 * CreditAmount::SUBCREDITS_PER_CREDIT);
 
-    placeBid($auction, $me, 100);
+    placeBid($auction, $me, 100 * CreditAmount::SUBCREDITS_PER_CREDIT);
 
     $message = notificationsFor($me, NotificationType::BidPlaced)->first()->message;
 
-    expect($message)->toContain('Your bid of 100 Credits')
-        ->and($message)->toContain('You now lead with 100 Credits')
+    expect($message)->toContain('Your bid of 100 credits')
+        ->and($message)->toContain('You now lead with 100 credits')
         ->and($message)->toContain('not refunded');
 });
 
 it('tells the person overtaken that somebody took the lead, not that they bid higher', function (): void {
-    $auction = cumulativeAuction(minimum: 100, increment: 10);
-    $me = bidder(1_000);
+    $auction = cumulativeAuction(
+        minimum: 100 * CreditAmount::SUBCREDITS_PER_CREDIT,
+        increment: 10 * CreditAmount::SUBCREDITS_PER_CREDIT,
+    );
+    $me = bidder(1_000 * CreditAmount::SUBCREDITS_PER_CREDIT);
 
-    placeBid($auction, $me, 100);
-    placeBid($auction->fresh(), bidder(1_000), 110);
+    placeBid($auction, $me, 100 * CreditAmount::SUBCREDITS_PER_CREDIT);
+    placeBid($auction->fresh(), bidder(1_000 * CreditAmount::SUBCREDITS_PER_CREDIT), 110 * CreditAmount::SUBCREDITS_PER_CREDIT);
 
     $message = notificationsFor($me, NotificationType::Outbid)->first()->message;
 
     expect($message)->toContain('taken the lead on')
-        ->and($message)->toContain('The highest total is now 110 Credits')
+        ->and($message)->toContain('The highest total is now 110 credits')
         ->and($message)->not->toContain('bid higher')
         // It never offers anything back.
         ->and($message)->toContain('stay consumed');
 });
 
 it('tells a loser and a winner the figure that decided it', function (): void {
-    $auction = cumulativeAuction();
-    $a = bidder(500);
-    $b = bidder(500);
+    $auction = cumulativeAuction(
+        minimum: CreditAmount::SUBCREDITS_PER_CREDIT,
+        increment: CreditAmount::SUBCREDITS_PER_CREDIT,
+    );
+    $a = bidder(500 * CreditAmount::SUBCREDITS_PER_CREDIT);
+    $b = bidder(500 * CreditAmount::SUBCREDITS_PER_CREDIT);
 
     catchUp($auction, $a);
     catchUp($auction, $b);
-    catchUp($auction, $a);   // A = 3
+    catchUp($auction, $a);   // A = 3 credits
 
     app(CloseAuction::class)->handle($auction->fresh(), force: true);
 
     $won = notificationsFor($a, NotificationType::AuctionWon)->first()->message;
     $lost = notificationsFor($b, NotificationType::AuctionLost)->first()->message;
 
-    expect($won)->toContain('Your winning total was 3 Credits')
-        ->and($lost)->toContain('The winning total was 3 Credits')
+    expect($won)->toContain('Your winning total was 3 credits')
+        ->and($lost)->toContain('The winning total was 3 credits')
         ->and($lost)->toContain('not refunded');
 });

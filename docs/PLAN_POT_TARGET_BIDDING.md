@@ -215,11 +215,36 @@ where relevant, what is still open underneath it.
   is not chosen here; it belongs with the other configurable business rules
   (bid cost, duration, extension length) that are never constants in code.
 
-- **D-8 — snapshot version moves to 5.** A direct consequence of D-1 through
-  D-6 changing what is frozen into an auction at creation. Same discipline
-  Stage 32 used for 3→4: refuse a snapshot version or shape it doesn't
-  understand, rewrite existing snapshots under one transaction, keep the
-  freeze trigger intact across the migration.
+- **D-8 — no snapshot version bump. Revised; the original plan was wrong.**
+  It said "SNAPSHOT_VERSION moves to 5," on the assumption that D-4's target
+  and D-6's closure reason both change what `rules_snapshot` serializes.
+  Checked against the actual code before building anything: neither does.
+
+  `closure_reason` is a plain `string(30)` column, validated by a database
+  CHECK constraint listing five allowed values — not part of the snapshot
+  JSON at all. Adding `pot_target` (or whatever D-6's value is named) is
+  widening that CHECK constraint, the same size of change as `buy_now`
+  already was.
+
+  The target (D-4) was deliberately designed to follow
+  `settlement_amount_minor`'s exact pattern: its own column, frozen by the
+  same `auctions_frozen_configuration` trigger, never inside the *rules*
+  half of the snapshot. `settlement_amount_minor` itself required no
+  snapshot version when it was added, for the same reason — a test already
+  asserts no settlement key appears in the rules half, and the target
+  follows that precedent on purpose.
+
+  **What D-9's redenomination touches inside the snapshot is a values
+  migration, not a shape migration.** `minimum_bid_credits` and
+  `bid_increment_credits` (and legacy `minimum_bid_increment_credits`) are
+  confirmed present in `AuctionRules::toArray()`, so an existing snapshot's
+  numbers must scale by the same factor as the bids it describes, or a
+  historical auction would read as if it were governed by a rule ten
+  thousand times smaller than what its own recorded bids show — the exact
+  failure CLAUDE.md already warns about for a different reason (never
+  re-read an old snapshot key with a new meaning). But the *keys* stay
+  identical, `fromArray()` needs no new branch, and no version needs to
+  refuse anything it doesn't recognise. `SNAPSHOT_VERSION` stays 4.
 
 - **D-9 — the credit re-denomination happens now, on staging, by conversion
   rather than reset.** *Revised after checking the schema — see the note
@@ -320,8 +345,10 @@ the gap lasted. Reversing them means no intermediate state is ever ugly.
    customers see the same numbers before and after — "100 Credits" stays
    "100 Credits". This is the step whose migration drops and restores the
    append-only triggers.
-3. **Schema for the target:** the per-auction column (D-4), the new closure
-   reason (D-6), `SNAPSHOT_VERSION` 5 and its snapshot rewrite (D-8).
+3. **Schema for the target:** the per-auction column (D-4), extending
+   `auctions_frozen_configuration` to freeze it, and widening the
+   `chk_auctions_closure_reason` CHECK constraint for D-6's new value. No
+   snapshot version change (D-8) — neither touches `rules_snapshot`.
 4. **Engine:** pot tracking and target-closing in the close path, alongside
    the existing clock path, both converging on one close. Plus the
    per-account rate limit (D-7).

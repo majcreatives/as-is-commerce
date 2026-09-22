@@ -36,12 +36,12 @@ Two changes, together. Neither works well alone; §6 explains why.
 ### 2a. A real-money target on the aggregate pot, not on any one bidder
 
 Today, an auction closes only on its clock (`auctions:tick`, `ends_at`,
-optional extensions). This plan adds a second way to close: **a target
-amount, in GH₵, on the sum of every accepted bid across every bidder on that
-auction.** The moment the running total of everyone's spend reaches the
-target, the auction closes and whoever is currently leading wins — for their
-own personal spend, which stays far below the target, because many different
-people's bids contributed to it.
+optional extensions). This plan adds a second way to close: **a target,
+denominated in Credits, on the sum of every accepted bid across every bidder
+on that auction** (D-10). The moment the running total of everyone's spend
+reaches the target, the auction closes and whoever is currently leading wins —
+for their own personal spend, which stays far below the target, because many
+different people's bids contributed to it.
 
 This is deliberately **not** a cap on any one bidder's total. An earlier draft
 of this idea checked the target against the *leader's own* accumulated total,
@@ -114,19 +114,21 @@ may already deliberately settle at different prices; the same is true here —
 nothing forces a target, and nothing computes one automatically.
 
 The owner's guideline — **roughly twice the product's Buy Now price** — is a
-number for the admin to have in mind when filling in the field, shown perhaps
-as a read-only hint next to the product's own price (the same pattern the
-auction-creation form already uses to show the Buy Now price beside the
-settlement amount, so an admin can see the relationship without the code
-enforcing one). It is guidance, not a constraint the form validates against.
-This keeps faith with the rule that a product has no column referring to
-credits or bids, and there is a test asserting that; a derivation in code
-would quietly break it.
+number for the admin to have in mind when filling in the field, translated by
+eye rather than by code: the field takes Credits (D-10), and the form may show
+the product's Buy Now price alongside it purely as a reference figure (the
+same pattern the auction-creation form already uses to show the Buy Now price
+beside the settlement amount), never a computed suggestion and never a
+constraint the form validates against. This keeps faith with the rule that a
+product has no column referring to credits or bids, and there is a test
+asserting that; deriving a credit figure from a cedi price in code would
+quietly break it — and would also require inventing exactly the kind of fixed
+credit-to-money rate D-10 rules out.
 
-**Precise definition of "the target" (D-2, decided):** the sum of every
-accepted bid's `amount_credits`, valued at the auction's own credit rate,
-across every bidder including the eventual winner's own winning bid. This is
-what was simulated throughout.
+**Precise definition of "the target" (D-2, decided; unit corrected by
+D-10):** the sum of every accepted bid's `amount_credits`, in Credits, across
+every bidder including the eventual winner's own winning bid. This is what
+was simulated throughout.
 
 ## 4. What stays exactly as it is
 
@@ -186,12 +188,16 @@ where relevant, what is still open underneath it.
   unaffected, because they are defined as clean multiples of D-1's factor.
 
 - **D-4 — where the target lives: always per-auction, admin-entered, no
-  default.** A new column, parallel to `settlement_amount_minor`, frozen at
-  creation, appearing in the rules snapshot. Never derived from the
-  product's price in code, and never pre-filled from the ruleset. The
-  owner's 2× guideline stays a hint shown beside the product's own price on
-  the creation form, exactly as the settlement amount is shown beside Buy
-  Now price today — never a validated constraint.
+  default.** A new column, parallel to `settlement_amount_minor` in every
+  respect: frozen at creation by the same `auctions_frozen_configuration`
+  trigger, and — corrected by D-8 below, this line now matches — **not**
+  inside `rules_snapshot`, for the identical reason settlement itself is
+  not: two auctions on one product may reasonably want different targets.
+  Never derived from the product's price in code, and never pre-filled
+  from the ruleset. The owner's 2× guideline stays a hint shown beside the
+  product's own price on the creation form, exactly as the settlement
+  amount is shown beside Buy Now price today — never a validated
+  constraint.
 
 - **D-5 — the raw unit's name: "subcredits."** Chosen to read as obviously
   related to "Credits" while avoiding two words already loaded with other
@@ -325,6 +331,50 @@ where relevant, what is still open underneath it.
   it never fires and stays in place undisturbed — confirmed from its exact
   `IF` condition, not assumed.
 
+- **D-10 — the target is denominated in Credits, not GH₵. Found and settled
+  2026-09-22, before step 3.** Re-reading the plan before writing step 3's
+  migration surfaced a real gap, not a stylistic one: §2a and the original
+  D-2 both called the target "an amount, in GH₵," and D-2 said it was checked
+  against bids "valued at the auction's own credit rate" — a phrase that
+  names nothing that exists in this codebase. There is no rate that turns
+  credits into money except the one sanctioned exception, the per-lot Buy
+  Now/Store Wallet valuation, and that exception is a *per-user, on-demand*
+  calculation, never an aggregate summed across an entire auction's bidders.
+  Carrying the simulations' flat, made-up conversion rate into real schema
+  and engine code would have been a second, unauthorized exception to
+  "credits are never worth a fixed amount of money" — exactly the rule
+  Stage 10 was fought to establish (the flat-rate Buy Now discount was
+  removed and replaced with lot-by-lot valuation for the same reason).
+
+  Two designs were put to the owner. Chosen: **the target is a plain Credits
+  figure**, entered and stored exactly like `minimum_bid_credits` and
+  `bid_increment_credits` — an admin-chosen number with no computed
+  relationship to money. The pot is `SUM(bids.amount_credits)` for accepted
+  bids on the auction; closing compares that sum to the stored target
+  directly. No new valuation logic, no new aggregate the engine doesn't
+  already know how to compute, and the pot-sum and the leaderboard-sum stay
+  the same number.
+
+  Rejected: a GH₵ target checked against the sum of each bid's own per-lot
+  valuation (reusing the Buy Now/Store Wallet formula rather than inventing a
+  rate). It would have kept faith with "no new fixed rate," but at a real
+  cost: a bid paid for with free (promotional or referral) credits would
+  contribute nothing to the pot while still counting toward who leads, so two
+  auctions with identical bidding activity but different credit sources would
+  close at different times — a behaviour nothing in §1's simulations modelled
+  or justified. It also needed a new kind of aggregate (summed valuation
+  across every bidder) that nothing in the engine computes today;
+  `ConsumedCreditValuation::forAuction()` values one user at a time, by
+  design.
+
+  **Consequence for §7 step 3:** the new column is `pot_target_credits`
+  (naming matches the existing `*_credits` columns, e.g.
+  `minimum_bid_credits`), storing subcredits like every other credit column
+  post-redenomination — not `pot_target_minor`. The owner's 2× guideline is
+  never computed by the form; at most it is shown as a labelled reference
+  figure beside the product's own Buy Now price, exactly as D-4 already
+  described, translated by the admin's own judgement rather than by code.
+
 ## 6. What was tried and rejected, and why
 
 Recorded so none of this gets re-proposed without knowing it was already
@@ -386,10 +436,10 @@ the gap lasted. Reversing them means no intermediate state is ever ugly.
    customers see the same numbers before and after — "100 Credits" stays
    "100 Credits". This is the step whose migration drops and restores the
    append-only triggers.
-3. **Schema for the target:** the per-auction column (D-4), extending
-   `auctions_frozen_configuration` to freeze it, and widening the
-   `chk_auctions_closure_reason` CHECK constraint for D-6's new value. No
-   snapshot version change (D-8) — neither touches `rules_snapshot`.
+3. **Schema for the target:** the per-auction `pot_target_credits` column
+   (D-4, D-10), extending `auctions_frozen_configuration` to freeze it, and
+   widening the `chk_auctions_closure_reason` CHECK constraint for D-6's new
+   value. No snapshot version change (D-8) — neither touches `rules_snapshot`.
 4. **Engine:** pot tracking and target-closing in the close path, alongside
    the existing clock path, both converging on one close. Plus the
    per-account rate limit (D-7).

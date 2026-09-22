@@ -169,6 +169,29 @@ class HighestBidResolver
     }
 
     /**
+     * The pot: credits committed by everyone on this auction, summed across
+     * every bidder including the eventual winner's own winning bid.
+     *
+     * docs/PLAN_POT_TARGET_BIDDING.md, D-2 and D-10. Not one bidder's
+     * standing -- {@see self::standingOf()} answers that -- the aggregate
+     * every accepted bid contributed, which is what an auction's
+     * `pot_target_credits` is compared against. Denominated in Credits like
+     * everything else `amount_credits` describes; no conversion to money
+     * anywhere in this method.
+     *
+     * Called from inside bid placement, under the auction lock the caller
+     * already holds, so the total it reads includes the bid just written and
+     * cannot be a mixture of two different moments.
+     */
+    public function potTotal(Auction $auction): int
+    {
+        return (int) Bid::query()
+            ->where('auction_id', $auction->getKey())
+            ->counting()
+            ->sum('amount_credits');
+    }
+
+    /**
      * How many bids this auction has taken.
      */
     public function bidCount(Auction $auction): int

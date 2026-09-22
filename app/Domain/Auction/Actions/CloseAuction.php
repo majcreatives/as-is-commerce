@@ -19,7 +19,16 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Close an auction whose clock has run out, and name the winner.
+ * Close an auction whose clock has run out, or whose pot target has been
+ * reached, and name the winner.
+ *
+ * TWO WAYS IN, ONE WINNER RULE. docs/PLAN_POT_TARGET_BIDDING.md adds a second,
+ * earlier reason to close alongside the clock: the sum of every accepted bid
+ * reaching the auction's own `pot_target_credits` (null for every auction that
+ * does not use it, which is every auction today). Neither changes who wins --
+ * that is always the highest valid credit bid, resolved the same way, from the
+ * same records. Pot-target closing only changes *when* that moment arrives,
+ * the same way the clock's extensions only ever change *when*, never *who*.
  *
  * THE WINNER IS THE HIGHEST VALID CREDIT BID. Resolved from the bid records at
  * this moment, by amount. Not the last bidder, not the most frequent, not the
@@ -32,10 +41,20 @@ use Illuminate\Support\Facades\Log;
  * property of the query rather than a change to the rule -- "highest wins"
  * still decides, the tie-break only makes equal values name one person.
  *
+ * WHICH CLOSURE REASON IS RECORDED. The pot target is checked first: it only
+ * ever grows as bids land, so if it reads as reached right now it was
+ * genuinely reached, whatever else is also true by the time this runs.
+ * `AuctionClosureReason::PotTargetReached` is written whenever that is so;
+ * `HighestBid` covers everything else -- the clock ran out, or an
+ * administrator forced an early close -- exactly the meaning it has always
+ * had. No historical auction's recorded reason is reinterpreted.
+ *
  * NO WINNER IS NOT AN ERROR. An auction can close with nobody having bid. It
  * becomes Unsold, the reserved unit goes back to stock, and no winner is
  * recorded -- rather than being marked settled, which would claim a sale that
- * did not happen.
+ * did not happen. A pot target cannot be reached with no bids: the sum of
+ * nothing is always below a positive target, so this path is reached only
+ * through the clock or a forced close, exactly as before.
  *
  * WHAT THIS DOES NOT DO. It does not take payment, consume credits, return
  * credits or move stock. The winner owes the auction's frozen settlement
@@ -48,7 +67,11 @@ use Illuminate\Support\Facades\Log;
  * happened to visit the page would be one they were already late for.
  *
  * Idempotent by construction: it locks the auction and returns unchanged if
- * the auction is no longer open, so two sweeps running together close it once.
+ * the auction is no longer open, so two sweeps running together close it once
+ * -- and so does a sweep running together with the immediate check
+ * {@see PlaceBid} makes after the bid that
+ * crosses the target, which calls this same entry point rather than deciding
+ * anything about closing itself.
  */
 final class CloseAuction
 {
@@ -80,7 +103,11 @@ final class CloseAuction
                 return $locked;
             }
 
-            if (! $force && ! $this->clock->hasExpired($locked, $now)) {
+            // Checked first: it is what decides which closure reason gets
+            // recorded, whatever else is also true by the time this runs.
+            $potReached = $this->potTargetReached($locked);
+
+            if (! $force && ! $this->clock->hasExpired($locked, $now) && ! $potReached) {
                 return $locked;
             }
 
@@ -95,7 +122,9 @@ final class CloseAuction
 
             $locked->winner_user_id = $winningBid->user_id;
             $locked->winning_bid_id = $winningBid->id;
-            $locked->closure_reason = AuctionClosureReason::HighestBid;
+            $locked->closure_reason = $potReached
+                ? AuctionClosureReason::PotTargetReached
+                : AuctionClosureReason::HighestBid;
             $locked->ends_at = $locked->ends_at ?? $now;
 
             // The deadline the frozen rules allow the winner to settle in.
@@ -126,6 +155,7 @@ final class CloseAuction
             Log::info('Auction closed with a winner', [
                 'operation' => 'auction.close',
                 'auction_id' => $auction->id,
+                'closure_reason' => $auction->closure_reason?->value,
                 'winner_rule' => $auction->winnerRule(),
                 'winner_user_id' => $winningBid->user_id,
                 'winning_bid_id' => $winningBid->id,
@@ -186,5 +216,23 @@ final class CloseAuction
         ]);
 
         return $closed;
+    }
+
+    /**
+     * Whether the pot -- every accepted bid on this auction, summed -- has
+     * reached the auction's own target.
+     *
+     * False for every auction without one, which is every auction until an
+     * administrator sets `pot_target_credits` on it (docs/PLAN_POT_TARGET_BIDDING.md,
+     * step 6). Denominated in Credits throughout (D-10): no conversion to
+     * money anywhere in this comparison.
+     */
+    private function potTargetReached(Auction $auction): bool
+    {
+        if ($auction->pot_target_credits === null) {
+            return false;
+        }
+
+        return $this->bids->potTotal($auction) >= $auction->pot_target_credits;
     }
 }

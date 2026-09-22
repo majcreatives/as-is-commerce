@@ -48,6 +48,7 @@ use Illuminate\Foundation\Testing\DatabaseTruncation;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
@@ -305,6 +306,48 @@ function cumulativeAuction(int $minimum = 1, int $increment = 1, ?Product $produ
         ->create();
 
     return liveAuction(product: $product, ruleset: $ruleset);
+}
+
+/**
+ * A live cumulative auction that carries a pot target.
+ *
+ * docs/PLAN_POT_TARGET_BIDDING.md, step 4. The admin form for this field does
+ * not exist yet (step 6), so this sets the column directly at the database
+ * layer -- the only way to reach it at all right now, and the same thing
+ * PotTargetMigrationTest already does. It has to happen while the auction is
+ * still a Draft: the column is frozen the instant it leaves Draft, exactly
+ * like settlement_amount_minor, so this writes it before calling
+ * AuctionLifecycle::start(), never after.
+ */
+function cumulativeAuctionWithPotTarget(
+    int $potTargetCredits,
+    int $minimum = 1,
+    int $increment = 1,
+    ?Product $product = null,
+): Auction {
+    seedPermissions();
+
+    $ruleset = AuctionRuleset::factory()
+        ->active()
+        ->withoutThrottle()
+        ->cumulative($minimum, $increment)
+        ->create();
+
+    $product ??= Product::factory()->active()->create();
+
+    if ($product->inventoryTransactions()->doesntExist()) {
+        app(InventoryService::class)->initialStock($product, 1);
+    }
+
+    $auction = app(CreateAuction::class)->handle(
+        product: $product->fresh(),
+        ruleset: $ruleset,
+        settlementAmount: Money::fromMinor(10_000),
+    );
+
+    DB::table('auctions')->where('id', $auction->id)->update(['pot_target_credits' => $potTargetCredits]);
+
+    return app(AuctionLifecycle::class)->start($auction->fresh());
 }
 
 /**

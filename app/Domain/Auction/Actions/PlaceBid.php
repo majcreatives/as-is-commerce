@@ -67,6 +67,22 @@ use Illuminate\Support\Facades\Log;
  *
  * LOCK ORDER: auction, then wallet, then credit lots. The same order
  * everywhere in this stage, so concurrent bids queue rather than deadlock.
+ *
+ * POT-TARGET BIDDING. When this auction carries a `pot_target_credits`
+ * (docs/PLAN_POT_TARGET_BIDDING.md; null for every auction until an
+ * administrator sets one), this bid may be the one that reaches it. That
+ * check runs inside this action's own transaction -- one more cheap `SUM`
+ * under the lock already held, paid only by auctions that actually use the
+ * feature. Closing itself never happens here: this action does not decide
+ * anything about closing, credit consumption, or the winner. If the target
+ * was just reached, {@see self::handle()} calls {@see CloseAuction} as a
+ * completely separate operation, strictly after this bid's own transaction
+ * has committed -- the same entry point the clock sweep uses, with its own
+ * lock, its own transaction, and its own post-commit event dispatch. Calling
+ * it from inside this transaction instead would fire a closure notification
+ * before the bid that triggered it was actually durable, which is exactly
+ * the "dispatch inside a transaction that might still roll back" bug the
+ * notification rules exist to prevent.
  */
 final class PlaceBid
 {
@@ -79,6 +95,7 @@ final class PlaceBid
         private readonly HighestBidResolver $bids,
         private readonly AuctionClock $clock,
         private readonly AuctionLifecycle $lifecycle,
+        private readonly CloseAuction $closeAuction,
     ) {}
 
     /**
@@ -120,11 +137,23 @@ final class PlaceBid
             $result['extended_seconds'],
         );
 
+        // Also after the transaction. This runs on a replayed request too --
+        // IdempotencyGuard returns the same stored result either way, with no
+        // way to tell a fresh run from a replay -- which is fine only because
+        // CloseAuction is idempotent by construction: it re-locks, re-reads
+        // the auction's actual status, and does nothing if it is already
+        // closed. Calling it redundantly costs one lock cycle; not calling it
+        // on a genuine retry after a dropped response would leave a
+        // target-reached auction open until the next sweep.
+        if ($result['pot_target_reached']) {
+            $this->closeAuction->handle($auction);
+        }
+
         return $bid;
     }
 
     /**
-     * @return array{bid_id: int, auction_id: int, amount_credits: int, sequence: int, credit_transaction_id: int, extended_seconds: int, previous_highest_bid_id: int|null}
+     * @return array{bid_id: int, auction_id: int, amount_credits: int, sequence: int, credit_transaction_id: int, extended_seconds: int, previous_highest_bid_id: int|null, pot_target_reached: bool}
      */
     private function record(Auction $auction, User $user, int $amountCredits, string $idempotencyKey): array
     {
@@ -205,6 +234,14 @@ final class PlaceBid
                 $this->lifecycle->applyExtension($locked, $extension);
             }
 
+            // Only for an auction that actually carries a target -- null for
+            // every auction until step 6 gives an administrator a field for
+            // it, so this costs an ordinary bid nothing. Read under the same
+            // auction lock everything above used, so it includes the bid just
+            // written and cannot be a stale reading from before it.
+            $potTargetReached = $locked->pot_target_credits !== null
+                && $this->bids->potTotal($locked) >= $locked->pot_target_credits;
+
             Log::info('Bid accepted', [
                 'operation' => 'auction.bid.accepted',
                 'auction_id' => $locked->id,
@@ -216,6 +253,7 @@ final class PlaceBid
                 'credit_transaction_id' => $transaction->id,
                 'highest_bid_credits' => $locked->highest_bid_credits,
                 'extended_seconds' => $extension,
+                'pot_target_reached' => $potTargetReached,
             ]);
 
             return [
@@ -226,6 +264,7 @@ final class PlaceBid
                 'credit_transaction_id' => $transaction->id,
                 'extended_seconds' => $extension,
                 'previous_highest_bid_id' => $previousHighest?->id,
+                'pot_target_reached' => $potTargetReached,
             ];
         });
     }

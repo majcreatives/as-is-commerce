@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Domain\Auction\Actions\PlaceBid;
 use App\Domain\Auction\Services\HighestBidResolver;
 use App\Domain\Auction\ValueObjects\AuctionRules;
 use App\Domain\Auction\ValueObjects\AuctionSnapshot;
 use App\Domain\Shared\Money\Money;
 use App\Enums\AuctionClosureReason;
 use App\Enums\AuctionStatus;
+use App\Enums\BidStatus;
 use App\Enums\OrderSource;
 use App\Models\Concerns\GuardsFrozenAuctionConfiguration;
 use App\Models\Concerns\GuardsMaterializedHighestBid;
@@ -365,16 +367,34 @@ class Auction extends Model
     }
 
     /**
-     * Auctions whose clock has run out and which are still open.
+     * Auctions whose clock has run out, or whose pot target has been reached,
+     * and which are still open.
      *
-     * The work queue for the closing sweep.
+     * The work queue for the closing sweep. Most rows are caught by the clock
+     * half alone; the pot half is a defensive backstop for a pot-target
+     * auction (docs/PLAN_POT_TARGET_BIDDING.md) whose immediate close --
+     * triggered from inside {@see PlaceBid} the instant the target is
+     * crossed -- was somehow missed. Scoped to `pot_target_credits IS NOT
+     * NULL` before the correlated sum runs, so an ordinary auction (every
+     * auction until step 6 exists) never pays for a subquery that could not
+     * possibly apply to it.
      *
      * @param  Builder<self>  $query
      * @return Builder<self>
      */
     public function scopeDueToClose(Builder $query): Builder
     {
-        return $query->open()->where('ends_at', '<=', now());
+        return $query->open()->where(function (Builder $query): void {
+            $query->where('ends_at', '<=', now())
+                ->orWhere(function (Builder $query): void {
+                    $query->whereNotNull('pot_target_credits')
+                        ->whereRaw(
+                            '(SELECT COALESCE(SUM(amount_credits), 0) FROM bids
+                              WHERE bids.auction_id = auctions.id AND bids.status = ?) >= auctions.pot_target_credits',
+                            [BidStatus::Accepted->value],
+                        );
+                });
+        });
     }
 
     /**

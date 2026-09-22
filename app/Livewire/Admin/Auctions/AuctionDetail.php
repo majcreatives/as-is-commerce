@@ -181,6 +181,10 @@ class AuctionDetail extends Component
             // discrepancy is visible here rather than silently repaired.
             'highestBid' => $bids->highestBid($this->auction),
             'projection' => $bids->verify($this->auction),
+            // Only for an auction that actually carries a target -- null for
+            // every auction until this was set at creation, so this costs an
+            // ordinary auction's page nothing extra.
+            'potTotal' => $this->auction->pot_target_credits === null ? null : $bids->potTotal($this->auction),
             // With the bidder: an administrator investigating an auction is
             // entitled to see who bid, which is exactly what the customer-
             // facing history withholds.

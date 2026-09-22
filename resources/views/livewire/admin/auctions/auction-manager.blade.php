@@ -97,6 +97,17 @@
                     </p>
                 </div>
 
+                {{-- Optional, and separate from the three figures above: this is a
+                     closing condition, not a price. Leaving it blank is a genuine
+                     choice, not an omission -- the auction simply closes on its clock
+                     alone, exactly as every auction does today. --}}
+                <x-field label="Pot target (credits)" name="pot_target_credits"
+                         :error="$errors->first('pot_target_credits')" optional
+                         hint="Once every bid on this auction, added together, reaches this figure, the auction closes at once and whoever is leading wins. Leave blank for a clock-only auction.">
+                    <x-input wire:model="pot_target_credits" inputmode="decimal" placeholder="Leave blank for none"
+                             :error="$errors->has('pot_target_credits')" />
+                </x-field>
+
                 <div class="flex gap-3">
                     <x-button type="submit">Create draft auction</x-button>
                     <x-button type="button" variant="ghost" wire:click="cancelForm">Cancel</x-button>

@@ -71,6 +71,42 @@
                 </p>
             </x-card>
 
+            {{-- Only for an auction that carries a target -- optional, set at
+                 creation, and frozen since: there is no form here to add or change
+                 one. Separate from "the three figures" above, deliberately -- this
+                 is a closing condition, not a price. --}}
+            @if ($auction->pot_target_credits !== null)
+                <x-card title="Pot target"
+                        subtitle="An additional way this auction can close: early, once every bid together reaches this figure.">
+                    <dl class="grid gap-5 sm:grid-cols-2">
+                        <div>
+                            <dt class="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                Committed so far
+                            </dt>
+                            <dd class="mt-1 text-2xl font-bold tabular-nums text-slate-900">
+                                <x-credits :amount="$potTotal ?? 0" />
+                            </dd>
+                            <dd class="text-xs text-slate-500">every bidder's bids, added together</dd>
+                        </div>
+
+                        <div>
+                            <dt class="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                Target
+                            </dt>
+                            <dd class="mt-1 text-2xl font-bold tabular-nums text-slate-900">
+                                <x-credits :amount="$auction->pot_target_credits" />
+                            </dd>
+                            <dd class="text-xs text-slate-500">frozen at creation, like the settlement amount</dd>
+                        </div>
+                    </dl>
+
+                    <p class="mt-4 border-t border-slate-100 pt-3 text-sm text-slate-600">
+                        The clock above still applies. Whichever is reached first -- the target, or the
+                        clock -- closes the auction, and the standing leader wins either way.
+                    </p>
+                </x-card>
+            @endif
+
             {{-- ------------------------------------------------- The outcome --}}
             <x-card title="Outcome">
                 @if ($auction->endedByBuyNow())

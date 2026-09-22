@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Livewire\Admin\Auctions;
 
 use App\Domain\Auction\Actions\CreateAuction;
+use App\Domain\Credit\ValueObjects\CreditAmount;
 use App\Domain\Shared\Money\Money;
 use App\Enums\AuctionStatus;
 use App\Enums\BidModel;
@@ -12,12 +13,14 @@ use App\Enums\ProductStatus;
 use App\Models\Auction;
 use App\Models\AuctionRuleset;
 use App\Models\Product;
+use Closure;
 use DomainException;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
+use InvalidArgumentException;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
 use Livewire\Attributes\Url;
@@ -95,6 +98,16 @@ class AuctionManager extends Component
 
     public string $settlement_amount = '';
 
+    /**
+     * Optional (docs/PLAN_POT_TARGET_BIDDING.md, step 6). Blank means this
+     * auction has no second way to close -- the clock alone decides, exactly
+     * as every auction does today. Held as a string, entered and displayed in
+     * Credits, converted to subcredits only on save -- the same pattern
+     * RulesetForm already uses for its own credit fields, so a figure finer
+     * than a whole credit is never silently truncated.
+     */
+    public string $pot_target_credits = '';
+
     public function mount(): void
     {
         $this->authorize('auctions.view');
@@ -130,7 +143,7 @@ class AuctionManager extends Component
     {
         $this->authorize('auctions.create');
 
-        $this->reset('product_id', 'auction_ruleset_id', 'settlement_amount');
+        $this->reset('product_id', 'auction_ruleset_id', 'settlement_amount', 'pot_target_credits');
 
         $this->auction_ruleset_id = AuctionRuleset::query()->active()->acceptingNewAuctions()
             ->orderByDesc('is_default')->value('id');
@@ -148,6 +161,15 @@ class AuctionManager extends Component
     {
         $this->authorize('auctions.create');
 
+        // As many decimal places as CreditAmount can hold, derived rather
+        // than hardcoded -- the same pattern RulesetForm's own credit fields
+        // use, so this form's validation moves automatically if the
+        // re-denomination factor ever does.
+        $places = CreditAmount::decimalPlaces();
+        $creditPattern = $places > 0 ? "/^\d{1,12}(\.\d{1,{$places}})?$/" : '/^\d{1,12}$/';
+
+        $potTargetProvided = trim($this->pot_target_credits) !== '';
+
         $validated = $this->validate([
             'product_id' => ['required', 'integer', Rule::exists('products', 'id')],
             // Re-checked here, on the server, as well as offered by the list: a
@@ -157,8 +179,18 @@ class AuctionManager extends Component
                 ->where('bid_model', BidModel::CumulativeStep->value)],
             // A decimal string validated by shape, so no float is involved.
             'settlement_amount' => ['required', 'string', 'regex:/^\d{1,12}(\.\d{1,2})?$/'],
+            // Optional: blank is a legitimate choice, not an omission -- it
+            // means this auction has no second way to close. The shape and
+            // positivity rules apply only once something has actually been
+            // typed, so an empty field is never told it looks malformed.
+            'pot_target_credits' => [
+                'nullable',
+                'string',
+                Rule::when($potTargetProvided, ["regex:{$creditPattern}", $this->positiveCreditAmount()]),
+            ],
         ], [
             'settlement_amount.regex' => 'Enter an amount in cedis, such as 100 or 100.50.',
+            'pot_target_credits.regex' => 'Enter a number of credits, such as 500 or 0.0001, greater than zero -- or leave it blank.',
         ]);
 
         try {
@@ -166,6 +198,9 @@ class AuctionManager extends Component
                 product: Product::findOrFail($validated['product_id']),
                 ruleset: AuctionRuleset::findOrFail($validated['auction_ruleset_id']),
                 settlementAmount: Money::fromDecimalString($validated['settlement_amount']),
+                potTarget: $potTargetProvided
+                    ? CreditAmount::fromDecimalString(trim($validated['pot_target_credits']))
+                    : null,
                 actor: auth()->user(),
             );
         } catch (DomainException $e) {
@@ -175,9 +210,33 @@ class AuctionManager extends Component
         }
 
         $this->showForm = false;
-        $this->reset('product_id', 'settlement_amount');
+        $this->reset('product_id', 'settlement_amount', 'pot_target_credits');
 
         session()->flash('status', 'Auction created as a draft. Review its snapshot, then publish it.');
+    }
+
+    /**
+     * A shape-valid figure that parses to zero (or negative) is refused here.
+     *
+     * Laravel runs every rule for a field regardless of whether an earlier one
+     * failed (there is no implicit `bail`), so this closure cannot assume the
+     * regex rule beside it already passed -- it catches its own parse failure
+     * defensively rather than letting CreditAmount's exception escape as an
+     * uncaught error instead of a validation message. The same pattern
+     * RulesetForm uses for its own credit fields.
+     */
+    private function positiveCreditAmount(): Closure
+    {
+        return function (string $attribute, mixed $value, Closure $fail): void {
+            try {
+                if (! CreditAmount::fromDecimalString((string) $value)->isPositive()) {
+                    $fail('Enter an amount greater than zero, or leave it blank.');
+                }
+            } catch (InvalidArgumentException) {
+                // The regex rule on the same field already reports the shape
+                // problem; nothing more to add here.
+            }
+        };
     }
 
     /**

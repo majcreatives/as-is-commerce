@@ -380,6 +380,113 @@ it('shows the product Buy Now price beside the settlement field', function (): v
         ->assertSee('Auction Settlement Amount');
 });
 
+// ------------------------------------------------------------ Pot target
+
+it('creates a draft auction with no pot target when the field is left blank', function (): void {
+    $product = Product::factory()->active()->create();
+    $ruleset = AuctionRuleset::factory()->active()->cumulative()->create();
+
+    Livewire::actingAs($this->admin)
+        ->test(AuctionManager::class)
+        ->call('create')
+        ->set('product_id', $product->id)
+        ->set('auction_ruleset_id', $ruleset->id)
+        ->set('settlement_amount', '100.00')
+        ->call('save')
+        ->assertHasNoErrors();
+
+    $auction = Auction::firstWhere('product_id', $product->id);
+
+    // Blank is a genuine choice, not an omission: this auction has no second
+    // way to close. It behaves exactly as every auction did before this
+    // feature existed.
+    expect($auction)->not->toBeNull()
+        ->and($auction->pot_target_credits)->toBeNull();
+});
+
+it('creates a draft auction with a pot target, converted to subcredits', function (): void {
+    $product = Product::factory()->active()->create();
+    $ruleset = AuctionRuleset::factory()->active()->cumulative()->create();
+
+    Livewire::actingAs($this->admin)
+        ->test(AuctionManager::class)
+        ->call('create')
+        ->set('product_id', $product->id)
+        ->set('auction_ruleset_id', $ruleset->id)
+        ->set('settlement_amount', '100.00')
+        ->set('pot_target_credits', '500')
+        ->call('save')
+        ->assertHasNoErrors();
+
+    $auction = Auction::firstWhere('product_id', $product->id);
+
+    expect($auction->pot_target_credits)->toBe(500 * CreditAmount::SUBCREDITS_PER_CREDIT);
+});
+
+it('accepts a pot target finer than a whole credit', function (): void {
+    $product = Product::factory()->active()->create();
+    $ruleset = AuctionRuleset::factory()->active()->cumulative()->create();
+
+    Livewire::actingAs($this->admin)
+        ->test(AuctionManager::class)
+        ->call('create')
+        ->set('product_id', $product->id)
+        ->set('auction_ruleset_id', $ruleset->id)
+        ->set('settlement_amount', '100.00')
+        ->set('pot_target_credits', '0.0001')
+        ->call('save')
+        ->assertHasNoErrors();
+
+    expect(Auction::firstWhere('product_id', $product->id)?->pot_target_credits)->toBe(1);
+});
+
+it('rejects a pot target that is not a number, but blank stays fine', function (string $value): void {
+    $product = Product::factory()->active()->create();
+
+    Livewire::actingAs($this->admin)
+        ->test(AuctionManager::class)
+        ->call('create')
+        ->set('product_id', $product->id)
+        ->set('auction_ruleset_id', AuctionRuleset::factory()->active()->cumulative()->create()->id)
+        ->set('settlement_amount', '100.00')
+        ->set('pot_target_credits', $value)
+        ->call('save')
+        ->assertHasErrors('pot_target_credits');
+
+    expect(Auction::count())->toBe(0);
+})->with(['GHS 500', 'free', '-500', 'abc']);
+
+it('rejects a pot target of exactly zero, a shape-valid figure that is not positive', function (): void {
+    $product = Product::factory()->active()->create();
+
+    Livewire::actingAs($this->admin)
+        ->test(AuctionManager::class)
+        ->call('create')
+        ->set('product_id', $product->id)
+        ->set('auction_ruleset_id', AuctionRuleset::factory()->active()->cumulative()->create()->id)
+        ->set('settlement_amount', '100.00')
+        ->set('pot_target_credits', '0')
+        ->call('save')
+        ->assertHasErrors('pot_target_credits');
+
+    expect(Auction::count())->toBe(0);
+});
+
+it('never shows a ratio, a guideline, or a computed suggestion for the pot target', function (): void {
+    $product = Product::factory()->active()->pricedAt(550_000)->create();
+
+    Livewire::actingAs($this->admin)
+        ->test(AuctionManager::class)
+        ->call('create')
+        ->set('product_id', $product->id)
+        // Not "2x": Tailwind's own "text-2xl" sizing classes contain that
+        // substring throughout this page, on headings unrelated to the pot
+        // target -- a check against it would fail for the wrong reason.
+        ->assertDontSee('twice')
+        ->assertDontSee('guideline')
+        ->assertDontSee('suggested');
+});
+
 // ----------------------------------------------------------- Admin detail
 
 it('publishes an auction from the detail screen', function (): void {
@@ -464,6 +571,25 @@ it('offers no way to edit a live auction rules', function (): void {
         ->test(AuctionDetail::class, ['auction' => liveAuction()])
         ->assertSee('Nothing can change it now')
         ->assertDontSee('Edit rules');
+});
+
+it('shows nothing about a pot target for an ordinary auction', function (): void {
+    Livewire::actingAs($this->admin)
+        ->test(AuctionDetail::class, ['auction' => liveAuction()])
+        ->assertDontSee('Pot target');
+});
+
+it('shows the live pot total against the target, to an administrator', function (): void {
+    $auction = cumulativeAuctionWithPotTarget(potTargetCredits: 1_000_000, minimum: 1, increment: 1);
+    catchUp($auction, bidder(100));
+    catchUp($auction, bidder(100));
+
+    Livewire::actingAs($this->admin)
+        ->test(AuctionDetail::class, ['auction' => $auction->fresh()])
+        ->assertSee('Pot target')
+        ->assertSeeText('Committed so far')
+        ->assertSeeText('0.0003')
+        ->assertSeeText('100');
 });
 
 it('reports a highest-bid projection that disagrees with the bids', function (): void {

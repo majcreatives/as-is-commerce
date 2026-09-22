@@ -7,6 +7,7 @@ use App\Domain\Auction\Exceptions\AuctionConfigurationIsFrozen;
 use App\Domain\Auction\Exceptions\InvalidAuctionRules;
 use App\Domain\Auction\Services\AuctionLifecycle;
 use App\Domain\Auction\ValueObjects\AuctionSnapshot;
+use App\Domain\Credit\ValueObjects\CreditAmount;
 use App\Domain\Shared\Money\Money;
 use App\Enums\AuctionStatus;
 use App\Models\Auction;
@@ -233,6 +234,50 @@ it('stores the settlement amount as integer minor units', function (): void {
         ->and($auction->settlementAmount()->toDecimalString())->toBe('100.55');
 });
 
+// -------------------------------------------------------------- Pot target
+
+it('has no pot target unless one is supplied', function (): void {
+    $auction = $this->create->handle(
+        Product::factory()->active()->create(),
+        AuctionRuleset::factory()->active()->create(),
+        Money::fromMinor(10_000),
+    );
+
+    // Not a placeholder value: an omitted target is the honest state of "this
+    // auction has no second way to close", exactly like every auction before
+    // this feature existed.
+    expect($auction->pot_target_credits)->toBeNull();
+});
+
+it('freezes a supplied pot target into the auction, in subcredits', function (): void {
+    $auction = $this->create->handle(
+        Product::factory()->active()->create(),
+        AuctionRuleset::factory()->active()->create(),
+        Money::fromMinor(10_000),
+        potTarget: CreditAmount::fromDecimalString('500'),
+    );
+
+    expect($auction->pot_target_credits)->toBe(500 * CreditAmount::SUBCREDITS_PER_CREDIT);
+});
+
+it('never derives the pot target from the product price or the settlement amount', function (): void {
+    $product = Product::factory()->active()->pricedAt(400_000)->create();
+
+    $auction = $this->create->handle(
+        $product,
+        AuctionRuleset::factory()->active()->create(),
+        Money::fromMinor(20_000),
+        potTarget: CreditAmount::fromDecimalString('500'),
+    );
+
+    // Strict: a loose comparison would match any truthy value and pass for
+    // entirely the wrong reason.
+    expect($auction->pot_target_credits)->not->toBe($product->buy_now_price_minor)
+        ->and($auction->pot_target_credits)->not->toBe($auction->settlement_amount_minor)
+        ->and(collect($auction->rules_snapshot['auction'] ?? [])->containsStrict($auction->pot_target_credits))
+        ->toBeFalse();
+});
+
 // ------------------------------------------------------------ Immutability
 
 it('allows a draft to be corrected', function (): void {
@@ -256,6 +301,7 @@ it('refuses to change the frozen configuration once published', function (string
     'product' => ['product_id', 999],
     'currency' => ['currency', 'USD'],
     'snapshot version' => ['snapshot_version', 99],
+    'pot target' => ['pot_target_credits', 99_999],
 ]);
 
 it('refuses to rewrite the rules snapshot once published', function (): void {

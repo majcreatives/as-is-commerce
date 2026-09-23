@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\Auction\Exceptions;
 
+use App\Domain\Credit\ValueObjects\CreditAmount;
 use DomainException;
 
 /**
@@ -41,21 +42,25 @@ final class BidRejected extends DomainException
 
     public static function amountNotPositive(int $amount): self
     {
-        return new self("A bid must commit at least 1 credit; {$amount} was given.");
+        return new self(
+            'A bid must commit at least 1 credit; '.CreditAmount::fromSubcredits($amount)->format().' was given.'
+        );
     }
 
     public static function belowMinimum(int $amount, int $minimum): self
     {
         return new self(
-            "A bid of {$amount} credits is below this auction's minimum of {$minimum} credits."
+            'A bid of '.CreditAmount::fromSubcredits($amount)->format()
+            ." is below this auction's minimum of ".CreditAmount::fromSubcredits($minimum)->format().'.'
         );
     }
 
     public static function belowIncrement(int $amount, int $required, int $highest): self
     {
         return new self(
-            "A bid of {$amount} credits does not clear the standing highest bid of {$highest} "
-            ."credits: the next valid bid is {$required} credits."
+            'A bid of '.CreditAmount::fromSubcredits($amount)->format()
+            .' does not clear the standing highest bid of '.CreditAmount::fromSubcredits($highest)->format()
+            .': the next valid bid is '.CreditAmount::fromSubcredits($required)->format().'.'
         );
     }
 
@@ -69,7 +74,7 @@ final class BidRejected extends DomainException
     public static function leaderCannotBid(int $standing): self
     {
         return new self(
-            "You already hold the lead with {$standing} credits. "
+            'You already hold the lead with '.CreditAmount::fromSubcredits($standing)->format().'. '
             .'You can bid again once somebody overtakes you.'
         );
     }
@@ -80,7 +85,8 @@ final class BidRejected extends DomainException
     public static function notTheOpeningBid(int $amount, int $opening): self
     {
         return new self(
-            "The opening bid on this auction is exactly {$opening} credits; {$amount} was given."
+            'The opening bid on this auction is exactly '.CreditAmount::fromSubcredits($opening)->format()
+            .'; '.CreditAmount::fromSubcredits($amount)->format().' was given.'
         );
     }
 
@@ -96,16 +102,18 @@ final class BidRejected extends DomainException
     public static function notTheCatchUpBid(int $amount, int $expected, int $leaderTotal, int $yourTotal): self
     {
         return new self(
-            "To take the lead you need to add exactly {$expected} credits "
-            ."(the leader has {$leaderTotal} and you have {$yourTotal}); {$amount} was given."
+            'To take the lead you need to add exactly '.CreditAmount::fromSubcredits($expected)->format()
+            .' (the leader has '.CreditAmount::fromSubcredits($leaderTotal)->format()
+            .' and you have '.CreditAmount::fromSubcredits($yourTotal)->format()
+            .'); '.CreditAmount::fromSubcredits($amount)->format().' was given.'
         );
     }
 
     public static function increasesOwnBid(int $highest): self
     {
         return new self(
-            "This auction does not allow raising your own bid, and yours of {$highest} credits "
-            .'is already the highest.'
+            'This auction does not allow raising your own bid, and yours of '
+            .CreditAmount::fromSubcredits($highest)->format().' is already the highest.'
         );
     }
 

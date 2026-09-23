@@ -9,6 +9,7 @@ use App\Domain\Auction\Services\AuctionLifecycle;
 use App\Domain\Auction\Services\BidValidator;
 use App\Domain\Auction\Services\HighestBidResolver;
 use App\Domain\Credit\Services\CreditLedgerService;
+use App\Domain\Credit\ValueObjects\CreditAmount;
 use App\Domain\Shared\Idempotency\IdempotencyGuard;
 use App\Enums\BidStatus;
 use App\Enums\CreditTransactionType;
@@ -194,7 +195,7 @@ final class PlaceBid
                 amount: $amountCredits,
                 type: CreditTransactionType::BidDebit,
                 reference: $locked,
-                description: "Bid of {$amountCredits} credits on auction #{$locked->id}.",
+                description: 'Bid of '.CreditAmount::fromSubcredits($amountCredits)->format().' on auction #'.$locked->id.'.',
                 metadata: [
                     'auction_id' => $locked->id,
                     'product_id' => $locked->product_id,

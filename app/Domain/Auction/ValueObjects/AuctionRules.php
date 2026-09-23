@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domain\Auction\ValueObjects;
 
 use App\Domain\Auction\Exceptions\InvalidAuctionRules;
+use App\Domain\Credit\ValueObjects\CreditAmount;
 use App\Domain\Shared\Money\Money;
 use App\Enums\BidModel;
 use App\Enums\ForfeitPolicy;
@@ -226,8 +227,9 @@ final readonly class AuctionRules implements JsonSerializable
         // exactly the case where inventing a bid would compound the damage.
         if ($myTotal >= $leaderTotal) {
             throw new LogicException(
-                "A bidder holding {$myTotal} credits is not below the leader's {$leaderTotal}, "
-                .'so there is no catch-up bid to compute. The bid records need looking at.'
+                'A bidder holding '.CreditAmount::fromSubcredits($myTotal)->format()
+                .' is not below the leader\'s '.CreditAmount::fromSubcredits($leaderTotal)->format()
+                .', so there is no catch-up bid to compute. The bid records need looking at.'
             );
         }
 

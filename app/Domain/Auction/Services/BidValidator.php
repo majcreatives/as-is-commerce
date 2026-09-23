@@ -7,6 +7,7 @@ namespace App\Domain\Auction\Services;
 use App\Domain\Auction\Actions\PlaceBid;
 use App\Domain\Auction\Exceptions\BidRejected;
 use App\Domain\Credit\Services\CreditLedgerService;
+use App\Domain\Credit\ValueObjects\CreditAmount;
 use App\Enums\UserStatus;
 use App\Models\Auction;
 use App\Models\Bid;
@@ -260,7 +261,8 @@ class BidValidator
 
         if ($wallet->balance < $amountCredits) {
             throw BidRejected::because(
-                "This bid needs {$amountCredits} credits and your balance is {$wallet->balance}."
+                'This bid needs '.CreditAmount::fromSubcredits($amountCredits)->format()
+                .' and your balance is '.CreditAmount::fromSubcredits((int) $wallet->balance)->format().'.'
             );
         }
     }

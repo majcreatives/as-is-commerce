@@ -38,7 +38,7 @@
                         <x-credits :amount="$package->credit_amount" bare />
                     </p>
                     <p class="text-sm text-slate-500">
-                        {{ Str::plural('credit', $package->credit_amount) }}
+                        {{ Str::plural('credit', \App\Domain\Credit\ValueObjects\CreditAmount::fromSubcredits((int) $package->credit_amount)->wholeCredits()) }}
                     </p>
 
                     <p class="mt-4 text-xl font-semibold tabular-nums text-brand-800">

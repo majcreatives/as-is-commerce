@@ -6,6 +6,7 @@ namespace App\Domain\Payments\Actions;
 
 use App\Domain\Cash\Services\CashLedgerService;
 use App\Domain\Credit\Services\CreditLedgerService;
+use App\Domain\Credit\ValueObjects\CreditAmount;
 use App\Domain\Payments\Contracts\PaymentGateway;
 use App\Domain\Payments\Exceptions\PaymentVerificationFailed;
 use App\Domain\Payments\ValueObjects\VerifiedTransaction;
@@ -225,7 +226,7 @@ final class FulfillCreditPurchase
                 type: CashTransactionType::CreditPurchase,
                 amount: $locked->amount(),
                 reference: $locked,
-                description: "Purchase of {$locked->credit_amount} credits.",
+                description: 'Purchase of '.CreditAmount::fromSubcredits((int) $locked->credit_amount)->format().'.',
                 metadata: ['credits' => $locked->credit_amount],
                 idempotencyKey: $locked->idempotency_key.':cash-out',
             );
@@ -241,7 +242,7 @@ final class FulfillCreditPurchase
                 amount: $locked->credit_amount,
                 expiresAt: null,
                 reference: $locked,
-                description: "{$locked->package_name_snapshot} ({$locked->credit_amount} credits).",
+                description: $locked->package_name_snapshot.' ('.CreditAmount::fromSubcredits((int) $locked->credit_amount)->format().').',
                 metadata: [
                     'credit_purchase_id' => $locked->id,
                     'provider_reference' => $locked->provider_reference,
@@ -255,7 +256,7 @@ final class FulfillCreditPurchase
             $this->transition->handle(
                 $locked,
                 CreditPurchaseStatus::Fulfilled,
-                "Posted {$locked->credit_amount} credits to the wallet.",
+                'Posted '.CreditAmount::fromSubcredits((int) $locked->credit_amount)->format().' to the wallet.',
             );
 
             activity('credit_purchase')

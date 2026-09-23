@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\Referrals\Services;
 
+use App\Domain\Credit\ValueObjects\CreditAmount;
 use App\Enums\CreditTransactionType;
 use App\Enums\ReferralStatus;
 use App\Models\Referral;
@@ -176,8 +177,8 @@ class ReferralReconciler
                 $anomalies[] = [
                     'type' => 'amount_disagreement',
                     'referral_id' => $referral->id,
-                    'detail' => "Snapshot says {$referral->reward_credits} credits; the ledger says "
-                        .$transaction->amount.'.',
+                    'detail' => 'Snapshot says '.CreditAmount::fromSubcredits((int) $referral->reward_credits)
+                        .'; the ledger says '.CreditAmount::fromSubcredits((int) $transaction->amount).'.',
                 ];
             }
 

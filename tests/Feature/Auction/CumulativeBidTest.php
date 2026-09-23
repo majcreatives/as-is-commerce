@@ -99,116 +99,121 @@ it('follows a larger step from a higher opening bid', function (): void {
 // -------------------------------------------- Only one amount is valid
 
 it('opens with exactly the minimum bid and nothing else', function (): void {
-    $auction = cumulativeAuction(minimum: 5, increment: 2);
-    $bidder = bidder(500);
+    $factor = CreditAmount::SUBCREDITS_PER_CREDIT;
+    $auction = cumulativeAuction(minimum: 5 * $factor, increment: 2 * $factor);
+    $bidder = bidder(500 * $factor);
 
     foreach ([1, 4, 6, 7, 100] as $wrong) {
-        expect(fn () => placeBid($auction, $bidder, $wrong))
+        expect(fn () => placeBid($auction, $bidder, $wrong * $factor))
             ->toThrow(BidRejected::class, 'opening bid on this auction is exactly 5 credits');
     }
 
     expect(Bid::query()->count())->toBe(0)
-        ->and(creditWalletFor($bidder)->fresh()->balance)->toBe(500);
+        ->and(creditWalletFor($bidder)->fresh()->balance)->toBe(500 * $factor);
 
-    placeBid($auction, $bidder, 5);
+    placeBid($auction, $bidder, 5 * $factor);
 
-    expect($this->bids->highestAmount($auction))->toBe(5);
+    expect($this->bids->highestAmount($auction))->toBe(5 * $factor);
 });
 
 it('accepts only the next step over the leader, and refuses every other amount', function (): void {
     // The owner's own list: with the leader on 20, only 21 is valid. 22, 30,
     // 100, 20 and 2 are all refused.
-    $auction = cumulativeAuction(minimum: 20, increment: 1);
-    $leader = bidder(500);
-    $challenger = bidder(500);
+    $factor = CreditAmount::SUBCREDITS_PER_CREDIT;
+    $auction = cumulativeAuction(minimum: 20 * $factor, increment: 1 * $factor);
+    $leader = bidder(500 * $factor);
+    $challenger = bidder(500 * $factor);
 
-    placeBid($auction, $leader, 20);
+    placeBid($auction, $leader, 20 * $factor);
     $bidsBefore = Bid::query()->count();
 
     foreach ([20, 22, 30, 100, 2] as $wrong) {
-        expect(fn () => placeBid($auction, $challenger, $wrong))
+        expect(fn () => placeBid($auction, $challenger, $wrong * $factor))
             ->toThrow(BidRejected::class, 'you need to add exactly 21 credits');
     }
 
     // A refused bid leaves nothing: no row, no credits moved.
     expect(Bid::query()->count())->toBe($bidsBefore)
-        ->and(creditWalletFor($challenger)->fresh()->balance)->toBe(500)
+        ->and(creditWalletFor($challenger)->fresh()->balance)->toBe(500 * $factor)
         ->and($this->bids->consumedCreditsBy($auction, $challenger->id))->toBe(0);
 
-    placeBid($auction, $challenger, 21);
+    placeBid($auction, $challenger, 21 * $factor);
 
-    expect($this->bids->highestAmount($auction))->toBe(21)
+    expect($this->bids->highestAmount($auction))->toBe(21 * $factor)
         ->and($this->bids->highestBid($auction)->user_id)->toBe($challenger->id);
 });
 
 it('measures the catch-up from the bidder\'s own total, not from zero', function (): void {
-    $auction = cumulativeAuction();
-    $a = bidder(500);
-    $b = bidder(500);
+    $factor = CreditAmount::SUBCREDITS_PER_CREDIT;
+    $auction = cumulativeAuction($factor, $factor);
+    $a = bidder(500 * $factor);
+    $b = bidder(500 * $factor);
 
     catchUp($auction, $a);  // A = 1
     catchUp($auction, $b);  // B = 2
 
     // A has 1 and the leader has 2: 2 + 1 - 1 = 2. Not 3, which is what a
     // newcomer would need.
-    expect($this->validator->nextBid($auction, $a))->toBe(2)
-        ->and($this->validator->nextBid($auction, bidder(500)))->toBe(3);
+    expect($this->validator->nextBid($auction, $a))->toBe(2 * $factor)
+        ->and($this->validator->nextBid($auction, bidder(500 * $factor)))->toBe(3 * $factor);
 
-    expect(fn () => placeBid($auction, $a, 3))->toThrow(BidRejected::class, 'add exactly 2 credits');
+    expect(fn () => placeBid($auction, $a, 3 * $factor))->toThrow(BidRejected::class, 'add exactly 2 credits');
 });
 
 // --------------------------------------------------------- The leader
 
 it('gives a leader no bid to place until somebody overtakes them', function (): void {
-    $auction = cumulativeAuction();
-    $leader = bidder(500);
+    $factor = CreditAmount::SUBCREDITS_PER_CREDIT;
+    $auction = cumulativeAuction($factor, $factor);
+    $leader = bidder(500 * $factor);
 
     catchUp($auction, $leader);
 
     expect($this->validator->nextBid($auction, $leader))->toBeNull();
 
     foreach ([1, 2, 3] as $amount) {
-        expect(fn () => placeBid($auction, $leader, $amount))
-            ->toThrow(BidRejected::class, 'already hold the lead with 1 credits');
+        expect(fn () => placeBid($auction, $leader, $amount * $factor))
+            ->toThrow(BidRejected::class, 'already hold the lead with 1 credit');
     }
 
     // Once overtaken, they can bid again.
-    catchUp($auction, bidder(500));
+    catchUp($auction, bidder(500 * $factor));
 
-    expect($this->validator->nextBid($auction, $leader))->toBe(2);
+    expect($this->validator->nextBid($auction, $leader))->toBe(2 * $factor);
 });
 
 // ---------------------------------------------- Stale pages, and tampering
 
 it('refuses a bid that stopped being the catch-up bid while the page was open', function (): void {
-    $auction = cumulativeAuction();
-    $a = bidder(500);
-    $b = bidder(500);
-    $c = bidder(500);
+    $factor = CreditAmount::SUBCREDITS_PER_CREDIT;
+    $auction = cumulativeAuction($factor, $factor);
+    $a = bidder(500 * $factor);
+    $b = bidder(500 * $factor);
+    $c = bidder(500 * $factor);
 
     catchUp($auction, $a);                                 // A = 1
 
     // B is shown 2 and considers it.
     $shownToB = $this->validator->nextBid($auction, $b);
-    expect($shownToB)->toBe(2);
+    expect($shownToB)->toBe(2 * $factor);
 
     // C bids first and takes the lead on 2.
-    placeBid($auction, $c, 2);
+    placeBid($auction, $c, 2 * $factor);
 
     $before = creditWalletFor($b)->fresh()->balance;
 
     // B's confirmation arrives. The right bid is now 3, and B is NOT quietly
     // given it: that would spend more than they agreed to.
     expect(fn () => placeBid($auction, $b, $shownToB))
-        ->toThrow(BidRejected::class, 'add exactly 3 credits (the leader has 2 and you have 0)');
+        ->toThrow(BidRejected::class, 'add exactly 3 credits (the leader has 2 credits and you have 0 credits)');
 
     expect(creditWalletFor($b)->fresh()->balance)->toBe($before)
         ->and($this->bids->consumedCreditsBy($auction, $b->id))->toBe(0);
 
     // The retry with the figure the message named goes through.
-    placeBid($auction, $b, 3);
+    placeBid($auction, $b, 3 * $factor);
 
-    expect($this->bids->highestAmount($auction))->toBe(3);
+    expect($this->bids->highestAmount($auction))->toBe(3 * $factor);
 });
 
 it('does not take a bid it has already accepted twice', function (): void {
@@ -227,22 +232,23 @@ it('does not take a bid it has already accepted twice', function (): void {
 // ------------------------------------------------------------- Affordability
 
 it('refuses a bid the bidder cannot afford and consumes nothing', function (): void {
-    $auction = cumulativeAuction();
-    $a = bidder(500);
-    $b = bidder(500);
-    $poor = bidder(3);
+    $factor = CreditAmount::SUBCREDITS_PER_CREDIT;
+    $auction = cumulativeAuction($factor, $factor);
+    $a = bidder(500 * $factor);
+    $b = bidder(500 * $factor);
+    $poor = bidder(3 * $factor);
 
     catchUp($auction, $a);   // A = 1
     catchUp($auction, $b);   // B = 2
     catchUp($auction, $a);   // A = 3
 
     // The newcomer needs 3 + 1 = 4 and holds 3.
-    expect($this->validator->nextBid($auction, $poor))->toBe(4);
+    expect($this->validator->nextBid($auction, $poor))->toBe(4 * $factor);
 
-    expect(fn () => placeBid($auction, $poor, 4))
+    expect(fn () => placeBid($auction, $poor, 4 * $factor))
         ->toThrow(BidRejected::class, 'needs 4 credits and your balance is 3');
 
-    expect(creditWalletFor($poor)->fresh()->balance)->toBe(3)
+    expect(creditWalletFor($poor)->fresh()->balance)->toBe(3 * $factor)
         ->and($this->bids->consumedCreditsBy($auction, $poor->id))->toBe(0);
 });
 

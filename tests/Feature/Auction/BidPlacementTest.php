@@ -8,6 +8,7 @@ use App\Domain\Auction\Exceptions\BidRejected;
 use App\Domain\Auction\Exceptions\HighestBidMutationForbidden;
 use App\Domain\Auction\Services\AuctionLifecycle;
 use App\Domain\Auction\Services\HighestBidResolver;
+use App\Domain\Credit\ValueObjects\CreditAmount;
 use App\Enums\BidStatus;
 use App\Enums\CreditTransactionType;
 use App\Enums\UserStatus;
@@ -199,37 +200,41 @@ it('posts no refund transaction of any kind when an auction closes', function ()
 // ------------------------------------------------------------- Bid rules
 
 it('refuses a bid below the auction minimum', function (): void {
-    $auction = liveAuction(ruleset: AuctionRuleset::factory()->active()->withBidRules(minimum: 20)->create());
+    $factor = CreditAmount::SUBCREDITS_PER_CREDIT;
+    $auction = liveAuction(ruleset: AuctionRuleset::factory()->active()->withBidRules(minimum: 20 * $factor)->create());
 
-    expect(fn (): Bid => placeBid($auction, bidder(), 19))
+    expect(fn (): Bid => placeBid($auction, bidder(), 19 * $factor))
         ->toThrow(BidRejected::class, 'minimum of 20 credits');
 });
 
 it('accepts a bid exactly at the minimum', function (): void {
-    $auction = liveAuction(ruleset: AuctionRuleset::factory()->active()->withBidRules(minimum: 20)->create());
+    $factor = CreditAmount::SUBCREDITS_PER_CREDIT;
+    $auction = liveAuction(ruleset: AuctionRuleset::factory()->active()->withBidRules(minimum: 20 * $factor)->create());
 
-    expect(placeBid($auction, bidder(), 20)->amount_credits)->toBe(20);
+    expect(placeBid($auction, bidder(500 * $factor), 20 * $factor)->amount_credits)->toBe(20 * $factor);
 });
 
 it('refuses a bid that does not clear the increment', function (): void {
+    $factor = CreditAmount::SUBCREDITS_PER_CREDIT;
     $auction = liveAuction(
-        ruleset: AuctionRuleset::factory()->active()->withoutThrottle()->withBidRules(minimum: 20, increment: 10)->create()
+        ruleset: AuctionRuleset::factory()->active()->withoutThrottle()->withBidRules(minimum: 20 * $factor, increment: 10 * $factor)->create()
     );
 
-    placeBid($auction, bidder(), 100);
+    placeBid($auction, bidder(500 * $factor), 100 * $factor);
 
-    expect(fn (): Bid => placeBid($auction, bidder(), 105))
+    expect(fn (): Bid => placeBid($auction, bidder(500 * $factor), 105 * $factor))
         ->toThrow(BidRejected::class, 'next valid bid is 110 credits');
 });
 
 it('accepts a bid that clears the increment', function (): void {
+    $factor = CreditAmount::SUBCREDITS_PER_CREDIT;
     $auction = liveAuction(
-        ruleset: AuctionRuleset::factory()->active()->withoutThrottle()->withBidRules(minimum: 20, increment: 10)->create()
+        ruleset: AuctionRuleset::factory()->active()->withoutThrottle()->withBidRules(minimum: 20 * $factor, increment: 10 * $factor)->create()
     );
 
-    placeBid($auction, bidder(), 100);
+    placeBid($auction, bidder(500 * $factor), 100 * $factor);
 
-    expect(placeBid($auction, bidder(), 150)->amount_credits)->toBe(150);
+    expect(placeBid($auction, bidder(500 * $factor), 150 * $factor)->amount_credits)->toBe(150 * $factor);
 });
 
 /*

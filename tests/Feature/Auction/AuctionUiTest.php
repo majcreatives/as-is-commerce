@@ -188,18 +188,19 @@ it('places a bid from the auction page', function (): void {
 });
 
 it('reports the domain reason when a bid is refused', function (): void {
-    $auction = cumulativeAuction(minimum: 100, increment: 10);
-    $second = bidder(1_000);
+    $factor = CreditAmount::SUBCREDITS_PER_CREDIT;
+    $auction = cumulativeAuction(minimum: 100 * $factor, increment: 10 * $factor);
+    $second = bidder(1_000 * $factor);
 
-    placeBid($auction, bidder(1_000), 100);
+    placeBid($auction, bidder(1_000 * $factor), 100 * $factor);
 
     // The second bidder is shown 110 and opens the confirmation...
     $component = Livewire::actingAs($second)
         ->test(AuctionRoom::class, ['auction' => $auction->fresh()])
-        ->call('review', 110);
+        ->call('review', 110 * $factor);
 
     // ...and somebody else takes the lead on that very figure first.
-    placeBid($auction->fresh(), bidder(1_000), 110);
+    placeBid($auction->fresh(), bidder(1_000 * $factor), 110 * $factor);
 
     $component->call('bid')
         ->assertHasErrors('bid')
@@ -209,7 +210,7 @@ it('reports the domain reason when a bid is refused', function (): void {
     expect($component->errors()->first('bid'))->toContain('add exactly 120 credits');
 
     expect(Bid::count())->toBe(2)
-        ->and(creditWalletFor($second)->fresh()->balance)->toBe(1_000);
+        ->and(creditWalletFor($second)->fresh()->balance)->toBe(1_000 * $factor);
 });
 
 it('will not open a confirmation for a figure the server did not show', function (int $crafted): void {

@@ -7,6 +7,7 @@ namespace App\Domain\Credit\Services;
 use App\Domain\Credit\Exceptions\InsufficientCredits;
 use App\Domain\Credit\Exceptions\InvalidLedgerOperation;
 use App\Domain\Credit\ValueObjects\CreditAllocation;
+use App\Domain\Credit\ValueObjects\CreditAmount;
 use App\Enums\CreditLotSource;
 use App\Enums\CreditTransactionType;
 use App\Models\CreditLot;
@@ -296,8 +297,9 @@ class CreditLedgerService
                 $spent = $amount - $lot->remaining_amount;
 
                 throw InvalidLedgerOperation::because(
-                    "Cannot reverse transaction #{$original->id}: {$spent} of its {$amount} credits "
-                    .'have already been spent.'
+                    'Cannot reverse transaction #'.$original->id.': '
+                    .CreditAmount::fromSubcredits($spent).' of its '.CreditAmount::fromSubcredits($amount)
+                    .' have already been spent.'
                 );
             }
 

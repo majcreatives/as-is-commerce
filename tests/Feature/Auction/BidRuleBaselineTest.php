@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Domain\Auction\Exceptions\BidRejected;
 use App\Domain\Auction\Services\HighestBidResolver;
+use App\Domain\Credit\ValueObjects\CreditAmount;
 use App\Models\Auction;
 use App\Models\AuctionRuleset;
 use App\Models\Bid;
@@ -99,23 +100,24 @@ it('accepts a bid equal to the standing highest, which the earlier bid keeps', f
 // --------------------------------------------- An increment is a lower bound
 
 it('treats a configured increment as a lower bound over the leader', function (): void {
-    $auction = baselineAuction(increment: 5);
-    $leader = bidder(2_000);
-    $challenger = bidder(2_000);
+    $factor = CreditAmount::SUBCREDITS_PER_CREDIT;
+    $auction = baselineAuction(increment: 5 * $factor);
+    $leader = bidder(2_000 * $factor);
+    $challenger = bidder(2_000 * $factor);
 
-    placeBid($auction, $leader, 100);
+    placeBid($auction, $leader, 100 * $factor);
 
     // One short of the increment: refused, and the message names what would do.
-    expect(fn () => placeBid($auction, $challenger, 104))
+    expect(fn () => placeBid($auction, $challenger, 104 * $factor))
         ->toThrow(BidRejected::class, 'the next valid bid is 105 credits');
 
     // Exactly the increment.
-    placeBid($auction, $challenger, 105);
+    placeBid($auction, $challenger, 105 * $factor);
 
     // And any amount above it is just as valid: it is a floor, not a step.
-    placeBid($auction, $leader, 500);
+    placeBid($auction, $leader, 500 * $factor);
 
-    expect($this->bids->highestAmount($auction))->toBe(500);
+    expect($this->bids->highestAmount($auction))->toBe(500 * $factor);
 });
 
 it('leaves nothing behind when a bid is refused', function (): void {
@@ -134,15 +136,16 @@ it('leaves nothing behind when a bid is refused', function (): void {
 });
 
 it('enforces a minimum bid on every bid, including the first', function (): void {
-    $auction = baselineAuction(minimum: 20);
-    $bidder = bidder(500);
+    $factor = CreditAmount::SUBCREDITS_PER_CREDIT;
+    $auction = baselineAuction(minimum: 20 * $factor);
+    $bidder = bidder(500 * $factor);
 
-    expect(fn () => placeBid($auction, $bidder, 19))
+    expect(fn () => placeBid($auction, $bidder, 19 * $factor))
         ->toThrow(BidRejected::class, 'below this auction\'s minimum of 20 credits');
 
-    placeBid($auction, $bidder, 20);
+    placeBid($auction, $bidder, 20 * $factor);
 
-    expect($this->bids->highestAmount($auction))->toBe(20);
+    expect($this->bids->highestAmount($auction))->toBe(20 * $factor);
 });
 
 // -------------------------------------------- Raising your own bid

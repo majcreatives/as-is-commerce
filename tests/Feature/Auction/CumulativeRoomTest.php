@@ -149,24 +149,25 @@ it('shows the confirmation the figures the bidder needs to decide', function ():
 });
 
 it('tells a stale page so, with the amount that is right now', function (): void {
-    $auction = cumulativeAuction();
-    $me = bidder(500);
+    $factor = CreditAmount::SUBCREDITS_PER_CREDIT;
+    $auction = cumulativeAuction($factor, $factor);
+    $me = bidder(500 * $factor);
 
-    catchUp($auction, bidder(500));
+    catchUp($auction, bidder(500 * $factor));
 
     $component = Livewire::actingAs($me)->test(AuctionRoom::class, ['auction' => $auction->fresh()]);
 
     // Somebody bids after the page was drawn: what I was shown is out of date.
-    catchUp($auction, bidder(500));
+    catchUp($auction, bidder(500 * $factor));
 
-    $component->call('review', 2)
+    $component->call('review', 2 * $factor)
         ->assertHasErrors('bid')
         ->assertSet('confirming', false);
 
     expect($component->errors()->first('bid'))->toContain('you now need to add 3 credits');
 
     expect(Bid::count())->toBe(2)
-        ->and(creditWalletFor($me)->fresh()->balance)->toBe(500);
+        ->and(creditWalletFor($me)->fresh()->balance)->toBe(500 * $factor);
 });
 
 it('offers the leader nothing to press, and refuses if they press it anyway', function (): void {
@@ -187,10 +188,11 @@ it('offers the leader nothing to press, and refuses if they press it anyway', fu
 });
 
 it('shows a visitor what joining costs, but nothing to press', function (): void {
-    $auction = cumulativeAuction();
+    $factor = CreditAmount::SUBCREDITS_PER_CREDIT;
+    $auction = cumulativeAuction($factor, $factor);
 
-    catchUp($auction, bidder(500));
-    catchUp($auction, bidder(500));
+    catchUp($auction, bidder(500 * $factor));
+    catchUp($auction, bidder(500 * $factor));
 
     Livewire::test(AuctionRoom::class, ['auction' => $auction->fresh()])
         ->assertSee('To take the lead right now, a new bidder adds')
@@ -200,8 +202,9 @@ it('shows a visitor what joining costs, but nothing to press', function (): void
 });
 
 it('shows a bidder who cannot afford it what they are short, and links to buy credits', function (): void {
-    $auction = cumulativeAuction(minimum: 200, increment: 10);
-    $poor = bidder(150);
+    $factor = CreditAmount::SUBCREDITS_PER_CREDIT;
+    $auction = cumulativeAuction(minimum: 200 * $factor, increment: 10 * $factor);
+    $poor = bidder(150 * $factor);
 
     Livewire::actingAs($poor)
         ->test(AuctionRoom::class, ['auction' => $auction])

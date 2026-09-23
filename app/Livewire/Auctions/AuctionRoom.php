@@ -11,6 +11,7 @@ use App\Domain\Auction\Services\BidValidator;
 use App\Domain\Auction\Services\BuyNowPricer;
 use App\Domain\Auction\Services\HighestBidResolver;
 use App\Domain\Credit\Services\CreditLedgerService;
+use App\Domain\Credit\ValueObjects\CreditAmount;
 use App\Domain\Orders\Actions\StartBuyNowCheckout;
 use App\Domain\Orders\Actions\StartSettlementCheckout;
 use App\Domain\Orders\Exceptions\InvalidCheckout;
@@ -184,7 +185,7 @@ class AuctionRoom extends Component
 
         if ($next !== $shown) {
             $this->auction->refresh();
-            $this->addError('bid', "Somebody bid while you were looking. To take the lead you now need to add {$next} credits.");
+            $this->addError('bid', 'Somebody bid while you were looking. To take the lead you now need to add '.CreditAmount::fromSubcredits($next)->format().'.');
 
             return;
         }

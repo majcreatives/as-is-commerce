@@ -198,9 +198,48 @@ new auction — no standing problems. It repairs nothing.
 | `stage32.1` | cumulative engine/room/wording/admin | 2026-09-21 | engine + room checks PASS (`VERIFY_POT_TARGET_BIDDING.md` hard prerequisite satisfied) |
 | `stage32.2` | `CreditAmount` + redenomination + pot target | 2026-09-22 | pot-target auction verified on staging |
 | `stage32.3` | raw-subcredit leak fix | 2026-09-24 | this record |
+| `stage32.4` | customer room pot hidden; bid history → `Bidder \| Credits committed \| Placed` | 2026-09-24 | see `VERIFY_POT_TARGET_BIDDING.md` §8 |
 
-**Stage 32.3 (2026-09-24) — raw-subcredit leak fix.** The re-denomination
-introduced in `stage32.2` stored Credits ×10,000 ("subcredits") while
+**Stage 32.4 (2026-09-24) — customer room pot hidden; bid history columns.**
+UI change, commit `e93e243`, tag `stage32.4`, on `main`:
+
+- The auction room no longer renders its "This auction can close early" card —
+  the pot total and target (`potTargetCredits`/`potTotal` view keys) are gone
+  from the customer room entirely; the engine and the admin auction detail keep
+  them (admin still shows "Pot target" / "Committed so far").
+- The cumulative bid history reads `Bidder | Credits committed | Placed` — the
+  per-bid `+N` increment column and the "Total after" label are gone; each row's
+  *Credits committed* figure is that bidder's running total after that bid.
+- The earlier (single-highest) history branch is untouched.
+
+Verification evidence:
+
+- **Local suite:** `PotTargetBiddingTest` + `CumulativeRoomTest` (39 tests)
+  green after the rewrite; room renderers green — `BidHistoryPresentationTest`,
+  `AuctionRoomPollingTest`, `AuctionRoomSecurityTest`, `AuctionUiTest`,
+  `AuctionOperationsUiTest`, `AuctionRulesetGateTest`, `PagesTest`,
+  `MarketplaceConversionTest`, `MarketplaceSecurityTest`, `OrderUiTest`,
+  `PollingFallbackTest`, `BroadcastFailureTest`, plus `CumulativeBidTest`,
+  `HighestBidTest`, `BidPlacementTest` (100 engine tests). Pint clean.
+  PHPStan 0 errors.
+- **Staging build integrity:** `as-is-commerce-stage32.4.zip` (13,912,412 bytes,
+  SHA-256 `e022c2b94ae761e3fb6a8e47faccc5cd62c402746bbcd13005c63b4b3560fda3`)
+  downloaded from the GitHub Release; `.env` preserved; backup kept at
+  `as-is-commerce-stage20.bak-32.4`.
+- **Byte-identical check:** SHA-256 of `AuctionRoom.php`
+  (`15f19a917519fb46f49257d6a689e0bbd4dfb6ff6501324f1812898297c54247`) and
+  `auction-room.blade.php`
+  (`3e918a07912a76cfc94b6768407d40597c39b5a44cb4ac42a229e04b3e45bfb2`) on
+  staging match `stage32.4` locally.
+- **Runtime:** `/health` `{"status":"ok","database":"ok"}`; `/up` 200; home,
+  `/auctions`, `/credits` 302, live auction room `/auctions/20` 200.
+- **Room render check (live auction #20 on staging):** "This auction can close
+  early" and `data-auction-pot-progress` absent (0 matches); "Credits added"
+  and "Total after" absent (0 matches); "Credits committed" and "Placed"
+  present; history rows `Bidder #1 ×2`, `Bidder #2 ×1`; "Highest Total
+  (Credits)" label intact.
+- **No migrations** in `stage32.4` (`migrate --force` → nothing to run).
+- **Log:** no new ERROR entries after deploy (7 historical ERRORs unchanged).
 `CreditAmount` was only used for display. A real defect shipped in that release:
 messages written from raw values (bid ledger descriptions, credit-purchase
 ledger descriptions, rejected-bid figures, room messages, referral

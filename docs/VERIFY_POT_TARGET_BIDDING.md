@@ -344,6 +344,17 @@ exactly for a value that is an exact multiple of 10,000.
 | `stage32.1` | cumulative bidding engine/room/wording/admin | 2026-09-21 | PASS, the hard prerequisite of this release |
 | `stage32.2` | `CreditAmount` + redenomination + pot target | 2026-09-22 | pot-target auction + redenomination verified on staging |
 | `stage32.3` | raw-subcredit leak fix | 2026-09-24 | see `VERIFY_32_CUMULATIVE_BIDDING.md` §7 |
+| `stage32.4` | customer room pot hidden; bid history → `Bidder \| Credits committed \| Placed` | 2026-09-24 | this record |
+
+**Stage 32.4 (2026-09-24) — customer room pot hidden.** Commit `e93e243`, tag
+`stage32.4`. The customer auction room no longer shows the pot target or the
+aggregate "committed so far" figure at all — the "This auction can close early"
+card was removed (the aggregate/target remain admin-only on the auction detail
+screen, and the engine logic is unchanged). The cumulative history's columns
+were also simplified to `Bidder | Credits committed | Placed`. Evidence
+(byte-identical files, SHA-256, room render check on live auction #20, no
+migrations, no new log errors) is recorded in `VERIFY_32_CUMULATIVE_BIDDING.md`
+§7.
 
 **Stage 32.2 (2026-09-22).** Deployed per §2: the migration
 `2026_09_22_100000_redenominate_credits_to_subcredits` self-verified (checksums

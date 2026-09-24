@@ -124,3 +124,17 @@ it('requires the password confirmation to match', function (): void {
         ->call('register')
         ->assertHasErrors('password');
 });
+
+it('renders the what-you-get panel alongside the form', function (): void {
+    Livewire::test(Register::class)
+        ->assertSee('What you get')
+        ->assertSee('A shop in cedis, with auctions on some products.')
+        ->assertSee('How credits and bidding work');
+});
+
+it('renders a show/hide toggle for the password fields', function (): void {
+    Livewire::test(Register::class)
+        ->assertSeeHtml('x-data="{ show: false }"')
+        ->assertSeeHtml('x-bind:type="show ? ')
+        ->assertSee('Show password', false);
+});

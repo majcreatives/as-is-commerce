@@ -14,12 +14,10 @@ use Illuminate\Support\Facades\Session;
 use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
-use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 
-#[Layout('components.layouts.guest')]
 #[Title('Create your account')]
 class Register extends Component
 {
@@ -90,6 +88,7 @@ class Register extends Component
 
     public function render(): View
     {
-        return view('livewire.auth.register');
+        return view('livewire.auth.register')
+            ->layout('components.layouts.guest', ['wide' => true]);
     }
 }

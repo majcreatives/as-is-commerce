@@ -11,7 +11,7 @@
 </head>
 <body class="flex min-h-full flex-col bg-slate-50 font-sans text-slate-900 antialiased">
     <div class="flex flex-1 flex-col justify-center px-4 py-10 sm:px-6">
-        <div class="mx-auto w-full max-w-md">
+        <div class="mx-auto w-full {{ ($wide ?? false) ? 'max-w-3xl' : 'max-w-md' }}">
             <a href="{{ route('home') }}" class="mb-8 flex justify-center">
                 <x-logo />
             </a>

@@ -236,8 +236,8 @@ it('shows an auction under the earlier rule, and does not bid on it through this
 
 // ---------------------------------------------------------------- History
 
-it('shows what each bid added and where it left the bidder, by participant', function (): void {
-    // Scaled together so the displayed (bare) "+2" below still reads that way.
+it('shows what each bid committed, by participant, without the per-bid increment', function (): void {
+    // Scaled together so the displayed (bare) totals below still read that way.
     $factor = CreditAmount::SUBCREDITS_PER_CREDIT;
     $auction = cumulativeAuction($factor, $factor);
     $a = bidder(500 * $factor);
@@ -251,11 +251,14 @@ it('shows what each bid added and where it left the bidder, by participant', fun
 
     Livewire::actingAs($viewer)
         ->test(AuctionRoom::class, ['auction' => $auction->fresh()])
-        ->assertSee('Credits added')
-        ->assertSee('Total after')
+        ->assertSee('Credits committed')
+        // The per-bid increment column is gone: no "+", no two-column pair.
+        ->assertDontSee('Credits added')
+        ->assertDontSee('Total after')
         // assertSeeText: the figure renders inside its own <x-credits> span,
-        // so "+2" is not a contiguous raw-HTML substring.
-        ->assertSeeText('+2')
+        // so "+2" is not a contiguous raw-HTML substring -- and would not
+        // appear at all any more.
+        ->assertDontSeeText('+2')
         // One person, one number, however many times they bid.
         ->assertSee('Bidder #1')
         ->assertSee('Bidder #2')

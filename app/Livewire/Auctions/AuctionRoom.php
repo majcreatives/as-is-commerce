@@ -411,15 +411,6 @@ class AuctionRoom extends Component
                 ? 0
                 : $credits->walletFor($viewer)->spendableBalance(),
 
-            // Only for an auction that carries one (docs/PLAN_POT_TARGET_BIDDING.md,
-            // step 5) -- null for every auction until step 6 gives an
-            // administrator a field for it, so this costs an ordinary page
-            // render nothing extra. Everybody's bids added together, never
-            // one bidder's own total -- committedCredits above answers that
-            // question.
-            'potTargetCredits' => $auction->pot_target_credits,
-            'potTotal' => $auction->pot_target_credits === null ? null : $bids->potTotal($auction),
-
             'pollSeconds' => $this->pollSeconds($clock),
         ];
     }

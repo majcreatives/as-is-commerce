@@ -34,10 +34,11 @@ run its own runbook first.
    `pot_target_credits` — `2026_09_22_110000_add_pot_target_to_auctions` — and
    the engine logic that closes an auction early once the sum of every
    accepted bid reaches it, alongside the existing clock.
-4. **The surface.** The room (a live "committed so far" figure, honestly
-   explained), notification wording for an early close, and the admin
-   auction-creation field (optional, no ratio or guideline text — the owner
-   confirmed this explicitly, 2026-09-22).
+4. **The surface.** The room shows nothing about the pot target (customers do
+   not see the aggregate or the target — removed 2026-09-24; the admin
+   auction detail keeps the figure), notification wording for an early
+   close, and the admin auction-creation field (optional, no ratio or
+   guideline text — the owner confirmed this explicitly, 2026-09-22).
 
 A real, pre-existing bug was found and fixed along the way: every
 notification involving credits (bid confirmations, outbid alerts, wins,
@@ -248,8 +249,8 @@ version of the owner's own worked example, and also an automated test
 
 | # | Who | What they see | What happens | Pot after |
 |---|---|---|---|---|
-| 1 | A | "This auction can close early" card, "0 of 3 credits committed" | bids 1 (the opening bid) | 1 |
-| 2 | B | Pot card updates; "to take the lead, add 2 credits" | bids 2 | 3 — **the target** |
+| 1 | A | Be the first: the opening bid; nothing about a pot target (the room no longer shows one) | bids 1 (the opening bid) | 1 |
+| 2 | B | "To take the lead, add 2 credits"; still nothing about a pot target | bids 2 | 3 — **the target** |
 
 Check, in order:
 
@@ -270,9 +271,10 @@ Check, in order:
   credits remain consumed.
 - **The room, live, before it closes**: reopen the auction from a fresh
   browser session partway through (or use a second test account mid-sequence)
-  and confirm the "committed so far" figure is the **pot total**, not that
-  viewer's own total — a viewer who bid 1 sees "1 of 3," not their own 1
-  reported as if it were the whole pot, once somebody else has also bid.
+  and confirm the customer room shows **nothing** about a pot target or an
+  aggregate "committed so far" figure — not even for an auction that carries
+  one. The aggregate and the target remain visible only to administrators, on
+  the auction detail screen.
 - **An ordinary auction, alongside this one**: open any auction with no pot
   target set and confirm it shows nothing about a target, closes only on its
   clock, and its notifications say nothing about "closing early."

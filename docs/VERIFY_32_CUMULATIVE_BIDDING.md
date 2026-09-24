@@ -117,7 +117,7 @@ Use three signed-in accounts with credits (call them A, B and C) and one
 product with stock. All figures below are the owner's worked example, minimum 1
 and step 1, and they are also automated tests: if any differs, that is a defect.
 
-| # | Who | What they see | What happens | Total after |
+| # | Who | What they see | What happens | Credits committed |
 |---|---|---|---|---|
 | 1 | A | "Be the first: the opening bid on this auction is 1 credit" and **Bid 1 credit** | opens | A = 1 |
 | 2 | A | "You hold the lead"; **nothing to press** | — | — |
@@ -141,8 +141,9 @@ Check, in order:
 - **Affordability.** An account with fewer credits than the button shows sees the
   shortfall and a *Buy credits* link, and no button.
 - **A visitor** (signed out) sees what joining costs, and nothing to press.
-- **History** shows *Credits added* and *Total after* by participant number, and no
-  name, phone or email of any bidder.
+- **History** shows *Credits committed* by participant number (each row is that
+  bidder's running total after that bid — the per-bid increment is not shown), and
+  no name, phone or email of any bidder.
 - **Close it** (let it run out, or *Close now* as an admin). The winner is B, the
   result reads "Won with the highest total: 5 credits committed", B's settlement
   checkout describes the win the same way, and A and C each get **Store Wallet**

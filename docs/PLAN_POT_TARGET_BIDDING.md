@@ -453,8 +453,9 @@ the gap lasted. Reversing them means no intermediate state is ever ugly.
 4. **Engine:** pot tracking and target-closing in the close path, alongside
    the existing clock path, both converging on one close. Plus the
    per-account rate limit (D-7).
-5. **Room and customer wording:** a live "committed so far" figure, the
-   target explained honestly, updated notification text.
+5. **Room and customer wording:** the customer room deliberately shows
+   **nothing** about the target or the aggregate (kept admin-only, out of the
+   customer surface, 2026-09-24), updated notification text.
 6. **Admin:** the target field on auction creation, with the product's own
    Buy Now price shown beside it purely for reference -- no hint text, no
    ratio, no computed suggestion anywhere on the form (§3).

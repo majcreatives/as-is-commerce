@@ -34,9 +34,10 @@ use Livewire\Livewire;
  *     it always has;
  *   - the sweep's own candidate query is a defensive backstop, independent
  *     of PlaceBid ever having run at all;
- *   - the room shows a live, honestly-explained pot figure only for an
- *     auction that carries a target, and the permanent history note and the
- *     customer notifications say truthfully which of the two ways closed it.
+ *   - the room shows the customer nothing about a pot target even when one is
+ *     set (the aggregate and the target are admin-only, 2026-09-24), and the
+ *     permanent history note and the customer notifications say truthfully
+ *     which of the two ways closed it.
  */
 
 beforeEach(function (): void {
@@ -230,31 +231,31 @@ it('shows nothing about a pot target on an ordinary auction', function (): void 
         ->assertDontSee('data-auction-pot-progress', escape: false);
 });
 
-it('shows the live pot total against the target, for an auction that carries one', function (): void {
+it('shows the customer nothing about a pot target even when the auction carries one', function (): void {
     $auction = cumulativeAuctionWithPotTarget(potTargetCredits: 1_000_000, minimum: 1, increment: 1);
     catchUp($auction, bidder(100));
     catchUp($auction, bidder(100));
 
     Livewire::test(AuctionRoom::class, ['auction' => $auction->fresh()])
-        ->assertSee('This auction can close early')
-        ->assertSeeText('of 100')
-        ->assertSeeText('credits committed')
-        ->assertSeeText('closes the moment this figure');
+        ->assertDontSee('This auction can close early')
+        ->assertDontSee('data-auction-pot-progress', escape: false);
 });
 
-it('the room\'s pot figure is everybody\'s bids together, not the viewer\'s own total', function (): void {
+it('the customer room\'s pot no longer leaks the aggregate or the target', function (): void {
     $auction = cumulativeAuctionWithPotTarget(potTargetCredits: 1_000_000, minimum: 1, increment: 1);
     $viewer = bidder(100);
-    catchUp($auction, $viewer);
-    catchUp($auction, bidder(100));
+    catchUp($auction, bidder(100)); // 1
+    catchUp($auction, bidder(100)); // 2
+    catchUp($auction, $viewer);     // 3, viewer leads
 
-    // Pot after both bids: 1 + 2 = 3 subcredits. The viewer's own total is
-    // only their share of it -- 1 subcredit, a different figure entirely.
+    // Pot across all three: 1 + 2 + 3 = 6 subcredits (0.0006). The target is
+    // 1,000,000 (100 credits). Neither figure may appear on the customer page
+    // -- every shown number is a single bidder's own total instead.
     Livewire::actingAs($viewer)
         ->test(AuctionRoom::class, ['auction' => $auction->fresh()])
-        ->assertSeeText('0.0003')
-        ->assertSeeText('of 100')
-        ->assertSeeText('credits committed');
+        ->assertDontSeeText('0.0006')
+        ->assertDontSeeText('of 100')
+        ->assertDontSee('This auction can close early');
 });
 
 // ---------------------------------------------- The permanent history note

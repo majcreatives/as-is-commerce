@@ -49,6 +49,10 @@ class SchedulerStatus
             'label' => 'Referral reconciliation',
             'cadence_minutes' => 0, // Not scheduled; manual only.
         ],
+        'sweeps:expire_unused:last_run' => [
+            'label' => 'Unused credit expiry',
+            'cadence_minutes' => 60,
+        ],
     ];
 
     /**

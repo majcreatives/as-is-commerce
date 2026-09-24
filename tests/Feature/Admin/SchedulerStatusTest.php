@@ -55,6 +55,14 @@ it('referrals:reconcile stamps the cache', function (): void {
     expect(Cache::has('sweeps:reconcile_referrals:last_run'))->toBeTrue();
 });
 
+it('credits:expire-unused stamps the cache', function (): void {
+    Cache::forget('sweeps:expire_unused:last_run');
+
+    $this->artisan('credits:expire-unused');
+
+    expect(Cache::has('sweeps:expire_unused:last_run'))->toBeTrue();
+});
+
 // --------------------------------------------------------------- Query
 
 it('reads all sweep timestamps from the cache', function (): void {
@@ -63,10 +71,11 @@ it('reads all sweep timestamps from the cache', function (): void {
     Cache::put('sweeps:expire_checkouts:last_run', $now);
     Cache::put('sweeps:reconcile_refunds:last_run', $now);
     Cache::put('sweeps:reconcile_referrals:last_run', $now);
+    Cache::put('sweeps:expire_unused:last_run', $now);
 
     $status = app(SchedulerStatus::class)->all();
 
-    expect($status)->toHaveCount(4);
+    expect($status)->toHaveCount(5);
 
     foreach ($status as $sweep) {
         expect($sweep['last_run_at'])->toBe($now);

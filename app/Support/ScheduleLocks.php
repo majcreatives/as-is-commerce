@@ -35,13 +35,14 @@ namespace App\Support;
 final class ScheduleLocks
 {
     /**
-     * Minute-scheduled sweeps that do bounded database work.
+     * Minute- or hourly-scheduled sweeps that do bounded database work.
      *
-     * `auctions:tick` and `orders:expire-checkouts`. Both are capped at 200
-     * records per pass and neither waits on a payment provider, so a healthy
-     * run finishes in seconds. Five minutes is five times their schedule
-     * interval -- generous enough that a legitimate run is never cut short,
-     * short enough that a stale lock repairs itself before anybody notices.
+     * `auctions:tick`, `orders:expire-checkouts` and `credits:expire-unused`.
+     * Each is capped at 200 records per pass and none waits on a payment
+     * provider, so a healthy run finishes in seconds. Five minutes is five
+     * times the tighter of their schedule intervals -- generous enough that a
+     * legitimate run is never cut short, short enough that a stale lock
+     * repairs itself before anybody notices.
      */
     public const SWEEP_MINUTES = 5;
 

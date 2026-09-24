@@ -51,7 +51,7 @@ it('protects every scheduled sweep against overlapping runs', function (string $
     expect(scheduledCommand($command)->withoutOverlapping)->toBeTrue(
         "{$command} must keep overlap protection"
     );
-})->with(['auctions:tick', 'orders:expire-checkouts', 'refunds:reconcile']);
+})->with(['auctions:tick', 'orders:expire-checkouts', 'refunds:reconcile', 'credits:expire-unused']);
 
 // -------------------------------------------------- 2. Explicit short expiry
 
@@ -62,11 +62,11 @@ it('gives every overlap lock an explicit expiry rather than the 24-hour default'
     expect($event->expiresAt)->not->toBe(1440)
         ->and($event->expiresAt)->toBeInt()
         ->and($event->expiresAt)->toBeGreaterThan(0);
-})->with(['auctions:tick', 'orders:expire-checkouts', 'refunds:reconcile']);
+})->with(['auctions:tick', 'orders:expire-checkouts', 'refunds:reconcile', 'credits:expire-unused']);
 
-it('keeps the minute-scheduled sweeps at the short expiry', function (string $command): void {
+it('keeps the database-bound sweeps at the short expiry', function (string $command): void {
     expect(scheduledCommand($command)->expiresAt)->toBe(ScheduleLocks::SWEEP_MINUTES);
-})->with(['auctions:tick', 'orders:expire-checkouts']);
+})->with(['auctions:tick', 'orders:expire-checkouts', 'credits:expire-unused']);
 
 it('gives the provider-bound reconciler a longer expiry than the local sweeps', function (): void {
     // Longer on purpose: it waits on Paystack, and a five-minute lock would
@@ -78,7 +78,7 @@ it('gives the provider-bound reconciler a longer expiry than the local sweeps', 
 
 it('keeps every expiry short enough to recover within the hour', function (string $command): void {
     expect(scheduledCommand($command)->expiresAt)->toBeLessThanOrEqual(60);
-})->with(['auctions:tick', 'orders:expire-checkouts', 'refunds:reconcile']);
+})->with(['auctions:tick', 'orders:expire-checkouts', 'refunds:reconcile', 'credits:expire-unused']);
 
 // ------------------------------------------------------- 3. A stale mutex expires
 
@@ -290,7 +290,8 @@ it('changes nothing about inventory, credits, payment or settlement', function (
 });
 
 it('leaves the scheduled commands themselves untouched', function (): void {
-    // Same three sweeps, same frequencies. Only the lock expiry moved.
+    // Same sweeps as before plus the credit expiry worker, same frequencies.
+    // Only the lock expiry moved.
     $schedule = collect(app(Schedule::class)->events())
         ->map(fn (Event $e): string => $e->getExpression())
         ->values()
@@ -299,5 +300,6 @@ it('leaves the scheduled commands themselves untouched', function (): void {
     expect(scheduledCommand('auctions:tick')->getExpression())->toBe('* * * * *')
         ->and(scheduledCommand('orders:expire-checkouts')->getExpression())->toBe('* * * * *')
         ->and(scheduledCommand('refunds:reconcile')->getExpression())->toBe('*/15 * * * *')
-        ->and($schedule)->toHaveCount(3);
+        ->and(scheduledCommand('credits:expire-unused')->getExpression())->toBe('0 * * * *')
+        ->and($schedule)->toHaveCount(4);
 });

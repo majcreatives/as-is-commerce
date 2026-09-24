@@ -302,10 +302,10 @@ Lots carry a nullable `expires_at`. Purchased credits do not expire by
 default; promotional credits may. `CreditLedgerService::expireLots()` writes
 off the unspent remainder with an `EXPIRATION` transaction.
 
-The scheduled worker that calls it belongs to a later stage. When it is built:
-it must stay transactional, and it is already naturally idempotent because an
-expired lot's remainder reaches zero on the first run and is skipped
-thereafter. There is a test asserting exactly that.
+The scheduled worker that calls it is `credits:expire-unused` (hourly, bounded
+at 200 wallets, `ScheduleLocks::SWEEP_MINUTES`). It stays transactional, and it
+is naturally idempotent because an expired lot's remainder reaches zero on the
+first run and is skipped thereafter. There is a test asserting exactly that.
 
 ## Stack
 

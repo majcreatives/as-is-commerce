@@ -39,6 +39,7 @@ other stage.
 | `orders:expire-checkouts` | `* * * * *` | `ScheduleLocks::SWEEP_MINUTES` = 5 | release unpaid holds past `payment_due_at` |
 | `refunds:reconcile` | `*/15 * * * *` | `ScheduleLocks::RECONCILE_MINUTES` = 30 | verify outstanding refunds with Paystack; report anomalies |
 | `referrals:reconcile` | **not scheduled** | n/a | report-only diagnostic, run on demand; intentionally **not** on the schedule |
+| `credits:expire-unused` | `0 * * * *` (hourly) | `ScheduleLocks::SWEEP_MINUTES` = 5 | write off the unspent remainder of promotional lots past `expires_at` |
 
 Every event uses `withoutOverlapping(<explicit>)` + `runInBackground()`.
 
@@ -65,6 +66,9 @@ proved by `it closes an auction exactly once when two sweeps run together`.
   stamps `sweeps:reconcile_refunds:last_run`.
 - **`referrals:reconcile --limit=200`** — report-only, issues no credits, never
   scheduled; stamps `sweeps:reconcile_referrals:last_run`.
+- **`credits:expire-unused --limit=200`** — bounded; re-reads each wallet's
+  expired lots under a row lock and skips lots already written off; one failing
+  wallet is logged and others continue; stamps `sweeps:expire_unused:last_run`.
 
 ### 2.4 Heartbeat stamps
 

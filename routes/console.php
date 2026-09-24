@@ -157,3 +157,37 @@ Schedule::command('refunds:reconcile')
     ->everyFifteenMinutes()
     ->withoutOverlapping(ScheduleLocks::RECONCILE_MINUTES)
     ->runInBackground();
+
+/*
+|--------------------------------------------------------------------------
+| Unused credit expiry
+|--------------------------------------------------------------------------
+|
+| Promotional credit grants may carry an expiry date. This is what notices the
+| date arrived and writes the unspent remainder off the ledger with an
+| `EXPIRATION` transaction, so the materialized wallet balance stops counting
+| credits nobody can spend any more.
+|
+| Hourly, not every minute. Expiry is a date, not a hold measured in seconds,
+| and an expired grant is already invisible to `spendableBalance()` the moment
+| it passes -- the write-off reconciles the balance, it does not decide what
+| anyone can spend. A missed run delays that reconciliation; it never writes
+| off credits that were spent, because each lot's remainder reaches zero on
+| the first pass and is skipped forever after.
+|
+| Idempotent throughout, so overlapping runs write a wallet off once. The pass
+| is bounded at 200 wallets and is purely database work -- no provider call,
+| no mail -- so a healthy run finishes in seconds and a five-minute stale lock
+| repairs itself well inside the hour.
+|
+*/
+
+/*
+ * Five minutes, the same reasoning as the other local sweeps: bounded,
+ * provider-free, database-only. The lock guards against an overlapping run
+ * doing the same work twice; it does not change what the work does.
+ */
+Schedule::command('credits:expire-unused')
+    ->hourly()
+    ->withoutOverlapping(ScheduleLocks::SWEEP_MINUTES)
+    ->runInBackground();

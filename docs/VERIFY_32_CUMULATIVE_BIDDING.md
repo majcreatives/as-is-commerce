@@ -186,3 +186,60 @@ new auction — no standing problems. It repairs nothing.
   it (it refuses their snapshots). Rolling code back after one exists therefore means
   cancelling it first.
 - **Data:** the pre-deploy dump in `~/backups`.
+
+---
+
+## 7. Deployment record
+
+| Release | Commit | Deployed (staging) | Result |
+|---|---|---|---|
+| `stage32.0` | cumulative schema baseline | 2026-09-20 | migration + snapshots v4 verified |
+| `stage32.1` | cumulative engine/room/wording/admin | 2026-09-21 | engine + room checks PASS (`VERIFY_POT_TARGET_BIDDING.md` hard prerequisite satisfied) |
+| `stage32.2` | `CreditAmount` + redenomination + pot target | 2026-09-22 | pot-target auction verified on staging |
+| `stage32.3` | raw-subcredit leak fix | 2026-09-24 | this record |
+
+**Stage 32.3 (2026-09-24) — raw-subcredit leak fix.** The re-denomination
+introduced in `stage32.2` stored Credits ×10,000 ("subcredits") while
+`CreditAmount` was only used for display. A real defect shipped in that release:
+messages written from raw values (bid ledger descriptions, credit-purchase
+ledger descriptions, rejected-bid figures, room messages, referral
+reconciliation messages) were not routed through `CreditAmount`, so they stated
+10,000× the real figure. Fix commit `3720982`, tag `stage32.3`, on `main`:
+
+- `PlaceBid`: bid ledger description rendered at credit scale.
+- `FulfillCreditPurchase`: purchase ledger descriptions at credit scale (3 sites).
+- `BidRejected`: every figure message at credit scale; one-credit wording uses
+  the singular "1 credit".
+- `AuctionRoom`: leader/step affordability figures at credit scale.
+- `BidValidator` / credit ledger: insufficient/below-minimum wording at credit scale.
+- `ReferralReconciler`: reconciliation descriptions at credit scale.
+- `credit-packages` blade: singular/plural "1 credit" vs "N credits".
+- New and existing ledger rows are append-only: already-written rows keep their
+  historical text; all new writes are clean.
+
+Verification evidence:
+
+- **Local suite:** full suite green in per-directory chunks (admin 365, auth 43,
+  auction suite incl. CumulativeRoom 18 / CumulativeBid 23 / BidRuleBaseline 8 /
+  BidPlacement 56 / AuctionUi 58 and the auction engine/model/operations files,
+  catalog 188, concurrency 105, credit 83, delivery+marketplace+notifications 301,
+  orders 190, payments 115, refunds 87, referrals+realtime 114, schedule+settings 49,
+  store-wallet+wallet 60, unit 172, feature root/misc 29). Pint clean. PHPStan 0 errors.
+- **Staging build integrity:** `as-is-commerce-stage32.3.zip` (13,910,841 bytes,
+  SHA-256 `87540dd3d72aba011199bff5cc0bffd10c8dcd080e3c9014cff31165694e3528`)
+  downloaded from the GitHub Release; extracted over the live dir (backup kept at
+  `as-is-commerce-stage20.bak-32.3`); scratch scripts from previous sessions removed.
+- **Byte-identical check:** SHA-256 of `CreditAmount.php`, `PlaceBid.php`,
+  `BidRejected.php`, `AuctionRoom.php` on staging match `stage32.3` locally.
+- **Runtime:** `/health` `{"status":"ok","database":"ok"}`; `/up` 200; home,
+  `/auctions`, `/credits`, both test auction rooms 200; no exception markers;
+  auction rooms render credit-scale totals ("9 credits", "3 credits"); no 10,000×
+  raw figure or leakage in any rendered page or `laravel.log`.
+- **Message render check (tinker on staging):** `1 credit`, `3 credits`,
+  `20 credits`, `150 credits`; stale-page "add exactly 3 credits (the leader has
+  2 credits and you have 0 credits)"; "You already hold the lead with 1 credit";
+  "A bid of 19 credits is below this auction's minimum of 20 credits"; "Insufficient
+  credits: 4 credits requested, 3 credits available".
+- **Reconciliation on staging:** `auctions:verify-snapshots` — all 19 auctions load
+  and agree; `refunds:reconcile` and `referrals:reconcile` report no anomalies.
+- **No migrations** in `stage32.3` (`migrate --force` → nothing to run).

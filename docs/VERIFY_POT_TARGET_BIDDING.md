@@ -332,3 +332,30 @@ exactly for a value that is an exact multiple of 10,000.
   row by `auctions_frozen_configuration` — dropping the column at that point
   is destructive to a real auction's configuration and needs the same
   business decision any other frozen-data removal would.
+
+---
+
+## 8. Deployment record
+
+| Release | Content | Deployed (staging) | Result |
+|---|---|---|---|
+| `stage32.1` | cumulative bidding engine/room/wording/admin | 2026-09-21 | PASS, the hard prerequisite of this release |
+| `stage32.2` | `CreditAmount` + redenomination + pot target | 2026-09-22 | pot-target auction + redenomination verified on staging |
+| `stage32.3` | raw-subcredit leak fix | 2026-09-24 | see `VERIFY_32_CUMULATIVE_BIDDING.md` §7 |
+
+**Stage 32.2 (2026-09-22).** Deployed per §2: the migration
+`2026_09_22_100000_redenominate_credits_to_subcredits` self-verified (checksums
+×10,000, no lot over its original, wallet balances equal transaction sums) and
+`2026_09_22_110000_add_pot_target_to_auctions` ran; `auctions:verify-snapshots`
+reported every snapshot loading and agreeing; a pot-target auction was created
+(min 1, step 1, target 3) and closed on its target within the bidder's request,
+B (total 2) winning over A (total 1). Pre-migration backups recorded in
+`~/backups` (`pre-stage32.2-*.sql`, `pre-stage32.2-checksums.txt`).
+
+**Stage 32.3 (2026-09-24) — raw-subcredit leak fix.** Ship of the fix for a
+re-denomination defect: `CreditAmount` covered display, but a set of message
+writers still read raw subcredit values (10,000× too large). Fixed commit
+`3720982`, released as `stage32.3`; the full evidence block (test totals,
+staging integrity hashes, byte-identical file check, runtime/health checks,
+message-render tinker output, 19-auction snapshot verification, reconciliation
+no-anomalies) is recorded in `VERIFY_32_CUMULATIVE_BIDDING.md` §7.

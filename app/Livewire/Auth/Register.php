@@ -21,7 +21,9 @@ use Livewire\Component;
 #[Title('Create your account')]
 class Register extends Component
 {
-    public string $name = '';
+    public string $first_name = '';
+
+    public string $last_name = '';
 
     public string $phone = '';
 
@@ -51,7 +53,8 @@ class Register extends Component
         AttributeReferral $referrals,
     ): void {
         $this->validate([
-            'name' => ['nullable', 'string', 'max:120'],
+            'first_name' => ['nullable', 'string', 'max:60'],
+            'last_name' => ['nullable', 'string', 'max:60'],
             'phone' => ['required', 'string', new GhanaPhoneNumber($normalizer)],
             'email' => ['nullable', 'string', 'email', 'max:255', 'unique:users,email'],
             'password' => ['required', 'string', 'confirmed', Password::defaults()],
@@ -67,8 +70,19 @@ class Register extends Component
             ]);
         }
 
+        // The two name fields are stored in the single user.name column as
+        // "First Last" -- no schema change, and an entirely blank name stays
+        // blank in the database, exactly as before.
+        $name = trim($this->first_name.' '.$this->last_name);
+
+        if (mb_strlen($name) > 120) {
+            throw ValidationException::withMessages([
+                'last_name' => 'Your name is too long.',
+            ]);
+        }
+
         $user = $action->handle([
-            'name' => $this->name !== '' ? $this->name : null,
+            'name' => $name !== '' ? $name : null,
             'phone' => $this->phone,
             'email' => $this->email !== '' ? $this->email : null,
             'password' => $this->password,
@@ -89,6 +103,6 @@ class Register extends Component
     public function render(): View
     {
         return view('livewire.auth.register')
-            ->layout('components.layouts.guest', ['wide' => true]);
+            ->layout('components.layouts.register-split');
     }
 }

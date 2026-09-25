@@ -125,11 +125,36 @@ it('requires the password confirmation to match', function (): void {
         ->assertHasErrors('password');
 });
 
-it('renders the what-you-get panel alongside the form', function (): void {
+it('renders the split-screen marketing and registration form', function (): void {
     Livewire::test(Register::class)
-        ->assertSee('What you get')
-        ->assertSee('A shop in cedis, with auctions on some products.')
+        ->assertSeeHtml('lg:grid-cols-2')
+        ->assertSee('Shop in cedis.')
+        ->assertSee('Win with credits.')
         ->assertSee('How credits and bidding work');
+});
+
+it('composes first and last name into the stored name', function (): void {
+    Livewire::test(Register::class)
+        ->set('first_name', 'Ada')
+        ->set('last_name', 'Lovelace')
+        ->set('phone', '024 412 3456')
+        ->set('password', 'password123')
+        ->set('password_confirmation', 'password123')
+        ->call('register')
+        ->assertHasNoErrors();
+
+    expect(User::first()->name)->toBe('Ada Lovelace');
+});
+
+it('keeps the name blank when neither name field is filled', function (): void {
+    Livewire::test(Register::class)
+        ->set('phone', '024 412 3456')
+        ->set('password', 'password123')
+        ->set('password_confirmation', 'password123')
+        ->call('register')
+        ->assertHasNoErrors();
+
+    expect(User::first()->name)->toBeNull();
 });
 
 it('renders a show/hide toggle for the password fields', function (): void {

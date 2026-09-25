@@ -120,7 +120,8 @@ it('attributes a referral through the registration form', function (): void {
     $code = $this->codes->forUser($referrer);
 
     Livewire::test(Register::class, ['ref' => $code])
-        ->set('name', 'New Person')
+        ->set('first_name', 'New')
+        ->set('last_name', 'Person')
         ->set('phone', '0244000111')
         ->set('password', 'correct-horse-battery-7')
         ->set('password_confirmation', 'correct-horse-battery-7')

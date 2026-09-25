@@ -202,13 +202,16 @@ Order: hero → **Newly added** → **Trending / Popular** → **Partners** → 
 Stories** → **Newsletter CTA**, replacing the current "In the shop" and
 trust-card sections. Shop-first copy retained.
 
+**Shipped (31.4): Newly added + Trending.** Partners, Success Stories and the
+Newsletter CTA are the remainder. Runbook: `VERIFY_31_4_TRENDING.md`.
+
 - *Newly added:* `ProductDiscoveryQuery::featured()` already orders by
   `published_at`, so this is reuse.
-- *Trending:* no analytics exist and none is added. If approved it is derived
-  from records: units on paid `order_items` in a trailing window, plus accepted
-  bids on live auctions, each computed server-side in a new read method, bounded,
-  and empty-stated when there is no data. The window is a setting, not a constant
-  (D6).
+- *Trending:* no analytics exist and none is added. It is derived from records
+  only: units on paid `order_items` in a trailing window, plus accepted bids on
+  auctions a customer can still act on, each computed server-side in
+  `ProductDiscoveryQuery::trending()`, bounded, and empty-stated when there is
+  no data. The window is a setting, not a constant (D6).
 - *Partners:* no partner concept exists. Real logos and permission are needed;
   section is hidden until there is content, not filled with placeholders.
 - *Success Stories:* selected items only, linking to About.
@@ -552,7 +555,7 @@ count of credits, never a cedis figure or a promise of income.
 | D3 | Blog, Partners, Success Stories: who supplies real content, and is a minimal admin-managed record wanted or should pages be static? | Static pages with empty states until content exists. |
 | D4 | Returns/cancellation position for Terms/FAQ, and who owns legal review of Privacy/Cookie/Terms. | Business + counsel decide; I draft structure only. |
 | D5 | Notification badge semantics: unread only, or unread within N days (N=?). | Unread within 30 days, as a setting. |
-| D6 | "Trending" definition and window. | Paid units + live-auction bids over a setting-driven window; hidden when empty. |
+| D6 | "Trending" definition and window. | Paid units + live-auction bids over a setting-driven window; **empty-stated** when there is no activity, not hidden. Shipped in 31.4 — see `VERIFY_31_4_TRENDING.md`. |
 | D7 | Cap on the opening bid. | Cap relative to `minimum_bid_credits` when set; otherwise none. |
 | D8 | Any minimum purchase/bid size for referral qualification; is one accepted bid enough? | One accepted bid after a Fulfilled purchase, threshold only if you choose a number. |
 | D9 | Referral persistence: query-string + carry-through, or approve a first-party cookie with a window. | Query-string + carry-through now; cookie as a separate approval. |

@@ -109,17 +109,22 @@ separately before the next:
 
 ## Context this roadmap does not change
 
-The four deferred items above were raised and deliberately set aside so the
-staging gate stays small:
+The items below were raised and deliberately set aside so the staging gate
+stays small. The first is closed, the second closed but for one gap, the third
+still open:
 
 - **Paystack "not configured"** is fixed in **20.5B** as an operator step (a
   stale `config:cache` after a `.env` change), not a code change.
 - **OTP / email verification / password reset** was investigated in **22** and
-  recorded as a gap: the current implementation ships register/login/logout
-  plus a profile password change, with `phone_verified_at` / `email_verified_at`
-  stored but no verification or password-reset routes. Building them needs an
-  explicit business decision (OTP provider/transport) and is deferred — it is
-  not silently added.
+  recorded as a gap, then **closed by 30.5**: `/forgot-password` and
+  `/reset-password` ship as OTP flows (`SendOtp`, `VerifyOtp`, `OtpChannel`,
+  `MailOtpChannel`), alongside profile email verification, with
+  `phone_verified_at` / `email_verified_at` written on success. Mail is
+  provisioned on staging (Gmail SMTP), so codes really are delivered. The one
+  hole that remains is a **phone-only account has no self-service recovery**,
+  because `ForgotPassword` resolves on email and email is optional at
+  registration by design; an SMS transport is the agreed fix and waits on a
+  provider decision.
 - **Admin sidebar, product image gallery and editable auction end dates** wait
   for **31+**. In particular, auction end dates touch the frozen-snapshot and
   server-clock model and require an explicit business decision when they are

@@ -4,11 +4,18 @@ Companion to `DEPLOYMENT.md` §4 and §5. That runbook owns the policy; this fil
 is the exact sequence for making email actually leave the machine on the
 Hostinger staging app introduced at Stage 30.5.
 
-As of the Stage 30.5 deployment, staging runs `MAIL_MAILER=log`. That is not a
-bug: nothing in the application depends on email for correctness, and `log` is
-how the OTP work was verified (codes are written into
-`storage/logs/laravel.log`). But it means **no message reaches anybody's
-inbox**, which matters the moment a real customer needs a code.
+**Status: done.** Staging now runs `MAIL_MAILER=smtp` against Gmail
+(`smtp.gmail.com:587`, from `majcreatives@gmail.com`), so real messages are
+delivered. This file is kept as the operator checklist for provisioning that
+transport, and for the fallback below.
+
+It began as `MAIL_MAILER=log`, which was not a bug: nothing in the application
+depends on email for correctness, and `log` is how the OTP work was verified
+(codes are written into `storage/logs/laravel.log`). It did mean **no message
+reached anybody's inbox**, which mattered the moment a real customer needed a
+code. Verified 2026-09-25: `otp_enabled` is true, three OTP codes have been
+issued on staging (one consumed), and `PlatformNotificationMail` messages have
+been sent.
 
 ## 0. What this affects (and what it does not)
 

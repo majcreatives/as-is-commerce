@@ -29,7 +29,7 @@ requests collide with rules recorded in `CLAUDE.md`.
 |---|---|---|
 | F1 | **`bid_cost_credits` and `unique_leader_rule` do not exist.** They were removed in the highest-bid correction stage; tests (`AuctionModelCorrectionTest`, `AuctionEngineRegressionTest`) assert they stay gone. A bid carries its own amount and consumes exactly that many credits. | Stage 32 is written against the real model (§32.2), not against those two names. |
 | F2 | **Condition is a PHP enum plus a DB CHECK**, not a table. "Create new conditions like brand and category" is a schema change, not a UI change. | Split into its own step, 31.2b, with a migration. Needs a decision (D2). |
-| F3 | **There is no newsletter mechanism.** The matches for "subscriber" in the code are event subscribers. Notification preferences are per registered user and cover transactional/bidding/delivery only. Staging also runs `MAIL_MAILER=log`, so no email leaves the server. | The popup needs a new subscriptions table, double opt-in and working mail. It is a data-collection feature, not presentation (31.7). |
+| F3 | **There is no newsletter mechanism.** The matches for "subscriber" in the code are event subscribers. Notification preferences are per registered user and cover transactional/bidding/delivery only. (The OTP/mail half of this finding is now stale: mail is provisioned on staging via Gmail SMTP, and 30.5 shipped email OTP.) | The popup needs a new subscriptions table, double opt-in and its own consent record. It is a data-collection feature, not presentation (31.7). |
 | F4 | **"Auction ending soon" alerts are deliberately not built** (the threshold is undecided; see Notifications in `CLAUDE.md`). | The popup must not promise auction alerts. It can offer only what exists. |
 | F5 | **`CLAUDE.md` lists "CMS, blog, reviews, recommendations, analytics" under *Do not build here*.** Blog, success stories/testimonials, partners and "trending" touch every one. It also forbids fabricated data. | Each becomes real, admin-supplied or record-derived content with an honest empty state. Approving this plan means updating that section of `CLAUDE.md` (see §Docs to update). |
 | F6 | **Attribution is registration-only, query-string-only, permanently: "No cookie, no session, no tracking window."** Surviving session/device changes contradicts it. | Stage 33 cannot meet "survive device/session changes" without an explicit policy change (D9). |
@@ -268,8 +268,8 @@ Because of F3/F4 this is a small feature, not a widget.
 - **Double opt-in:** the popup records a *pending* subscription and sends a
   confirmation link; only a confirmed address counts. Every message must carry a
   working unsubscribe link, so an unsubscribe route ships with the popup.
-- **Blocked on mail provisioning** (`PROVISION_MAIL_STAGE30_5.md`): with
-  `MAIL_MAILER=log` the confirmation never arrives.
+- **Blocked on mail provisioning** (`PROVISION_MAIL_STAGE30_5.md`): mail is now
+  provisioned on staging, so the confirmation can be delivered.
 - **Sending is out of scope.** "Marketing campaigns" are not built. The plan
   delivers collection + consent + unsubscribe only, and the copy says what is
   true (e.g. "news from the shop"), not "auction alerts" (F4).

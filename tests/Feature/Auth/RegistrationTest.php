@@ -125,12 +125,12 @@ it('requires the password confirmation to match', function (): void {
         ->assertHasErrors('password');
 });
 
-it('renders the split-screen marketing and registration form', function (): void {
+it('renders the split-screen layout with a decorative image on the left', function (): void {
     Livewire::test(Register::class)
         ->assertSeeHtml('lg:grid-cols-2')
-        ->assertSee('Shop in cedis.')
-        ->assertSee('Win with credits.')
-        ->assertSee('How credits and bidding work');
+        ->assertSeeHtml('images/register-hero.svg')
+        ->assertDontSee('Shop in cedis.')
+        ->assertDontSee('How credits and bidding work');
 });
 
 it('composes first and last name into the stored name', function (): void {

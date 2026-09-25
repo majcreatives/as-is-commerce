@@ -268,7 +268,7 @@ it('shows a guest a shop-first front page with the auction way in', function ():
 it('surfaces a live auction inline on its product card instead of a band', function (): void {
     $this->get(route('home'))
         ->assertOk()
-        ->assertSee('In the shop');
+        ->assertSee('Newly added');
 
     liveAuction(product: Product::factory()->active()->create(['name' => 'Homepage Item']));
 
@@ -276,6 +276,68 @@ it('surfaces a live auction inline on its product card instead of a band', funct
         ->assertOk()
         ->assertSee('Homepage Item')
         ->assertSee('Auction open — no bids yet');
+});
+
+it('shows an honest trending section even with nothing to trend', function (): void {
+    $this->get(route('home'))
+        ->assertOk()
+        ->assertSee('Newly added')
+        ->assertSee('Trending')
+        ->assertSee('Not enough activity yet');
+});
+
+it('trends products by units actually bought and bids actually placed', function (): void {
+    $bought = Product::factory()->active()->pricedAt(30_000)->create(['name' => 'Trending Bought']);
+    $bidOn = Product::factory()->active()->pricedAt(30_000)->create(['name' => 'Trending Bid']);
+    $quiet = Product::factory()->active()->pricedAt(30_000)->create(['name' => 'Trending Quiet']);
+
+    // Two real paid orders buy it, each through a verified payment.
+    app(InventoryService::class)->initialStock($bought, 2);
+    foreach (range(1, 2) as $ignored) {
+        $order = buyNowCheckout(bidder(), $bought->fresh());
+        payOrder($order->fresh());
+    }
+
+    // A real accepted bid, placed the way the engine places them.
+    placeBid(liveAuction(product: $bidOn), bidder(), 120);
+
+    $ids = $this->products->trending()->pluck('id')->all();
+
+    expect($ids)->toBe([$bought->id, $bidOn->id])
+        ->and($quiet->id)->not->toBeIn($ids);
+});
+
+it('only counts activity inside the configured trending window', function (): void {
+    $older = Product::factory()->active()->pricedAt(30_000)->create(['name' => 'Old Purchase']);
+
+    // A real verified payment, then the record is backdated: this is how old
+    // activity would read, and only the setting decides whether it still counts.
+    app(InventoryService::class)->initialStock($older, 1);
+    $order = buyNowCheckout(bidder(), $older->fresh());
+    payOrder($order->fresh());
+    $order->forceFill(['paid_at' => now()->subDays(45)])->save();
+
+    // The 30-day default window does not reach a 45-day-old purchase.
+    expect($this->products->trending())->toHaveCount(0);
+
+    settings()->set('homepage_trending_window_days', 60);
+
+    expect($this->products->trending())
+        ->toHaveCount(1)
+        ->and($this->products->trending()->first()->id)->toBe($older->id);
+});
+
+it('surfaces recently bought products in the trending section', function (): void {
+    $bought = Product::factory()->active()->pricedAt(30_000)->create(['name' => 'Recently Rebound']);
+
+    app(InventoryService::class)->initialStock($bought, 1);
+    $order = buyNowCheckout(bidder(), $bought->fresh());
+    payOrder($order->fresh());
+
+    $this->get(route('home'))
+        ->assertOk()
+        ->assertSee('Trending')
+        ->assertSee('Recently Rebound');
 });
 
 it('makes no promise about savings or winning', function (): void {

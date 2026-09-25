@@ -121,6 +121,17 @@ class SettingsSeeder extends Seeder
                 'is_public' => true,
             ],
             [
+                'key' => 'homepage_trending_window_days',
+                'value' => 30,
+                'type' => SettingType::Integer,
+                'group' => 'homepage',
+                'label' => 'Trending window (days)',
+                'description' => 'How far back buying and bidding activity is considered when picking the '
+                    .'trending products on the front page. Anything below 1 is treated as 1 day, so the '
+                    .'trending list is never read as "now".',
+                'is_public' => false,
+            ],
+            [
                 'key' => 'notification_badge_window_days',
                 'value' => 30,
                 'type' => SettingType::Integer,

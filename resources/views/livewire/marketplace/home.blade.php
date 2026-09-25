@@ -55,9 +55,9 @@
     <section class="mt-12">
         <div class="flex flex-wrap items-end justify-between gap-3">
             <div>
-                <h2 class="text-xl font-bold tracking-tight text-slate-900">In the shop</h2>
+                <h2 class="text-xl font-bold tracking-tight text-slate-900">Newly added</h2>
                 <p class="mt-1 text-sm text-slate-600">
-                    Everything here can be bought outright; a live auction on a product is
+                    The latest to the catalog, all buyable outright; a live auction on a product is
                     shown on its card.
                 </p>
             </div>
@@ -75,6 +75,34 @@
         @else
             <div class="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 @foreach ($featured as $product)
+                    <x-product-card :product="$product"
+                                    :availability="$availability[$product->id] ?? null" />
+                @endforeach
+            </div>
+        @endif
+    </section>
+
+    {{-- What people have actually done with these products lately: units on
+         paid orders and accepted bids, read from the ledger, never invented.
+         No promise about what the activity means -- it is a signal that the
+         item is being bought or bid on, nothing more. --}}
+    <section class="mt-12">
+        <div>
+            <h2 class="text-xl font-bold tracking-tight text-slate-900">Trending</h2>
+            <p class="mt-1 text-sm text-slate-600">
+                What other shoppers have bought or bid on lately.
+            </p>
+        </div>
+
+        @if ($trending->isEmpty())
+            <div class="mt-4">
+                <x-empty-state
+                    title="Not enough activity yet"
+                    description="Trending fills in as people start buying and bidding." />
+            </div>
+        @else
+            <div class="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                @foreach ($trending as $product)
                     <x-product-card :product="$product"
                                     :availability="$availability[$product->id] ?? null" />
                 @endforeach

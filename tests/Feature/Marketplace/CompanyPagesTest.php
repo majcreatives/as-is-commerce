@@ -281,7 +281,7 @@ it('still gives the front page its shop-first identity and its disclosure', func
     $this->get(route('home'))
         ->assertOk()
         ->assertSee('The shop, first.')
-        ->assertSee('In the shop')
+        ->assertSee('Newly added')
         ->assertSee('Credits you bid are consumed straight away and are not returned if you do not win.')
         ->assertSee(route('how-it-works'), false);
 });

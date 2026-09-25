@@ -6,10 +6,14 @@ namespace App\Domain\Marketplace\Queries;
 
 use App\Domain\Marketplace\ValueObjects\ListingAvailability;
 use App\Enums\AuctionStatus;
+use App\Enums\BidStatus;
+use App\Enums\OrderStatus;
 use App\Enums\ProductStatus;
 use App\Models\Auction;
+use App\Models\Bid;
 use App\Models\Brand;
 use App\Models\Category;
+use App\Models\OrderItem;
 use App\Models\Product;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
@@ -102,6 +106,100 @@ class ProductDiscoveryQuery
             ->orderByDesc('published_at')
             ->orderByDesc('id')
             ->limit($limit)
+            ->get();
+    }
+
+    /**
+     * Products with recent buying or bidding activity.
+     *
+     * "Trending" means what people have actually done: units on paid order
+     * lines within the window, plus accepted bids placed on currently
+     * relevant auctions within the window. Both are records -- nothing here
+     * is invented -- and a product nobody has touched simply does not appear.
+     * The window is the `homepage_trending_window_days` setting, 30 days when
+     * unset. Where two products tie, the higher total leads and the higher
+     * product id follows, so the same activity always surfaces the same list.
+     *
+     * READ ONLY, LIKE EVERYTHING HERE. Availability for the returned products
+     * is decided separately by ListingAvailability, never by the presence of
+     * old activity.
+     *
+     * @return EloquentCollection<int, Product>
+     */
+    public function trending(int $limit = 8): EloquentCollection
+    {
+        $windowDays = (int) settings()->getInt('homepage_trending_window_days', 30);
+        $cutoff = now()->subDays(max(1, $windowDays));
+
+        $scores = collect();
+
+        // Units on paid orders, dated by when the money was verified. The paid
+        // definition lives on the enum, read here rather than re-declared.
+        $units = OrderItem::query()
+            ->join('orders', 'orders.id', '=', 'order_items.order_id')
+            ->whereIn('orders.status', array_map(
+                fn (OrderStatus $status): string => $status->value,
+                array_filter(OrderStatus::cases(), fn (OrderStatus $status): bool => $status->isPaid()),
+            ))
+            ->where('orders.paid_at', '>=', $cutoff)
+            ->selectRaw('order_items.product_id, SUM(order_items.quantity) AS units')
+            ->groupBy('order_items.product_id')
+            ->pluck('units', 'order_items.product_id');
+
+        foreach ($units as $productId => $count) {
+            $scores->put((int) $productId, (int) $count);
+        }
+
+        // Accepted bids on auctions a customer can still act on. The status
+        // list is the same one ListingAvailability uses, so a finished auction
+        // never leaves an echo here.
+        $bids = Bid::query()
+            ->join('auctions', 'auctions.id', '=', 'bids.auction_id')
+            ->where('bids.status', BidStatus::Accepted)
+            ->where('bids.created_at', '>=', $cutoff)
+            ->whereIn('auctions.status', [
+                AuctionStatus::Live,
+                AuctionStatus::Closing,
+                AuctionStatus::Scheduled,
+            ])
+            ->selectRaw('auctions.product_id, COUNT(bids.id) AS bid_count')
+            ->groupBy('auctions.product_id')
+            ->pluck('bid_count', 'auctions.product_id');
+
+        foreach ($bids as $productId => $count) {
+            $productId = (int) $productId;
+            $scores->put($productId, $scores->get($productId, 0) + (int) $count);
+        }
+
+        if ($scores->isEmpty()) {
+            return new EloquentCollection;
+        }
+
+        $entries = $scores
+            ->map(fn (int $count, int $productId): array => [$count, $productId])
+            ->values()
+            ->all();
+
+        // Total desc, then product id desc: a total order, so the sort does
+        // not lean on PHP's sort stability to come out deterministic.
+        uasort($entries, static fn (array $a, array $b): int => $b[0] <=> $a[0] ?: $b[1] <=> $a[1]);
+
+        $ids = array_column(array_slice($entries, 0, $limit), 1);
+
+        if ($ids === []) {
+            return new EloquentCollection;
+        }
+
+        // FIELD() (MySQL/MariaDB) keeps the ranked order from PHP; bounded at
+        // the page size, and anything that stopped being publicly visible
+        // since the activity that ranked it simply drops out.
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+
+        return Product::query()
+            ->publiclyVisible()
+            ->with(['brand', 'category', 'images'])
+            ->whereIn('id', $ids)
+            ->orderByRaw("FIELD(id, {$placeholders})", $ids)
             ->get();
     }
 

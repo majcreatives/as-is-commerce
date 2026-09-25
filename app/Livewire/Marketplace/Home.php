@@ -32,10 +32,16 @@ class Home extends Component
     public function render(ProductDiscoveryQuery $products): View
     {
         $featured = $products->featured(8);
+        $trending = $products->trending(8);
+
+        // One batched availability pass for the whole page, so each product
+        // appears once with the auction that is actually relevant to it.
+        $availability = $products->availabilityFor($featured->concat($trending));
 
         return view('livewire.marketplace.home', [
             'featured' => $featured,
-            'availability' => $products->availabilityFor($featured),
+            'trending' => $trending,
+            'availability' => $availability,
         ])->title(config('app.name').' — the shop, and the auction');
     }
 }

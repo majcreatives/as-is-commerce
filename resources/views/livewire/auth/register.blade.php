@@ -4,9 +4,10 @@
          clean single white column. The artwork is decorative (empty alt, never
          carries text or claims). Swap the file at public/images/register-hero.svg
          -- same filename keeps a deployed site working; change the asset() src
-         if you use a different name. --}}
+         if you use a different name. When the file is replaced, bump the ?v=
+         on the src so the Hostinger edge cache serves the new bytes. --}}
     <div class="relative hidden overflow-hidden bg-slate-900 lg:block">
-        <img src="{{ asset('images/register-hero.svg') }}" alt=""
+        <img src="{{ asset('images/register-hero.svg') }}?v=2" alt=""
              class="absolute inset-0 h-full w-full object-cover" >
     </div>
 

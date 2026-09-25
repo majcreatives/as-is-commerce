@@ -217,15 +217,21 @@ trust-card sections. Shop-first copy retained.
 
 ### 31.5 — Registration (item 1)
 
-Two-column layout on desktop and a single column on phones: form on one side and a
-short, truthful "what you get" panel (shop, bidding with credits, Ghana/GH₵) on the
-other. Show/hide password toggle, clearer phone helper, inline validation states,
-a terms/privacy consent line linking to 31.3 pages.
+**Shipped (31.5 → 31.5b):** split-screen on desktop — a dark marketing hero on the
+left (abstract geometric artwork, headline "Shop in cedis. Win with credits.") and a
+minimalist white form on the right; single white column on phones. First/Last name
+inputs (composed into the single `users.name` column), required phone sign-in ID,
+optional email, password + confirm with show/hide toggles, primary CTA, and a
+"Sign in" link. Social login (Google/Apple) and a terms/privacy consent
+line/checkbox are **deliberately omitted**: there is no OAuth infrastructure in the
+product, and the 31.3 legal pages remain deferred.
 
 - **No layout copy that promises earnings or a reward.**
 - If a `?ref` code is present, do not name the referrer to the new user.
-- Behaviour, validation, attribution and OTP wiring in `Register.php` unchanged.
-- Uses the existing guest layout, widened for this page only.
+- Behaviour, validation, attribution, phone-first identity and OTP wiring in
+  `Register.php` unchanged; only the name input split and the layout changed.
+- Uses a dedicated `register-split` layout so `/login`, `/forgot-password` and
+  `/reset-password` keep the standard guest layout untouched.
 
 ### 31.6 — Notification badge (item 6)
 

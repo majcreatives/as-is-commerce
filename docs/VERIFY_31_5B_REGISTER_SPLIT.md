@@ -100,3 +100,67 @@ screenshots.
 
 Swap `as-is-commerce-stage20.bak-31.5b` back and re-run the three caches
 (`DEPLOYMENT.md` §2a). No migration to reverse.
+
+---
+
+# 31.5c–31.5e amendment — image-only left column (2026-09-25)
+
+Supersedes the split-screen hero copy. The left column is now **a single
+full-bleed image with no text**: the dark `bg-slate-900` container holds only
+`<img src="{{ asset('images/register-hero.svg') }}" class="absolute inset-0 h-full w-full object-cover">`.
+The page still has exactly one `<img>`; the right column, `/login`,
+`/forgot-password` and `/reset-password` are unchanged.
+
+## Releases
+
+- `stage31.5c` — image-only hero + placeholder artwork `public/images/register-hero.svg`.
+- `stage31.5d` — fixed the SVG (the XML comment it shipped with contained a
+  double hyphen, invalid in XML comments, so browsers refused to decode the
+  image); @vertex caught it via a headless-Chrome probe, not by eyeballing.
+- `stage31.5e` — versioned the asset URL as `…register-hero.svg?v=2`. Reason:
+  the Hostinger edge cache was still serving the pre-fix bytes to browsers at
+  the unversioned URL (confirmed in Chrome: bare URL 2559 B old vs `?v=2`
+  2177 B fixed) while the origin and `curl` both had the corrected file.
+
+## Swappable artwork (the workflow chosen for this column)
+
+- Replace the file at `public/images/register-hero.svg`, and **bump the `?v=`
+  version on the `<img src>`** in `resources/views/livewire/auth/register.blade.php`,
+  so the edge cache serves your new bytes immediately. The same-name URL stays
+  stable for a deployed site.
+- The artwork is decorative (empty `alt`, never text or claims), rendered
+  `object-cover`, so any aspect ratio works.
+
+## Gates
+
+- Pint and PHPStan untouched (view/asset release only; PHPStan still passes on
+  the component).
+- `RegistrationTest` — 13/13 (44 assertions); Auth suite 47/47 (153
+  assertions); full suite **2422/2422 (7487 assertions)** green on this working
+  tree (run before the 31.5c tag; the 31.5d/31.5e changes were a static asset
+  fix and a view URL string — no code path PHPUnit exercises).
+
+## Deploy history (staging)
+
+Each release went through `git commit → tag → GitHub Actions build →
+scp → base64-encoded swap script → artifact SHA checked on the server →
+migrate no-op → caches`. Backups: `bak-31.5c`, `bak-31.5d`, `bak-31.5e`
+(31.5b retained).
+
+The 31.5e swap initially failed with **Disk quota exceeded** — the staging
+account had accumulated ~15 full app copies (~100 MB each). With approval,
+the failed-run artifacts and the six oldest backups (`old-30.4`, `bak-30.3`,
+`bak-30.5.2`, `bak-31.0`, `bak-31.1`, `bak-31.5`) were pruned and the deploy
+completed. Future swaps should prune old backups before unpacking.
+
+## Verified on staging after 31.5e
+
+| Check | Result |
+|---|---|
+| `GET /health`, `/up`, `/register` | 200 |
+| Register `<img>` requests `…register-hero.svg?v=2` | yes |
+| Fixed SVG serves 2177 B, `image/svg+xml`, decodes in Chrome (`naturalWidth=900`) | pass |
+| Desktop (1440×1000): hero 720×1000, `bg-slate-900`, exactly 1 child, empty text, no horizontal overflow | pass |
+| `max-w-md` form 448 px centered; toggles flip both password fields; no hero copy in body | pass |
+| Phone (390×844): hero `display:none`, form 358 px, no overflow | pass |
+| Auth pages still `max-w-md` (448/358), no overflow, no hero | pass |

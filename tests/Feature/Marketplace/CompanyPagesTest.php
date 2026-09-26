@@ -26,6 +26,9 @@ it('serves each company page to a guest with its own title', function (string $r
     'about' => ['about', 'About us'],
     'contact' => ['contact', 'Contact us'],
     'faqs' => ['faqs', 'FAQs'],
+    'privacy' => ['privacy', 'Privacy'],
+    'terms' => ['terms', 'Terms'],
+    'cookies' => ['cookies', 'Cookies'],
 ]);
 
 it('gives each company page a description for search and sharing', function (string $route): void {
@@ -33,7 +36,7 @@ it('gives each company page a description for search and sharing', function (str
         ->assertOk()
         ->assertSee('<meta name="description"', false)
         ->assertSee('<link rel="canonical"', false);
-})->with(['about', 'contact', 'faqs']);
+})->with(['about', 'contact', 'faqs', 'privacy', 'terms', 'cookies']);
 
 // ---------------------------------------------------------------- The menu
 
@@ -60,6 +63,11 @@ it('loads the script that runs the header menu on every public page', function (
     'about',
     'contact',
     'faqs',
+    // The legal pages are plain Blade views too, and so inherit the same fault
+    // if they are ever added without the script that runs the menu.
+    'privacy',
+    'terms',
+    'cookies',
     // And the Livewire pages, which must not regress.
     'home',
     'products.index',
@@ -91,20 +99,24 @@ it('links the company pages from the footer on every public page', function (str
         ->assertSee(route('about'), false)
         ->assertSee(route('contact'), false)
         ->assertSee(route('faqs'), false)
+        // The legal pages live in the footer on every page too, including
+        // themselves, so no page is a place a policy cannot be reached from.
+        ->assertSee(route('privacy'), false)
+        ->assertSee(route('terms'), false)
+        ->assertSee(route('cookies'), false)
         // The shopping links stay too: the footer adds to the navigation.
         ->assertSee(route('products.index'), false)
         ->assertSee(route('auctions.index'), false)
         ->assertSee(route('how-it-works'), false);
-})->with(['home', 'products.index', 'auctions.index', 'how-it-works', 'about', 'contact', 'faqs']);
+})->with(['home', 'products.index', 'auctions.index', 'how-it-works', 'about', 'contact', 'faqs', 'privacy', 'terms', 'cookies']);
 
 it('does not link a page that does not exist yet', function (): void {
-    // Blog and the legal pages need content and a legal author. Until they
-    // exist a footer link to one is a 404 on every page.
+    // Blog still needs content, and a legal author, and until it exists a footer
+    // link to it is a 404 on every page. Privacy, Cookie and Terms left this
+    // list when the pages arrived; the rule itself has not changed.
     $html = $this->get(route('home'))->assertOk()->getContent();
 
-    foreach (['/blog', '/privacy', '/cookies', '/terms'] as $missing) {
-        expect($html)->not->toContain('href="'.url($missing).'"');
-    }
+    expect($html)->not->toContain('href="'.url('/blog').'"');
 });
 
 it('keeps the main navigation, rather than moving it into the footer', function (): void {

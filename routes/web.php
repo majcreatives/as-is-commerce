@@ -96,11 +96,21 @@ Route::view('/how-it-works', 'pages.how-it-works')->name('how-it-works');
 
 // Company pages. Static views, deliberately: there is no content system behind
 // them, and what each may say is limited to what the platform demonstrably is
-// and does. Blog and the legal pages are not here yet -- they need content and
-// a legal author, and a link to a page that does not exist is worse than none.
+// and does. Blog is not here yet -- it needs content, and a link to a page
+// that does not exist is worse than none.
+//
+// The three legal pages below exist and are linked, unlike the rest of the
+// 31.3 plan, because they are not marketing prose: every factual claim in them
+// is sourced from the schema and the services rather than written freely. They
+// are still DRAFTS awaiting a legal author, and the registered entity behind
+// the trading name is a visible placeholder in all three. See
+// docs/LEGAL_PAGES_DRAFT_NOTES.md before publishing any of them.
 Route::view('/about', 'pages.about')->name('about');
 Route::view('/contact', 'pages.contact')->name('contact');
 Route::view('/faqs', 'pages.faqs')->name('faqs');
+Route::view('/privacy', 'pages.privacy')->name('privacy');
+Route::view('/terms', 'pages.terms')->name('terms');
+Route::view('/cookies', 'pages.cookie')->name('cookies');
 
 // The catalog. Both routes resolve only publicly visible products, so a
 // draft or archived listing 404s rather than existing at a guessable URL.

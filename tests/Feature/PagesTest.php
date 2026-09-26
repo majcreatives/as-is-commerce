@@ -14,6 +14,9 @@ it('serves the public pages to guests', function (string $route): void {
     'home' => 'home',
     'auctions.index' => 'auctions.index',
     'how-it-works' => 'how-it-works',
+    'privacy' => 'privacy',
+    'terms' => 'terms',
+    'cookies' => 'cookies',
 ]);
 
 it('requires authentication for private pages', function (string $route): void {

@@ -1,6 +1,6 @@
-# SMS OTP provisioning (Stage 31.6)
+# SMS OTP provisioning (Stage 31.8)
 
-**Stage:** 31.6 — phone-based password recovery
+**Stage:** 31.8 - phone-based password recovery
 **Status:** implemented and tested locally, **not deployed**
 **Why it exists:** `email` is optional at registration, but recovery only
 accepted an email address. A customer who signed up with a phone number and no
@@ -33,10 +33,11 @@ on, and nothing is sent until an operator completes this document.
 1. Sign up at `arkesel.com` and obtain the API key from the dashboard.
 2. **Register a sender ID.** Arkesel rejects any request whose sender is not
    registered to the account, and a rejected request surfaces as a delivery
-   failure — not as a silent no-op. Choose a name or number the customer will
+   failure, not as a silent no-op. Choose a name or number the customer will
    recognise as this platform, and note that Ghanaian handsets display it.
 3. Confirm the sender is approved, not merely submitted. Approval is a
-   separate approval from registration.
+   separate step from registration, and is the reason this stage can sit idle
+   for a while without anything else waiting on it.
 
 ### 2.2 Environment
 
@@ -61,7 +62,7 @@ app(SettingsRepository::class)->set('sms_enabled', true);
 It is seeded `false`. Leaving it false is a fully supported state: recovery
 works by email for every account that has one, and a phone-only account gets
 the same neutral "if an account exists" message it would get for an unknown
-address — no error, no leak.
+address, with no error and no leak.
 
 ### 2.4 Clear config cache
 
@@ -100,7 +101,7 @@ These are the paths that must **not** look like success:
 | What you do | What must happen |
 |---|---|
 | Blank the `SMS_API_KEY`, request a code | Neutral message, **no** `otp_codes` row, exception logged |
-| Use an unregistered `SMS_SENDER_ID` | Same as above — a rejected send is a failure |
+| Use an unregistered `SMS_SENDER_ID` | Same as above: a rejected send is a failure |
 | Point `SMS_BASE_URL` at an unreachable host | Same as above, and no code left behind |
 | Request twice within 60s | One message only, neutral answer to the second |
 
@@ -123,7 +124,7 @@ customer locked out while the screen said a code was on its way.
 * **The customer's supplied value chooses the channel, never the
   destination.** The code only ever goes to the value stored on the account. A
   preference the account cannot satisfy is a failure, not a silent fallback to
-  another channel — quietly switching to email would hide the fact that SMS is
+  another channel, because quietly switching would hide the fact that SMS is
   not working.
 * **Not reversible by deleting the number.** Removing `SMS_API_KEY` stops
   delivery loudly rather than making failures look like successes.
@@ -132,8 +133,8 @@ customer locked out while the screen said a code was on its way.
 
 ## 5. Cost
 
-Roughly ₵0.02–0.031 per message depending on Arkesel's tier at the time of
-purchase — confirm current pricing directly with them. Only password-recovery
+Roughly 0.02 to 0.033 per message depending on Arkesel's tier at the time of
+purchase; confirm current pricing directly with them. Only password-recovery
 sends are charged, so the exposure is bounded by how often locked-out customers
 retry, and the 60-second cooldown plus the 3-per-identifier rate limit caps how
 fast that can be spent. No subscription or per-message billing beyond the

@@ -1,8 +1,25 @@
-# Stages 31–33 — UX, bid-increment cap, auction sharing (PLAN, nothing built)
+# Stages 31–33 — UX, bid-increment cap, auction sharing (PLAN, largely built)
 
-Status: **proposal for review.** No code has been changed. Each stage below is
-independently reviewable and shippable, and none depends on another being
-approved except where a dependency is stated.
+Status: **this proposal was overtaken by the build, and it is kept for its
+reasoning and its open questions, not as a statement of what exists.** It was
+written when nothing had been built. Since then:
+
+- **Stage 32 shipped** (cumulative bidding, then pot-target bidding).
+- **Stage 33 shipped** — and shipped *before this file was written*, so the
+  design below describes a feature that already existed. See the Stage 33 row
+  in `ROADMAP.md` for what is actually there.
+- **Most of Stage 31 shipped** (product page, bid history, info pages and
+  footer, notification badge, registration redesign, trending).
+
+What genuinely has not been built, re-checked against the code on 2026-09-26:
+**31.4 rest** (Partners, Success Stories), **31.7** (newsletter popup) and
+**31.2b** (conditions as data). Each is still waiting on the decision recorded
+against it in the decisions table at the end.
+
+So: do not read a section below as a proposal to build. Read it as the
+reasoning behind what shipped, or as the spec for one of the three remaining
+items. `ROADMAP.md` is authoritative for current state; the repository is
+authoritative over both.
 
 BidRush was used as UX/information-architecture inspiration only (trending
 items, partners, success stories, subscription prompt, image-led browsing). No
@@ -547,6 +564,24 @@ count of credits, never a cedis figure or a promise of income.
 ---
 
 ## Decisions needed from you
+
+Status re-checked against the code on 2026-09-26. **Still genuinely open:
+D2, D3, D4, D12.** The rest are settled one way or another and should not be
+re-litigated:
+
+| ID | State |
+|---|---|
+| D1 | Settled in practice — 31 and 32 both shipped, 33 shipped before this file existed. |
+| D5 | Settled as recommended — `notification_badge_window_days`, unread within a window, older unreads still listed but not counted. |
+| D6 | Settled as recommended — shipped in 31.4, see `VERIFY_31_4_TRENDING.md`. |
+| D7 | **Superseded, not implemented.** This asked whether to cap a *fixed* bid increment. Stage 32 shipped the **cumulative** model instead (position = total credits consumed, with a catch-up bid), so there is no `maximum_bid_increment_credits` in the engine and the question no longer arises in this form. |
+| D8 | Settled by the build — **no minimum** threshold was added; one genuinely paid order qualifies. |
+| D9 | Settled as recommended — `?ref=` on the query string, resolved server-side, carry-through only, **no first-party cookie**. |
+| D10 | Settled — **any** paid order qualifies, not catalogue Shop orders only. |
+| D11 | Settled — the reward lands at **`Paid`**, not after a hold. A fulfilment-blocked order does not qualify. |
+| D12 | **Never built** — neither report nor block. The only refused case is an exact self-referral. This is the entire remaining referral backlog. |
+
+The open four, with their original recommendations:
 
 | ID | Decision | Recommendation |
 |---|---|---|

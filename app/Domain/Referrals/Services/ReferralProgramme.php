@@ -9,6 +9,7 @@ use App\Enums\ReferralStatus;
 use App\Models\Order;
 use App\Models\Referral;
 use App\Models\User;
+use Carbon\CarbonImmutable;
 
 /**
  * The programme's rules, in one place.
@@ -108,6 +109,69 @@ class ReferralProgramme
             ->count();
 
         return $rewarded < $this->maximumRewardsPerReferrer();
+    }
+
+    /**
+     * How long a referral stays eligible to earn anything.
+     *
+     * Measured from the moment the referral was recorded, not from the first
+     * purchase: a link clicked in March earns nothing for a purchase made in
+     * November, because what the programme is buying is a customer who converts
+     * promptly, not a dormant account that eventually spends GHS 10.
+     *
+     * Zero means no window, stated explicitly rather than left as an unbounded
+     * default nobody chose -- the same convention as the cap, and for the same
+     * reason. An open-ended window is how a referral link ends up paying out
+     * years after it was shared, which is not a reward for introducing anybody.
+     */
+    public function attributionWindowDays(): int
+    {
+        return max(0, settings()->getInt('referral_attribution_window_days', 0) ?? 0);
+    }
+
+    /**
+     * The moment this referral stops being able to earn, or null when it has no
+     * window.
+     *
+     * Exposed so the customer-facing and admin-facing views can say "you have
+     * until the 14th" rather than leaving a rule invisible until it fires.
+     */
+    public function attributionExpiresAt(Referral $referral): ?CarbonImmutable
+    {
+        $days = $this->attributionWindowDays();
+
+        if ($days < 1) {
+            return null;
+        }
+
+        return CarbonImmutable::instance($referral->attributed_at)->addDays($days);
+    }
+
+    /**
+     * Whether this referral is still inside its window.
+     *
+     * Read at the moment a reward would be earned, so today's setting decides
+     * about a referral that has not yet qualified -- and never revalue or
+     * un-grant one that already has.
+     */
+    public function withinAttributionWindow(Referral $referral): bool
+    {
+        $expires = $this->attributionExpiresAt($referral);
+
+        if ($expires === null) {
+            return true;
+        }
+
+        // Compared at the resolution the data actually has.
+        //
+        // `attributed_at` is a `timestamp` column, so the deadline derived from
+        // it has no sub-second part, while the current time does. Comparing
+        // those two directly refuses a referral during the last fraction of a
+        // second of a window it is still inside -- an off-by-a-fraction that no
+        // amount of reading the code makes obvious, and that would show up in
+        // production as a customer qualifying and then not being paid for no
+        // reason anyone could find.
+        return CarbonImmutable::now()->startOfSecond()->lessThanOrEqualTo($expires);
     }
 
     /**

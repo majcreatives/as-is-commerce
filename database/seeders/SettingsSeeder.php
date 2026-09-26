@@ -166,6 +166,20 @@ class SettingsSeeder extends Seeder
                 'is_public' => false,
             ],
             [
+                'key' => 'referral_attribution_window_days',
+                'value' => 30,
+                'type' => SettingType::Integer,
+                'group' => 'referrals',
+                'label' => 'Referral attribution window (days)',
+                'description' => 'How long after somebody signs up through a referral link the '
+                    .'purchase still earns their referrer anything. Thirty days is long enough to '
+                    .'cover somebody deciding to save for a product, and short enough that a link '
+                    .'sitting in a browser for a year pays nobody. Zero means no window. Applied when '
+                    .'a referral first qualifies, so raising it later does not revive referrals that '
+                    .'have already lapsed, and lowering it does not disturb rewards already granted.',
+                'is_public' => false,
+            ],
+            [
                 'key' => 'referral_max_rewards_per_referrer',
                 'value' => 20,
                 'type' => SettingType::Integer,

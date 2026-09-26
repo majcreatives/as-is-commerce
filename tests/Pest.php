@@ -790,6 +790,24 @@ function deliveryAt(DeliveryStatus $status, ?User $staff = null, ?Order $order =
  *
  * @return array{0: User, 1: User, 2: Referral|null}
  */
+/**
+ * A member of staff holding exactly the referral permissions asked for.
+ *
+ * Lives here rather than in one referral test file because two suites need it,
+ * and a function declared in a test file only exists once that file has been
+ * loaded: two suites needing it would either collide on redeclaration or depend
+ * on load order.
+ */
+function referralStaff(array $permissions): User
+{
+    seedPermissions();
+
+    $user = User::factory()->create();
+    $user->syncPermissions($permissions);
+
+    return $user->fresh();
+}
+
 function referralPair(): array
 {
     $referrer = bidder(0);

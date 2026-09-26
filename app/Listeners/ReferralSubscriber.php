@@ -82,7 +82,18 @@ class ReferralSubscriber
             // Two steps, deliberately. Qualifying records the fact; rewarding
             // issues the credits and may legitimately decline -- and when it
             // does, the qualifying event survives to be retried.
+            //
+            // Qualifying can also close the referral outright, when the
+            // attribution window has already run out. There is nothing to issue
+            // in that case, and `reward()` treats anything other than
+            // `Qualified` as a programming error -- which this is not. So the
+            // decision is made here, where the outcome is expected and can be
+            // read without an exception in the log.
             $qualified = $this->rewards->qualify($referral, $order);
+
+            if (! $qualified->awaitsReward()) {
+                return;
+            }
 
             $this->rewards->reward($qualified);
         }, 'order_paid');

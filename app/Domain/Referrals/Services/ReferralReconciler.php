@@ -43,9 +43,22 @@ use Illuminate\Support\Facades\Log;
  *   Self-referral             Refused by a CHECK constraint, and checked here
  *                             because the cost of one slipping through is a
  *                             customer paying themselves.
+ *   Referral ring             A introduces B, B introduces A. The per-referrer
+ *                             cap does not apply to a group, and no single row
+ *                             looks wrong; only the whole graph does.
  */
 class ReferralReconciler
 {
+    /**
+     * How far up an introduction chain to walk before giving up.
+     *
+     * A backstop behind the seen-set, not the primary guard: the seen-set is
+     * what actually terminates the walk, and this only bounds the pathological
+     * case where a data problem produced a chain far longer than any real one.
+     * Thirty is far more introductions deep than a genuine programme produces.
+     */
+    private const MAX_CHAIN_DEPTH = 30;
+
     /**
      * Everything that does not add up.
      *
@@ -59,6 +72,7 @@ class ReferralReconciler
             ...$this->ledgerDisagreements($limit),
             ...$this->duplicateRewards(),
             ...$this->selfReferrals(),
+            ...$this->cycles($limit),
         ];
 
         foreach ($anomalies as $anomaly) {
@@ -220,6 +234,151 @@ class ReferralReconciler
                 'detail' => "Credit transaction {$row->credit_transaction_id} is claimed by {$row->total} referrals.",
             ])
             ->all();
+    }
+
+    /**
+     * Referral rings: A introduces B, B introduces A.
+     *
+     * THE ONE ABUSE THE PER-REFERRER CAP DOES NOT TOUCH. A cap counts one
+     * referrer's rewards, and in a ring every account is a different referrer,
+     * so twenty accounts in a circle each earn the full reward while paying
+     * only the cheapest qualifying purchase. The cap that stops one customer
+     * farming twenty referrals does nothing here, and neither does the
+     * self-referral CHECK: that one looks at a single row, and no row in a ring
+     * is self-referential. Only the shape of the whole graph gives it away.
+     *
+     * WHY THE LOOP IS BOUNDED RATHER THAN ASSUMED ABSENT. Following who
+     * introduced whom terminates on an honest graph, because each step is a
+     * distinct person and there are finitely many. It does not terminate on a
+     * ring, which is the very thing being looked for -- so a seen-set carries
+     * the walk, and a hop limit stands behind it. A detector that hangs on
+     * finding the problem is worse than no detector, because it takes the
+     * reconciliation command down with it.
+     *
+     * REPORTED, NOT REFUSED. Not a cap, and not this method's decision to make:
+     * a ring is a shape, and whether one is a family sharing a phone or a
+     * deliberate fraud is a question for a person with context this report does
+     * not have. It is also not refusable in general -- see the class comment on
+     * why nothing here can move credits.
+     *
+     * @return list<array{type: string, referral_id: int|null, detail: string}>
+     */
+    private function cycles(int $limit): array
+    {
+        // Every introduction on the platform, as plain edges. Read once rather
+        // than per-referral: this is a graph walk, and a query inside the loop
+        // would make it quadratic on a table that is meant to stay small.
+        $edges = DB::table('referrals')
+            ->select('id', 'referrer_user_id', 'referred_user_id')
+            ->orderBy('id')
+            ->get();
+
+        if ($edges->isEmpty()) {
+            return [];
+        }
+
+        // who introduced whom, for the walk up the chain
+        $introduced = [];
+
+        foreach ($edges as $edge) {
+            $introduced[(int) $edge->referred_user_id] = (int) $edge->referrer_user_id;
+        }
+
+        $anomalies = [];
+        $reported = [];
+
+        foreach ($edges as $edge) {
+            if (count($anomalies) >= $limit) {
+                break;
+            }
+
+            $referred = (int) $edge->referred_user_id;
+            $referrer = (int) $edge->referrer_user_id;
+
+            // A ring is a property of the whole cycle, not of one edge, so it is
+            // reported once per ring rather than once per row. Keyed on the
+            // lowest member id, which every member of the same ring computes
+            // identically.
+            $cycle = $this->ringContaining($referrer, $referred, $introduced);
+
+            if ($cycle === null) {
+                continue;
+            }
+
+            $key = 'ring:'.min($cycle);
+
+            if (isset($reported[$key])) {
+                continue;
+            }
+
+            $reported[$key] = true;
+
+            $anomalies[] = [
+                'type' => 'referral_ring',
+                'referral_id' => (int) $edge->id,
+                'detail' => 'These customers each introduced the next around a closed loop: users '
+                    .implode(' → ', $cycle).' → '.min($cycle).'. Every one of them counts as a '
+                    .'separate referrer, so a per-referrer cap does not apply to the group. Each '
+                    .'relationship in the ring still looks valid on its own, so nothing in a single '
+                    .'referral record shows this.',
+            ];
+        }
+
+        return $anomalies;
+    }
+
+    /**
+     * The closed loop a referral closes, if it closes one.
+     *
+     * Walks up from the referrer -- "who introduced the person who introduced
+     * this customer?" -- and looks for the referred customer turning up again. If
+     * it does, the chain is a circle and the path taken is the ring.
+     *
+     * @param  array<int, int>  $introduced
+     * @return list<int>|null
+     */
+    private function ringContaining(int $referrer, int $referred, array $introduced): ?array
+    {
+        $seen = [$referrer => true];
+        $path = [$referrer];
+        $current = $referrer;
+
+        for ($hop = 0; $hop < self::MAX_CHAIN_DEPTH; $hop++) {
+            if (! isset($introduced[$current])) {
+                // Top of a chain. This referral is an ordinary introduction.
+                return null;
+            }
+
+            $current = $introduced[$current];
+
+            if ($current === $referred) {
+                // The loop is closed. The ring is the chain walked plus the
+                // customer it came back round to -- the referred user is not in
+                // `$path`, because the walk stops the moment it arrives there.
+                //
+                // Sorted, so every edge of the same ring produces the same
+                // members in the same order: which edge happens to be examined
+                // first is an artefact of row order, and a report that changed
+                // its own output between runs would be one nobody could trust.
+                $ring = array_merge($path, [$referred]);
+                sort($ring);
+
+                return $ring;
+            }
+
+            if (isset($seen[$current])) {
+                // Closed a loop that does not include the referred customer,
+                // which is impossible if every loop has a row -- and a reason to
+                // stop rather than keep walking. The ring is not this
+                // referral's to report; whichever referral closed it is.
+                return null;
+            }
+
+            $seen[$current] = true;
+            $path[] = $current;
+        }
+
+        return null;
     }
 
     /**

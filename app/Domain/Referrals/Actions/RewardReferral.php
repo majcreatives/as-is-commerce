@@ -80,6 +80,21 @@ final class RewardReferral
                 return $locked;
             }
 
+            // The attribution window, decided here rather than in the caller.
+            //
+            // This is the last point at which it can be applied without
+            // unwinding something: no credits exist yet, and `Invalidated` is a
+            // legal move out of `Attributed`. Refusing at the moment of
+            // qualification rather than at the moment of issue also means a
+            // lapsed referral is terminal instead of sitting at `Qualified`
+            // forever, where `referrals:reconcile` would re-report it as an
+            // unpaid reward on every run for ever.
+            if (! $this->programme->withinAttributionWindow($locked)) {
+                $this->lapse($locked);
+
+                return $locked;
+            }
+
             $locked->status = ReferralStatus::Qualified;
             $locked->qualifying_order_id = $order->id;
             $locked->qualified_at = Carbon::now();
@@ -225,6 +240,40 @@ final class RewardReferral
 
             return ['referral_id' => $locked->id, 'issued' => true, 'credits' => $amount];
         });
+    }
+
+    /**
+     * Close a referral whose attribution window ran out.
+     *
+     * A rule rather than a person, so `invalidated_by` is deliberately null: no
+     * member of staff decided this, and attributing it to whichever admin
+     * happened to be signed in would put a name on a decision nobody made. The
+     * reason carries the window that was actually applied, so the row explains
+     * itself to whoever reads it next.
+     *
+     * Terminal rather than retryable. Once the qualifying purchase is older
+     * than the window, waiting does not make it younger.
+     */
+    private function lapse(Referral $referral): void
+    {
+        $days = $this->programme->attributionWindowDays();
+        $expiredAt = $this->programme->attributionExpiresAt($referral);
+
+        $referral->status = ReferralStatus::Invalidated;
+        $referral->invalidation_reason = 'The '.$days.'-day referral attribution window expired on '
+            .($expiredAt?->toDateString() ?? 'an unknown date')
+            .', before this customer made a qualifying purchase.';
+        $referral->invalidated_at = Carbon::now();
+        $referral->save();
+
+        Log::info('Referral lapsed outside its attribution window', [
+            'operation' => 'referral.window_expired',
+            'referral_id' => $referral->id,
+            'referrer_user_id' => $referral->referrer_user_id,
+            'referred_user_id' => $referral->referred_user_id,
+            'order_id' => $referral->qualifying_order_id,
+            'window_days' => $days,
+        ]);
     }
 
     /**

@@ -13,7 +13,6 @@ use App\Livewire\Account\ReferralDashboard;
 use App\Livewire\Admin\Referrals\ReferralQueue;
 use App\Models\CreditTransaction;
 use App\Models\Referral;
-use App\Models\User;
 use Livewire\Livewire;
 
 /*
@@ -40,16 +39,6 @@ beforeEach(function (): void {
 /**
  * A member of staff holding exactly the named permissions and nothing else.
  */
-function referralStaff(array $permissions): User
-{
-    seedPermissions();
-
-    $user = User::factory()->create();
-    $user->syncPermissions($permissions);
-
-    return $user->fresh();
-}
-
 // ------------------------------------------------------------ Privacy
 
 it('shows a customer only their own referrals', function (): void {

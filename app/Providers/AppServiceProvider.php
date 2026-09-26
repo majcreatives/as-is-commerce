@@ -15,7 +15,9 @@ use App\Domain\Settings\SettingsRepository;
 use App\Domain\Shared\Phone\GhanaPhoneNumberNormalizer;
 use App\Domain\Shared\Phone\PhoneNumberNormalizer;
 use App\Domain\StoreWallet\Services\AuctionLossCompensator;
+use App\Domain\User\Arkesel\ArkeselSmsGateway;
 use App\Domain\User\Contracts\OtpChannel;
+use App\Domain\User\Contracts\SmsGateway;
 use App\Domain\User\Support\MailOtpChannel;
 use App\Listeners\AuctionBroadcastSubscriber;
 use App\Listeners\NotificationSubscriber;
@@ -59,11 +61,22 @@ class AppServiceProvider extends ServiceProvider
         // directions.
         $this->app->bind(AuctionLossCompensation::class, AuctionLossCompensator::class);
 
-        // The active code transport is email: an OTP arrives as mail and the
-        // flows fail loudly when an account has no address to send to. An SMS
-        // provider (Hubtel) later replaces this binding without any call site
-        // changing.
+        // How a one-time code travels by email. Held behind the interface so a
+        // failing transport can be substituted where a test needs to prove the
+        // delivery-failure guarantee.
         $this->app->bind(OtpChannel::class, MailOtpChannel::class);
+
+        // How a one-time code travels by text message. The provider is bound
+        // behind its own interface, so replacing Arkesel with another Ghanaian
+        // gateway is a new adapter and this one line, with no call site
+        // anywhere in the recovery flow changing.
+        $this->app->bind(SmsGateway::class, fn ($app): SmsGateway => new ArkeselSmsGateway(
+            http: $app->make(HttpFactory::class),
+            apiKey: config('sms.api_key'),
+            senderId: config('sms.sender_id'),
+            baseUrl: (string) config('sms.base_url'),
+            timeout: (int) config('sms.timeout'),
+        ));
 
         // A singleton so the per-request settings snapshot is shared across
         // every caller in the request rather than rebuilt per resolution.

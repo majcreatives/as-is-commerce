@@ -1,15 +1,16 @@
 {{-- Reset-password screen (guest).
 
      The code here is verified by VerifyOtp before the password is ever
-     touched, so resetting happens only after proof of email ownership. --}}
+     touched, so resetting happens only after proof that the customer receives
+     messages at the address on the account -- by email or by text. --}}
 
 <div>
     <x-card>
         <div class="mb-6">
             <h1 class="text-xl font-bold tracking-tight text-slate-900">Reset your password</h1>
             <p class="mt-1 text-sm text-slate-600">
-                Enter the code we sent to
-                <span class="font-medium">{{ $email }}</span>, then choose a new
+                Enter the code we sent by {{ $channel === 'sms' ? 'text message' : 'email' }} to
+                <span class="font-medium">{{ $destinationHint }}</span>, then choose a new
                 password.
             </p>
         </div>

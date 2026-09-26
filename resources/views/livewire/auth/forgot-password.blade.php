@@ -1,16 +1,18 @@
 {{-- Forgot-password screen (guest).
 
-     Only reaches SendOtp for an address that actually matches an account, and
+     Accepts the email address or the phone number on the account -- email is
+     optional at registration, so a phone-only customer has no other way back
+     in. Only a value that actually matches an account reaches SendOtp, and
      answers identically otherwise, so the page can never be used to probe
-     which addresses exist. --}}
+     which addresses or numbers exist. --}}
 
 <div>
     <x-card>
         <div class="mb-6">
             <h1 class="text-xl font-bold tracking-tight text-slate-900">Forgot your password?</h1>
             <p class="mt-1 text-sm text-slate-600">
-                Enter the email address on your account and we'll send you a
-                one-time code.
+                Enter the email address or phone number on your account and
+                we'll send you a one-time code.
             </p>
         </div>
 
@@ -21,13 +23,14 @@
         @endif
 
         <form wire:submit="send" class="space-y-4">
-            <x-field label="Email address" name="email" :error="$errors->first('email')">
+            <x-field label="Email address or phone number" name="identifier" :error="$errors->first('identifier')">
                 <x-input
-                    id="email"
-                    type="email"
-                    autocomplete="email"
-                    wire:model="email"
-                    :error="$errors->has('email')"
+                    id="identifier"
+                    type="text"
+                    inputmode="text"
+                    autocomplete="username"
+                    wire:model="identifier"
+                    :error="$errors->has('identifier')"
                     required
                     autofocus
                 />

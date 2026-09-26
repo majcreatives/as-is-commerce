@@ -24,6 +24,14 @@ final class OtpDeliveryException extends RuntimeException
         );
     }
 
+    public static function noDestinationForSms(): self
+    {
+        return new self(
+            'This account has no phone number to send a verification code to. '
+            .'Add one on your profile and try again.',
+        );
+    }
+
     public static function deliveryFailed(?Throwable $previous = null): self
     {
         return new self(

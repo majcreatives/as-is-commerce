@@ -184,6 +184,18 @@ class SettingsSeeder extends Seeder
                     .'a code was sent.',
                 'is_public' => false,
             ],
+            [
+                'key' => 'sms_enabled',
+                'value' => false,
+                'type' => SettingType::Boolean,
+                'group' => 'security',
+                'label' => 'SMS one-time codes enabled',
+                'description' => 'Whether a one-time code may be sent as a text message. Off by '
+                    .'default so the channel is switched on deliberately, once the provider key and '
+                    .'a registered sender ID are in place. Only password recovery uses it, and only '
+                    .'for an account with no email address.',
+                'is_public' => false,
+            ],
         ];
     }
 

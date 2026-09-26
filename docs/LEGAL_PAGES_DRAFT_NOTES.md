@@ -31,18 +31,35 @@ deletion section below — that is the most important sentence in the set.
 
 ## Blockers before publication
 
-1. **The registered legal entity is not recorded anywhere in the system.**
-   All three pages carry a visible `[REGISTERED LEGAL ENTITY — TO BE SUPPLIED]`
-   and `[REGISTERED ADDRESS — TO BE SUPPLIED]` placeholder. Naming a data
-   controller is a requirement under Act 843, so this is not cosmetic.
+1. **The registered legal entity and its address are not supplied.**
+   The privacy notice and the terms both print `[REGISTERED LEGAL ENTITY — NOT
+   YET SUPPLIED]` and `[REGISTERED ADDRESS — NOT YET SUPPLIED]` in the visible
+   marker while these are blank. Naming a data controller is a requirement
+   under Act 843, so this is not cosmetic.
+
+   Both are now settings — `legal_entity_name` and `legal_entity_address` — so
+   supplying them is an administrative act on `/admin/settings` rather than a
+   code change, a deploy and a push. That matters for the schedule, not just
+   the convenience: this was the slowest item on the list, and it was slow only
+   because of how the value was stored. `app:check-environment` now reports it
+   as a **blocker** on an exposed site and a warning locally, so a site
+   carrying the marker cannot be served to anybody by accident. The Data
+   Protection Commission registration (`dpc_registration`) is on the same
+   screen but is deliberately not a blocker: not having one is a compliance
+   gap rather than an identity gap, and failing a deploy over it would be the
+   tool insisting on something it has no standing to judge.
 2. **`support_email` is unset**, so the privacy page falls back to pointing at
    the contact page. A published privacy notice with no way to contact the
-   controller is not acceptable — set this setting before launch.
+   controller is not acceptable — set this setting before launch. Reported by
+   `app:check-environment` as a warning, for the same reason: a contact form is
+   a weaker answer than an address, but a site with one is not a site that is
+   lying to anybody.
 3. **A lawyer must review all three.** The structure and every factual claim
    are ours; the wording, the limitation of liability, the governing-law clause
    and the enforceability of the whole thing are not ours to settle. D4 in
    `PLAN_31_UX_BIDCAP_SHARING.md` — "who owns legal review" — is still open and
-   is the decision blocking this.
+   is the decision blocking this. This is now the only thing on the list that
+   genuinely needs a person outside the codebase.
 
 ## Findings the audit turned up, which the pages had to reflect
 

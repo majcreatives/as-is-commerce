@@ -121,6 +121,43 @@ class SettingsSeeder extends Seeder
                 'is_public' => true,
             ],
             [
+                'key' => 'legal_entity_name',
+                'value' => null,
+                'type' => SettingType::String,
+                'group' => 'contact',
+                'label' => 'Registered legal entity',
+                'description' => 'The registered company behind the trading name, exactly as '
+                    .'registered with the Registrar General\'s Department. The privacy notice and the '
+                    .'terms both name this, and the Data Protection Act requires a controller to be '
+                    .'identifiable, so it cannot be left blank on a public site. While it is blank '
+                    .'both pages show a visible draft marker and app:check-environment refuses to let '
+                    .'the site be exposed.',
+                'is_public' => true,
+            ],
+            [
+                'key' => 'legal_entity_address',
+                'value' => null,
+                'type' => SettingType::String,
+                'group' => 'contact',
+                'label' => 'Registered postal address',
+                'description' => 'The address a regulator or a customer can serve a complaint on. Not '
+                    .'a PO box if a real one is available, and not a residential address unless that '
+                    .'is genuinely where the business is registered. Shown on the privacy notice and '
+                    .'the terms as the contact address for the data controller.',
+                'is_public' => true,
+            ],
+            [
+                'key' => 'dpc_registration',
+                'value' => null,
+                'type' => SettingType::String,
+                'group' => 'contact',
+                'label' => 'Data Protection Commission registration',
+                'description' => 'The registration reference issued by the Data Protection Commission '
+                    .'of Ghana, if one has been issued. Shown on the privacy notice so somebody '
+                    .'checking our compliance can find the record. Leave blank if there is not one yet.',
+                'is_public' => true,
+            ],
+            [
                 'key' => 'homepage_trending_window_days',
                 'value' => 30,
                 'type' => SettingType::Integer,

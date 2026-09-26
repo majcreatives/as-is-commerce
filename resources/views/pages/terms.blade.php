@@ -7,9 +7,14 @@
     // clause on the page and is the one most likely to be argued about, so it
     // is stated plainly rather than softened.
     //
-    // NOT LEGAL ADVICE. The registered legal entity, its address, and the
-    // governing-law clause need a lawyer's eye. The registered entity is not
-    // recorded anywhere in the system, so it is not named.
+    // NOT LEGAL ADVICE. The registered legal entity and its postal address are
+    // read from settings rather than written into this template, so supplying
+    // them is an administrative act instead of a code change and a deploy, and
+    // so these terms and the privacy notice cannot end up naming two different
+    // companies. The governing-law clause also needs a lawyer's eye. Until the
+    // entity is set this page renders a visible draft marker and
+    // app:check-environment will not let the site be exposed.
+    $identity = \App\Support\Legal\OperatorIdentity::fromSettings();
 @endphp
 
 <x-layouts.app title="Terms"
@@ -24,7 +29,7 @@
             <div class="space-y-3 text-sm text-slate-600">
                 <p>
                     These terms govern your use of {{ config('app.name') }}, operated by
-                    <strong class="text-slate-900">[REGISTERED LEGAL ENTITY — TO BE SUPPLIED]</strong>.
+                    <x-legal.entity-name :identity="$identity" />.
                     By creating an account or placing an order you accept them. If you do not
                     accept them, do not use the store.
                 </p>
@@ -314,7 +319,7 @@
                 </p>
                 <p>
                     Postal address:
-                    <strong class="text-slate-900">[REGISTERED ADDRESS — TO BE SUPPLIED]</strong>
+                    <x-legal.entity-address :identity="$identity" />
                 </p>
             </div>
         </x-card>

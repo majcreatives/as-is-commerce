@@ -7,12 +7,16 @@
     // deletion, which has no self-service path and would be refused at the
     // database for any customer with order, bid or referral history.
     //
-    // NOT LEGAL ADVICE. The registered legal entity behind the trading name is
-    // not recorded anywhere in the system, so it is not named below. That, the
-    // controller's contact address, and the Data Protection Commission
-    // registration must be supplied before publication. The placeholder tokens
-    // are deliberately visible.
+    // NOT LEGAL ADVICE. The registered legal entity behind the trading name
+    // and its postal address are read from settings rather than written into
+    // this template, so supplying them is an administrative act instead of a
+    // code change and a deploy, and so the notice and the terms cannot end up
+    // naming two different companies. Until they are set, this page renders a
+    // visible draft marker and app:check-environment will not let the site be
+    // exposed. The Data Protection Commission registration still has to be
+    // supplied before publication.
     $email = trim((string) settings()->getString('support_email', ''));
+    $identity = \App\Support\Legal\OperatorIdentity::fromSettings();
 @endphp
 
 <x-layouts.app title="Privacy"
@@ -26,7 +30,7 @@
         <x-card title="Who this site belongs to">
             <div class="space-y-3 text-sm text-slate-600">
                 <p>
-                    This site is operated by <strong class="text-slate-900">[REGISTERED LEGAL ENTITY — TO BE SUPPLIED]</strong>,
+                    This site is operated by <x-legal.entity-name :identity="$identity" />,
                     trading as {{ config('app.name') }}. We are the data controller for the
                     personal data described here.
                 </p>
@@ -343,7 +347,7 @@
                     @if ($email !== '')
                         <li>Email: <a href="mailto:{{ $email }}" class="font-medium text-slate-900 underline">{{ $email }}</a></li>
                     @endif
-                    <li>Postal address: <strong class="text-slate-900">[REGISTERED ADDRESS — TO BE SUPPLIED]</strong></li>
+                    <li>Postal address: <x-legal.entity-address :identity="$identity" /></li>
                 </ul>
                 @if ($email === '')
                     <p class="text-slate-500">

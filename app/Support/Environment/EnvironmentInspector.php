@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Support\Environment;
 
 use App\Models\Notification;
+use App\Support\Legal\OperatorIdentity;
 use Illuminate\Contracts\Config\Repository as Config;
 use Illuminate\Support\Facades\DB;
 use Throwable;
@@ -91,6 +92,7 @@ final class EnvironmentInspector
             ...$this->logging($exposed),
             ...$this->queuedMail(),
             ...$this->supportContact($exposed),
+            ...$this->legalIdentity($exposed),
         ];
     }
 
@@ -406,6 +408,52 @@ final class EnvironmentInspector
             .'operator. Without this they fall back to a contact form, which is a weaker answer to '
             .'a data-protection question than an address somebody can write to.',
         )];
+    }
+
+    /**
+     * Whether the operator can be named on a public page.
+     *
+     * A blocker, where the missing support email is only a warning, and the     * difference is not a matter of degree. A support address is convenience:
+     * without one a customer can still reach us and still get an answer. A
+     * controller's name is not convenience, it is the thing the notice legally
+     * has to contain. Publishing a privacy notice that does not name the
+     * organisation it is protecting is publishing a document that is wrong in
+     * the one respect that matters, and it would do so while looking complete,
+     * because a blank in the middle of a well-formatted page reads as finished
+     * rather than unfinished. The notice is public and free to inspect by the
+     * one body that would object, so this is not a matter of getting caught --
+     * it is a matter of being the kind of operator that publishes one.
+     *
+     * Both pages render a visible draft marker in the meantime, so the gap
+     * shows on the page itself rather than only in this command's output.
+     *
+     * @return list<EnvironmentFinding>
+     */
+    private function legalIdentity(bool $exposed): array
+    {
+        $identity = OperatorIdentity::fromSettings();
+
+        if ($identity->isComplete()) {
+            return [EnvironmentFinding::ok(
+                'legal_identity',
+                'Registered entity and address are set, so the published notice names a controller.',
+            )];
+        }
+
+        // "Until X and Y is set" reads as a typo and, worse, reads as a single
+        // setting to somebody skimming. The keys are listed, comma separated,
+        // so the sentence needs no agreement and no counting.
+        $consequence = 'The privacy notice and the terms are live and public, and both are required to name '
+            .'the registered legal entity and an address it can be served at. Until these are set -- '
+            .implode(', ', $identity->missing())
+            .' -- they print a draft marker there, and this check will not pass, so they should be filled '
+            .'in before the site is served to anybody rather than after.';
+
+        if (! $exposed) {
+            return [EnvironmentFinding::warning('legal_identity', 'Registered legal entity is not set yet.', $consequence)];
+        }
+
+        return [EnvironmentFinding::blocker('legal_identity', 'Registered legal entity is not set.', $consequence)];
     }
 
     /**

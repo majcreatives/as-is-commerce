@@ -41,6 +41,9 @@ function legalText(TestResponse $response): string
 
 beforeEach(function (): void {
     seedRoles();
+    // The operator's registered name and address are settings, so the settings
+    // have to exist for these pages to render at all.
+    seedSettings();
 });
 
 it('links every legal page from the footer', function (string $route, string $label): void {
@@ -131,4 +134,70 @@ it('carries a last-updated date on every page', function (): void {
     expect(legalText($this->get(route('privacy'))->assertOk()))->toContain('Last updated');
     expect(legalText($this->get(route('terms'))->assertOk()))->toContain('Last updated');
     expect(legalText($this->get(route('cookies'))->assertOk()))->toContain('Last updated');
+});
+
+/*
+ * The registered legal entity, and the fact that it is read from settings.
+ *
+ * It used to be a placeholder typed into the two templates, which meant
+ * publishing needed a code change and a deploy, and the notice and the terms
+ * could each have been edited to name a different company. Both are now
+ * settings, and these tests are what stop them going back.
+ */
+
+it('names the registered entity once it is set, and the same one on both pages', function (): void {
+    settings()->setMany([
+        'legal_entity_name' => 'Kwaku Mensah Trading Ltd',
+        'legal_entity_address' => '14 Independence Avenue, Accra',
+    ]);
+
+    foreach (['privacy', 'terms'] as $page) {
+        $text = legalText($this->get(route($page))->assertOk());
+
+        expect($text)->toContain('Kwaku Mensah Trading Ltd');
+        expect($text)->toContain('14 Independence Avenue, Accra');
+        // A page carrying the real name must not also carry the draft marker,
+        // or one is being published by accident and the other on purpose.
+        expect($text)->not->toContain('NOT YET SUPPLIED');
+    }
+});
+
+it('escapes the registered entity rather than trusting it as markup', function (): void {
+    // It arrives as operator-supplied settings text, so it is the one piece of
+    // prose on these pages that was not written by us. It is printed through
+    // Blade, which escapes it, and this is the test that says so out loud --
+    // a page whose controller name is a settings value is a page with a stored
+    // injection point on it if that ever stops being true.
+    settings()->setMany(['legal_entity_name' => 'Ampersand & Co <script>alert(1)</script> Ltd']);
+
+    $html = $this->get(route('privacy'))->assertOk()->getContent();
+
+    // The payload must be inert: the angle brackets escaped, and the ampersand
+    // escaped rather than dropped, so the rendered text is still correct.
+    expect($html)->toContain('&lt;script&gt;alert(1)&lt;/script&gt;')
+        ->and($html)->toContain('Ampersand &amp; Co')
+        ->and($html)->not->toContain('<script>alert(1)</script>');
+});
+
+it('shows a visible draft marker while the entity is unset, never a blank', function (): void {
+    settings()->setMany(['legal_entity_name' => null, 'legal_entity_address' => null]);
+
+    foreach (['privacy', 'terms'] as $page) {
+        $text = legalText($this->get(route($page))->assertOk());
+
+        // A blank in the middle of a well-formatted notice reads as finished.
+        // The gap has to be visible on the page, and it has to be on both.
+        expect($text)->toContain('NOT YET SUPPLIED');
+    }
+});
+
+it('never falls back to the trading name as the controller', function (): void {
+    // "As-Is-Commerce" is a trading name. Printing it where Act 843 requires
+    // the registered entity would make the notice confidently wrong, which is
+    // worse than leaving the marker visible.
+    settings()->setMany(['legal_entity_name' => null, 'legal_entity_address' => null]);
+
+    $text = legalText($this->get(route('privacy'))->assertOk());
+
+    expect($text)->toContain('NOT YET SUPPLIED');
 });

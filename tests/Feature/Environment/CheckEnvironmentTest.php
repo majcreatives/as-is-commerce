@@ -280,7 +280,11 @@ it('passes a strict run on a correctly configured site', function (): void {
         'paystack.public_key' => 'pk_test_x',
         'notifications.queue_mail' => false,
     ]);
-    settings()->set('support_email', 'help@as-is-commerce.test');
+    settings()->setMany([
+        'support_email' => 'help@as-is-commerce.test',
+        'legal_entity_name' => 'Kwaku Mensah Trading Ltd',
+        'legal_entity_address' => '14 Independence Avenue, Accra',
+    ]);
 
     $this->artisan('app:check-environment --strict')
         ->expectsOutputToContain('Nothing blocking')
@@ -313,4 +317,78 @@ it('changes nothing when it runs', function (): void {
         ->and(Referral::count())->toBe($before['referrals'])
         ->and(Notification::count())->toBe($before['notifications'])
         ->and($user->fresh())->not->toBeNull();
+});
+
+/*
+ * The registered legal entity.
+ *
+ * Severity here is not a matter of degree, and the test is here to stop it
+ * being softened into a warning: a missing support address is an inconvenience
+ * a customer can route around, while a published privacy notice that does not
+ * name the organisation it protects is a document that is wrong in the one
+ * respect the notice exists to get right, and it is public and free to read by
+ * the one body that would object.
+ */
+
+it('blocks a public site that cannot name its own operator', function (): void {
+    exposed();
+    settings()->setMany(['legal_entity_name' => null, 'legal_entity_address' => null]);
+
+    expect(findings($this->inspector)['legal_identity']->isBlocker())->toBeTrue();
+
+    $this->artisan('app:check-environment --strict')->assertExitCode(1);
+});
+
+it('passes a public site that names its operator', function (): void {
+    exposed();
+    settings()->setMany(['legal_entity_name' => 'Kwaku Mensah Trading Ltd', 'legal_entity_address' => '14 Independence Avenue, Accra']);
+
+    expect(findings($this->inspector)['legal_identity']->isBlocker())->toBeFalse();
+    expect(findings($this->inspector)['legal_identity']->severity)->toBe('ok');
+});
+
+it('only warns locally, so a developer is not blocked before launch', function (): void {
+    localish();
+    settings()->setMany(['legal_entity_name' => null, 'legal_entity_address' => null]);
+
+    expect(findings($this->inspector)['legal_identity']->isBlocker())->toBeFalse();
+    expect(findings($this->inspector)['legal_identity']->isWarning())->toBeTrue();
+
+    $this->artisan('app:check-environment --strict')->assertExitCode(0);
+});
+
+it('blocks on a name with no address, because a controller must be servable', function (): void {
+    exposed();
+    settings()->setMany(['legal_entity_name' => 'Kwaku Mensah Trading Ltd', 'legal_entity_address' => null]);
+
+    $finding = findings($this->inspector)['legal_identity'];
+
+    expect($finding->isBlocker())->toBeTrue();
+    // The finding has to name what is missing, or whoever reads it has to go
+    // and diff the settings table by hand to find out.
+    expect($finding->consequence)->toContain('legal_entity_address');
+});
+
+it('does not block on a missing Data Protection Commission registration', function (): void {
+    exposed();
+    settings()->setMany([
+        'legal_entity_name' => 'Kwaku Mensah Trading Ltd',
+        'legal_entity_address' => '14 Independence Avenue, Accra',
+        'dpc_registration' => null,
+    ]);
+
+    // Not having a registration is a compliance gap, not an identity gap. The
+    // check has no standing to fail a deploy over it, and doing so would train
+    // people to reach for --strict and ignore it.
+    expect(findings($this->inspector)['legal_identity']->isBlocker())->toBeFalse();
+});
+
+it('names the missing setting in the finding, not just that something is missing', function (): void {
+    exposed();
+    settings()->setMany(['legal_entity_name' => null, 'legal_entity_address' => '14 Independence Avenue, Accra']);
+
+    $finding = findings($this->inspector)['legal_identity'];
+
+    expect($finding->isBlocker())->toBeTrue()
+        ->and($finding->consequence)->toContain('legal_entity_name');
 });

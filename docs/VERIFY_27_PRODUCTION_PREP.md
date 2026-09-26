@@ -95,7 +95,11 @@ Evidence to record:
    `u146516859_asisprod` style name — operator picks a name that cannot be
    confused with staging `u146516859_asiscomm`). Create its own user; grant
    only what the app needs. **Never** reuse the staging database.
-2. Copy the release zip's `.env.example` to `.env`; fill:
+2. Copy the release zip's **.env.production.example** to `.env` -- NOT
+   `.env.example`, which is the developer template and ships `APP_DEBUG=true`,
+   `MAIL_MAILER=log` and `SESSION_SECURE_COOKIE=false`. The production template
+   already has every value below set correctly, so this is a fill-in-the-blanks job
+   rather than a list of corrections to remember. Then confirm:
    - `APP_ENV=production`, `APP_DEBUG=false`, `APP_TIMEZONE=UTC`
    - `APP_URL=https://<origin>`
    - `APP_KEY=` → `php artisan key:generate` (never committed)
@@ -109,7 +113,21 @@ Evidence to record:
      matches the verified sender
    - Paystack **live** `PAYSTACK_SECRET_KEY`/`PAYSTACK_PUBLIC_KEY` (both from
      the **same** dashboard mode — never mix test and live)
-3. **Do not print, commit or paste any secret.** Verifications in this flow
+3. **Verify, do not assume.** After the values above are in place:
+
+   ```bash
+   /opt/alt/php84/usr/bin/php artisan config:clear
+   /opt/alt/php84/usr/bin/php artisan app:check-environment --strict
+   ```
+
+   Expect exit 0 and "Nothing blocking". It reads configuration, changes
+   nothing, and prints no secret values, so it is safe to paste its output
+   into the evidence below. It exists because the conditions it enforces are
+   the ones an installation gets wrong by copying the developer template, and
+   every one of them fails silently: a stack trace served to a stranger, a
+   receipt recorded as sent and never delivered, a checkout that cannot verify
+   a payment. A non-zero exit means **stop**, not "log it and continue".
+4. **Do not print, commit or paste any secret.** Verifications in this flow
    are flags/booleans only (e.g. `var_export(config('app.debug'), true)`).
 
 ### Flow C — Production migration (tag → release zip)

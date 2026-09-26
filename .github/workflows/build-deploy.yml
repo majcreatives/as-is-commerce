@@ -67,8 +67,16 @@ jobs:
           # The deployable is the clean checkout plus production dependencies
           # and built assets — never a git repo, never tests, never local or
           # derived state, and never any environment file.
+          #
+          # The two templates are INCLUDED and the rest of `.env*` is not.
+          # rsync takes the first matching rule, so each include has to precede
+          # the excludes. `.env.production.example` is the template an operator
+          # is supposed to build production from; if it were left to the blanket
+          # `.env.*` exclude it would simply be absent from the release, and
+          # nobody would find out until they were standing on the server.
           rsync -a \
             --include '.env.example' \
+            --include '.env.production.example' \
             --exclude '.env' \
             --exclude '.env.*' \
             --exclude '.git' \
@@ -98,9 +106,28 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          # A heredoc rather than a quoted argument, because these notes are
+          # several paragraphs and wrapping one across YAML lines is a good way
+          # to produce a workflow file that no longer parses.
+          notes=$(cat <<'NOTES'
+          Deployable built by GitHub Actions from GITHUB_SHA_PLACEHOLDER.
+
+          On the server, build .env from .env.production.example -- NOT from
+          .env.example, which is the developer template and ships APP_DEBUG=true,
+          MAIL_MAILER=log and SESSION_SECURE_COOKIE=false. Then, before serving
+          anybody:
+
+              php artisan app:check-environment --strict
+
+          which must exit 0. It reads configuration, changes nothing, prints no
+          secrets, and fails the deploy on a debug-enabled, mail-less,
+          payment-less or plaintext-cookie site. Server-side steps are in
+          docs/STAGING_20_5B.md and docs/VERIFY_27_PRODUCTION_PREP.md.
+          NOTES
+          )
           gh release create "$GITHUB_REF_NAME" "$artifact_path" \
             --title "As-Is-Commerce $GITHUB_REF_NAME" \
-            --notes "Deployable built by GitHub Actions from $GITHUB_SHA. Download the zip, extract it on the server, create .env from .env.example, and follow the server-side steps in docs/STAGING_20_5B.md." \
+            --notes "${notes//GITHUB_SHA_PLACEHOLDER/$GITHUB_SHA}" \
             --repo "$GITHUB_REPOSITORY"
 
       - name: Upload artifact (manual builds)

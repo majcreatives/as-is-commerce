@@ -154,23 +154,28 @@ class SettingsSeeder extends Seeder
             ],
             [
                 'key' => 'referral_reward_credits',
-                'value' => 0,
+                'value' => 10,
                 'type' => SettingType::Integer,
                 'group' => 'referrals',
                 'label' => 'Referral reward (credits)',
                 'description' => 'Credits granted to the referrer when a referred customer makes '
-                    .'their first qualifying purchase. Snapshotted at the moment of issue, so '
-                    .'changing it never revalues a reward already granted.',
+                    .'their first qualifying purchase. Ten credits is about GHS 0.85 at the current '
+                    .'package prices, against a cheapest qualifying purchase of GHS 10, so roughly '
+                    .'8% acquisition cost. Snapshotted at the moment of issue, so changing it never '
+                    .'revalues a reward already granted. Reconsider it whenever packages are repriced.',
                 'is_public' => false,
             ],
             [
                 'key' => 'referral_max_rewards_per_referrer',
-                'value' => 0,
+                'value' => 20,
                 'type' => SettingType::Integer,
                 'group' => 'referrals',
                 'label' => 'Maximum rewarded referrals per customer',
                 'description' => 'A cap on how many referral rewards one customer may accumulate. '
-                    .'Zero means no cap, stated explicitly rather than left unbounded by default.',
+                    .'At the default reward this bounds one referrer at 200 credits for the life of '
+                    .'the programme. Zero means no cap, stated explicitly rather than left unbounded '
+                    .'by default. Note this caps each referrer, not the programme: a referrer who '
+                    .'reaches the cap can simply start again under a new account.',
                 'is_public' => false,
             ],
             [

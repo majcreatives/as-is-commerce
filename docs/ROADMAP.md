@@ -131,6 +131,22 @@ stays small. The first is closed, the second is closed, the third still open:
   sender ID are in place. Phone *verification* remains unbuilt: `phone_verified_at`
   is still null for every account, and `phone.verified` is registered but
   applied to no route. That is a separate decision, not a leftover of this one.
+- **Referral economics are now sized, and the programme is still dark.** The
+  seeder ships `referral_reward_credits` = 10 and
+  `referral_max_rewards_per_referrer` = 20, but `referrals_enabled` stays
+  `false`, so nothing is issued. A credit costs roughly GHS 0.08–0.10 at the
+  current package prices, so 10 credits is about GHS 0.85 against a cheapest
+  qualifying purchase of GHS 10 — roughly 8% acquisition cost — and the cap
+  bounds one referrer at 200 credits for the life of the programme.
+  **Changing either number needs no deployment**: both are settings read at
+  the moment of issue, and the amount is snapshotted onto the referral, so a
+  later change governs later rewards and cannot revalue one already granted
+  (a database trigger refuses that, not just application code). One trap to
+  know: `SettingsSeeder` refreshes structural fields but **never overwrites an
+  existing value** — the seeder value applies only where the row does not yet
+  exist. A live database therefore keeps its current value through a re-seed
+  and is changed through the admin settings screen, which is deliberate: the
+  value belongs to the administrator.
 - **Admin sidebar, product image gallery and editable auction end dates** were
   queued for **31+**. Two of the three have since shipped: the admin left rail
   (`resources/views/components/admin/nav.blade.php` — a scrolling strip on

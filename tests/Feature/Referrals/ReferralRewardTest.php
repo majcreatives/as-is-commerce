@@ -264,6 +264,29 @@ it('snapshots what was actually granted', function (): void {
         ->and(creditWalletFor($referrer)->fresh()->balance)->toBe(50);
 });
 
+it('issues a later reward at whatever the rate says when it is issued', function (): void {
+    // A referral that qualifies under the original rate.
+    [$firstReferrer, $firstJoiner] = referralPair();
+    qualifyingPurchase($firstJoiner);
+
+    // The administrator changes the rate. Nothing rewrites the reward above;
+    // the question is what happens to one that qualifies *afterwards*.
+    settings()->set('referral_reward_credits', 500);
+
+    [$secondReferrer, $secondJoiner] = referralPair();
+    qualifyingPurchase($secondJoiner);
+
+    // The configured amount is read once, per reward, at the moment of issue. So
+    // the rate is changeable by an administrator at any time, in either
+    // direction, without a deployment and without touching credits already
+    // granted. That is the property that lets the programme's economics be
+    // revised while it runs.
+    expect(Referral::where('referrer_user_id', $firstReferrer->id)->first()->reward_credits)->toBe(50)
+        ->and(Referral::where('referrer_user_id', $secondReferrer->id)->first()->reward_credits)->toBe(500)
+        ->and(creditWalletFor($firstReferrer)->fresh()->balance)->toBe(50)
+        ->and(creditWalletFor($secondReferrer)->fresh()->balance)->toBe(500);
+});
+
 it('refuses to let an issued reward be revalued', function (): void {
     [, $joiner] = referralPair();
 

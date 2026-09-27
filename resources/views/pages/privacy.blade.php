@@ -39,6 +39,17 @@
                     <strong class="text-slate-900">Data Protection Act, 2012 (Act 843)</strong> and
                     the rules made under it by the Data Protection Commission of Ghana.
                 </p>
+                @if ($identity->dpcRegistration())
+                    {{-- Shown only once it exists. An operator who has not registered
+                         should not print a registration number they do not hold, and one
+                         who has registered has to be findable by it. --}}
+                    <p>
+                        We are registered with the
+                        <strong class="text-slate-900">Data Protection Commission</strong>
+                        under registration number
+                        <strong class="text-slate-900">{{ $identity->dpcRegistration() }}</strong>.
+                    </p>
+                @endif
                 <p>
                     If you cannot reach us at the address on this page, complain to the
                     <strong class="text-slate-900">Data Protection Commission</strong>, whose

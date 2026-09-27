@@ -26,11 +26,19 @@ class SettingsSeeder extends Seeder
         return [
             [
                 'key' => 'site_name',
-                'value' => 'As-Is-Commerce',
+                // Derived from APP_NAME rather than written as a literal, because
+                // this value and `config('app.name')` both reach customers and
+                // nothing else keeps them in step: the public pages read the
+                // config, the order and OTP emails read this setting. A literal
+                // here means an install renamed by setting APP_NAME keeps
+                // sending emails in the old name until somebody notices, which
+                // is exactly the kind of split nobody notices.
+                'value' => (string) config('app.name'),
                 'type' => SettingType::String,
                 'group' => 'general',
                 'label' => 'Site name',
-                'description' => 'Shown in the browser title, navigation and footer.',
+                'description' => 'Shown in the browser title, navigation and footer. Defaults to APP_NAME; '
+                    .'changing one without the other leaves the site and its emails using different names.',
                 'is_public' => true,
             ],
             [

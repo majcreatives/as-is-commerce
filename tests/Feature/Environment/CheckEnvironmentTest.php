@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Enums\NotificationType;
 use App\Models\Notification;
 use App\Models\Referral;
+use App\Models\Setting;
 use App\Models\User;
 use App\Support\Environment\EnvironmentFinding;
 use App\Support\Environment\EnvironmentInspector;
@@ -391,4 +392,71 @@ it('names the missing setting in the finding, not just that something is missing
 
     expect($finding->isBlocker())->toBeTrue()
         ->and($finding->consequence)->toContain('legal_entity_name');
+});
+
+/*
+ * The brand name, and the fact that it is read from two places.
+ *
+ * The public pages read `config('app.name')`. Order confirmations, password
+ * resets and one-time codes read the `site_name` setting. Nothing ties them
+ * together, so renaming by setting APP_NAME alone renames the site and leaves
+ * the emails calling the old name -- and nothing breaks, which is the problem.
+ * A store that answers to two different names in front of a customer is not a
+ * crash, it is just untrustworthy.
+ */
+
+it('says nothing when the site and its emails agree on the name', function (): void {
+    config(['app.name' => 'Kwaku Mensah Trading']);
+    settings()->set('site_name', 'Kwaku Mensah Trading');
+
+    expect(findings($this->inspector)['brand_name']->severity)->toBe('ok');
+});
+
+it('warns when the site and its emails use different names', function (): void {
+    // The failure this catches is entirely invisible otherwise: every page
+    // renders, every mail sends, and the store works.
+    config(['app.name' => 'New Name']);
+    settings()->set('site_name', 'As-Is-Commerce');
+
+    $finding = findings($this->inspector)['brand_name'];
+
+    expect($finding->isWarning())->toBeTrue()
+        ->and($finding->finding)->toContain('New Name')
+        ->and($finding->finding)->toContain('As-Is-Commerce');
+});
+
+it('warns whichever way round they disagree', function (): void {
+    config(['app.name' => 'As-Is-Commerce']);
+    settings()->set('site_name', 'New Name');
+
+    expect(findings($this->inspector)['brand_name']->isWarning())->toBeTrue();
+});
+
+it('does not block a rename, because a mismatch is recoverable at a screen', function (): void {
+    // Unlike the registered legal entity, this has a fix anybody can apply in a
+    // minute, so making it a blocker would only ever be a nuisance. The point
+    // is that somebody is told, not that the deploy is stopped.
+    exposed();
+    config(['app.name' => 'New Name']);
+    settings()->set('site_name', 'As-Is-Commerce');
+
+    $finding = findings($this->inspector)['brand_name'];
+
+    expect($finding->isBlocker())->toBeFalse();
+});
+
+it('seeds the site name from APP_NAME so a fresh install cannot diverge', function (): void {
+    // The literal this replaced is what made the split possible in the first
+    // place: a renamed APP_NAME left the seeded setting holding the old name.
+    //
+    // The row is deleted first because the seeder deliberately never overwrites
+    // a value that already exists -- re-seeding a live install is not how the
+    // rename is meant to happen, which is exactly why the check above exists to
+    // tell you when the two have drifted apart afterwards.
+    Setting::where('key', 'site_name')->delete();
+    config(['app.name' => 'Kwaku Mensah Trading']);
+
+    seedSettings();
+
+    expect(settings()->getString('site_name'))->toBe('Kwaku Mensah Trading');
 });

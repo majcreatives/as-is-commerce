@@ -160,7 +160,7 @@ class CatalogSeeder extends Seeder
                 'sku' => $definition['sku'],
                 'name' => $definition['name'],
                 'short_description' => $definition['short'],
-                'description' => $definition['short'].' Sold and dispatched by As-Is-Commerce.',
+                'description' => $definition['short'].' Sold and dispatched by '.config('app.name').'.',
                 'category_id' => $categories[$definition['category']],
                 'brand_id' => $definition['brand'] === null ? null : $brands[$definition['brand']],
                 'condition' => $definition['condition'],

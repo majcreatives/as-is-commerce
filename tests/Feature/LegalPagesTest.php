@@ -201,3 +201,37 @@ it('never falls back to the trading name as the controller', function (): void {
 
     expect($text)->toContain('NOT YET SUPPLIED');
 });
+
+/*
+ * The Data Protection Commission registration.
+ *
+ * The setting exists and the seeder described it as shown on the privacy
+ * notice, but nothing rendered it -- so the documentation was describing a
+ * disclosure the page did not make. It is a factual statement about the
+ * operator, not a rule we get to choose, which is why it is driven by whether
+ * the number exists rather than by anything we decided.
+ */
+
+it('does not print a registration number the operator does not hold', function (): void {
+    settings()->set('dpc_registration', '');
+
+    $this->get('/privacy')->assertOk()
+        ->assertDontSee('under registration number');
+});
+
+it('prints the registration number once it is supplied', function (): void {
+    settings()->set('dpc_registration', 'DPC/GH/2026/0001');
+
+    $this->get('/privacy')->assertOk()
+        ->assertSee('under registration number')
+        ->assertSee('DPC/GH/2026/0001');
+});
+
+it('keeps the terms free of a data protection registration number', function (): void {
+    // It belongs to the privacy notice only. A number appearing in the terms as
+    // well would imply a registration that covers more than data processing.
+    settings()->set('dpc_registration', 'DPC/GH/2026/0001');
+
+    $this->get('/terms')->assertOk()
+        ->assertDontSee('DPC/GH/2026/0001');
+});

@@ -127,3 +127,58 @@ cleanup.
   If a tracker or widget is ever added, all three pages become false and a
   consent mechanism becomes required. The cookie page says this in writing so
   the next person to add a pixel finds the warning.
+
+## Sending these to a lawyer
+
+```bash
+php artisan legal:review-packet
+```
+
+Writes a self-contained packet to `storage/app/legal-review/<timestamp>/`:
+an `index.html` cover plus one file per page, each with the real compiled
+stylesheet inlined, no scripts, and no reference to the build directory. Open
+`index.html` in any browser; it works with no server, no network, no build and
+no credentials, which matters because there is nowhere to deploy these yet and a
+Blade template is not something a lawyer can read.
+
+The pages are rendered through the real HTTP kernel, so what is written is what
+a customer would actually receive rather than a re-assembly of it, and the cover
+states plainly which fields are still provisional, what is being asked of the
+reviewer, and that none of it is legal advice. Every page is stamped `DRAFT —
+NOT LEGAL ADVICE` on its face: an unmarked draft can be mistaken for the
+finished article, which is the one outcome worse than not sending it at all.
+
+Re-run the command after any change to the pages or the settings.
+
+### The trading name is not settled
+
+"As-Is-Commerce" is a working name, and it appears in both the privacy notice
+and the terms as the name the business trades as. A trading name used in Ghanaian
+commerce is normally registered with the Registrar General's Department, so the
+reviewer has to be told this is provisional or they will proofread around it and
+those comments will be invalidated by the rename. The cover says so.
+
+### The registered entity, address and DPC registration
+
+`legal_entity_name`, `legal_entity_address` and `dpc_registration` are settings,
+filled in at `/admin/settings`, not code. The first two are hard blockers in
+`app:check-environment` while the site is exposed. `dpc_registration` is shown
+on the privacy notice as soon as it has a value, and is deliberately not a
+blocker: not every operator is registered, and printing a registration number
+nobody holds would be worse than printing none.
+
+### The site name and the emails had drifted apart
+
+The public pages, the page titles and both legal notices read
+`config('app.name')` — `APP_NAME`. Order confirmations, password resets and
+one-time codes read the `site_name` setting. Nothing tied the two together, and
+the seeder wrote the setting as a literal rather than deriving it, so renaming
+by setting `APP_NAME` would have renamed the site and left every customer email
+calling the old name, with nothing broken to signal it.
+
+The seeder now derives the setting from `APP_NAME`, the catalogue seeder no
+longer hardcodes the name in product descriptions, and `app:check-environment`
+reports a `brand_name` warning whenever the two disagree. It is a warning
+rather than a blocker because it is a two-minute fix on a settings screen, and
+stopping a deploy for it would only ever be a nuisance.
+

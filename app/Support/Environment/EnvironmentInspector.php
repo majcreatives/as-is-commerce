@@ -93,7 +93,57 @@ final class EnvironmentInspector
             ...$this->queuedMail(),
             ...$this->supportContact($exposed),
             ...$this->legalIdentity($exposed),
+            ...$this->brandName(),
         ];
+    }
+
+    /**
+     * Whether the site and its own emails agree on what it is called.
+     *
+     * A warning, and the reason it is a warning rather than a blocker is that
+     * neither name is wrong on its own -- but they are read by different code
+     * from different places, and nothing in the system ties them together. The
+     * public pages, the page titles, the footer and the legal notices read
+     * `config('app.name')`. Order confirmations, password resets and one-time
+     * codes read the `site_name` setting. So changing APP_NAME alone renames
+     * the site and leaves the emails calling the old name, or the reverse, and
+     * neither is a crash: the store works perfectly while answering to two
+     * different names in front of a customer.
+     *
+     * This matters most exactly when somebody is renaming, which is when the
+     * two are set at different times and nothing looks wrong. It is also cheap
+     * to get right -- the seeder now derives the setting from APP_NAME -- so a
+     * mismatch here means one of the two was changed afterwards, by hand, and
+     * somebody should say which one they meant.
+     *
+     * @return list<EnvironmentFinding>
+     */
+    private function brandName(): array
+    {
+        $fromConfig = trim((string) $this->config->get('app.name'));
+
+        try {
+            $fromSetting = trim((string) settings()->get('site_name', ''));
+        } catch (Throwable) {
+            return [];
+        }
+
+        if ($fromSetting === '' || $fromConfig === '') {
+            return [];
+        }
+
+        if ($fromSetting === $fromConfig) {
+            return [EnvironmentFinding::ok('brand_name', "The site and its emails both call themselves \"{$fromConfig}\".")];
+        }
+
+        return [EnvironmentFinding::warning(
+            'brand_name',
+            "The site calls itself \"{$fromConfig}\" but its emails say \"{$fromSetting}\".",
+            'Every public page and both legal notices use APP_NAME; order confirmations, password resets and '
+            .'one-time codes use the site_name setting. A customer whose receipt names one business and whose '
+            .'reset code names another has been told, by a marketplace, that we are two companies. Pick the one '
+            .'that is right and set the other to match.',
+        )];
     }
 
     /**

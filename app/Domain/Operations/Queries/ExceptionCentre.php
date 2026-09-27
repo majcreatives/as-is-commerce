@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\Operations\Queries;
 
+use App\Domain\Credit\Services\CreditLedgerReconciler;
 use App\Domain\Operations\ValueObjects\OperationalException;
 use App\Domain\Operations\ValueObjects\Severity;
 use App\Domain\Referrals\Services\ReferralReconciler;
@@ -16,6 +17,7 @@ use App\Enums\OrderStatus;
 use App\Enums\RefundStatus;
 use App\Enums\WebhookProcessingStatus;
 use App\Models\Auction;
+use App\Models\CreditWallet;
 use App\Models\Delivery;
 use App\Models\Order;
 use App\Models\PaymentWebhookEvent;
@@ -73,6 +75,7 @@ class ExceptionCentre
         private readonly RefundReconciler $refunds,
         private readonly ReferralReconciler $referrals,
         private readonly StoreWalletReconciler $storeWallets,
+        private readonly CreditLedgerReconciler $credits,
     ) {}
 
     /**
@@ -96,6 +99,7 @@ class ExceptionCentre
             'referrals' => $this->referralExceptions(),
             'inventory' => $this->inventory(),
             'store_wallet' => $this->storeWallets(),
+            'credit_wallet' => $this->creditWallets(),
         ];
     }
 
@@ -162,6 +166,35 @@ class ExceptionCentre
             url: route('admin.wallets.show', $wallet->user_id),
             detectedAt: $wallet->updated_at,
             nextAction: 'Inspect the ledger on the Store Wallets screen. Correct with a compensating entry, never an edit.',
+        ))->all();
+    }
+
+    /**
+     * Credit balances that have drifted from their own ledger.
+     *
+     * This is the same check as the store wallet's and it is here for the same
+     * reason, but the exposure is worse: credits are what a bid spends, so a
+     * balance that has drifted does not merely misstate a figure on a screen,
+     * it decides whether somebody can bid or is refused. Until this was added
+     * the credit reconciler could only be run by hand, against one named
+     * customer, from the wallet screen -- so drift in a wallet nobody happened
+     * to open was not merely unreported, it was unreachable.
+     *
+     * @return list<OperationalException>
+     */
+    private function creditWallets(): array
+    {
+        $mismatches = $this->credits->projectionMismatches(self::PER_CATEGORY);
+
+        return $mismatches->map(fn (CreditWallet $wallet): OperationalException => new OperationalException(
+            category: 'credit_wallet',
+            type: 'projection_divergence',
+            severity: Severity::Critical,
+            detail: "Credit Wallet #{$wallet->id} balance ({$wallet->balance}) does not match the sum of its ledger entries.",
+            reference: 'User #'.$wallet->user_id,
+            url: route('admin.wallets.show', $wallet->user_id),
+            detectedAt: $wallet->updated_at,
+            nextAction: 'Inspect the ledger on the Wallets screen. Correct with a compensating entry, never an edit.',
         ))->all();
     }
 

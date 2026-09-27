@@ -1792,9 +1792,27 @@ across six screens and two console commands:
 | Delivery | Packages that failed, and deliveries with nowhere to go |
 | Referrals | Qualified referrals never rewarded |
 | Inventory | Stock projections that cannot be true |
+| Store Wallet | A cash balance that does not match its own ledger |
+| Credit Wallet | A credits balance that does not match its own ledger |
 
-It reuses `RefundReconciler` and `ReferralReconciler` rather than
-reimplementing what they already know.
+It reuses `RefundReconciler`, `ReferralReconciler`, `StoreWalletReconciler` and
+`CreditLedgerReconciler` rather than reimplementing what they already know.
+
+The two balance categories are the ones that matter most, and they are the two
+that were last. A Store Wallet or credits figure that has drifted from its
+ledger does not merely misstate a number on a screen: credits are what a bid
+spends, so the same drift decides whether a customer can bid or is refused,
+and until both checks existed the only way to ask the question was to open one
+named customer and click reconcile. Drift in a wallet nobody happened to look
+at was not unreported, it was unreachable.
+
+**The ledger is authoritative and the balance is a projection.** That is why
+these read `projection_divergence` rather than "wrong balance", and why nothing
+here edits either side. The database refuses an `UPDATE` against
+`credit_transactions` outright, so drift can only arrive through the code that
+writes them — which is what the check is aimed at. `credits:reconcile` asks the
+same question from the command line, for an incident or a scheduled run, and
+repairs nothing either.
 
 **There is no dismiss and no acknowledge.** An exception disappears when the
 situation it describes stops being true, and not before — marking one as

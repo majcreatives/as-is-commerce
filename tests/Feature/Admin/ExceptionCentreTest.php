@@ -3,12 +3,15 @@
 declare(strict_types=1);
 
 use App\Domain\Catalog\Services\InventoryService;
+use App\Domain\Credit\Services\CreditLedgerReconciler;
 use App\Domain\Operations\Queries\ExceptionCentre;
 use App\Domain\Operations\ValueObjects\OperationalException;
 use App\Domain\Operations\ValueObjects\Severity;
 use App\Domain\Refunds\Actions\ProcessRefund;
 use App\Enums\WebhookProcessingStatus;
 use App\Livewire\Admin\Operations\ExceptionCentrePage;
+use App\Models\CreditTransaction;
+use App\Models\CreditWallet;
 use App\Models\PaymentWebhookEvent;
 use App\Models\StoreWallet;
 use App\Models\User;
@@ -264,4 +267,115 @@ it('includes webhooks and store_wallet in counts', function (): void {
     expect($counts)->toHaveKey('webhooks')
         ->and($counts)->toHaveKey('store_wallet')
         ->and($counts['webhooks'])->toBeGreaterThanOrEqual(1);
+});
+
+/*
+ * Credit balance drift.
+ *
+ * The store wallet has reported its own projection divergence here since it was
+ * built. The credit side never did, which is the more serious of the two: a
+ * Store Wallet figure that is wrong misstates a number on a screen, whereas
+ * credits are what a bid spends, so the same drift decides whether a customer
+ * can bid or is refused -- and it was only ever detectable by opening that
+ * one customer's wallet and clicking reconcile, so a wallet nobody happened to
+ * look at was not merely unreported, it was unreachable.
+ *
+ * These tests drift a balance on purpose. The model guard that makes the
+ * materialized balance append-only has a narrow, explicit test-only escape
+ * hatch for exactly this, and the last test here is the one that matters most:
+ * the database must refuse the state these tests are looking for.
+ */
+
+it('reports a credit wallet whose balance has drifted from its ledger', function (): void {
+    $user = bidder();
+
+    $wallet = CreditWallet::where('user_id', $user->id)->firstOrFail();
+    expect($wallet->balance)->toBeGreaterThan(0);
+
+    CreditWallet::permittingBalanceWrites(function () use ($wallet): void {
+        $wallet->balance = $wallet->balance + 500;
+        $wallet->save();
+    });
+
+    $exceptions = app(ExceptionCentre::class)->all('credit_wallet');
+
+    expect(typesIn($exceptions))->toContain('projection_divergence')
+        ->and($exceptions[0]->severity)->toBe(Severity::Critical)
+        ->and($exceptions[0]->detail)->toContain('Credit Wallet #'.$wallet->id)
+        // The figure is stated, because "something is wrong with a balance" is
+        // not actionable and "it is 500 too high" is a place to start.
+        ->and($exceptions[0]->detail)->toContain((string) $wallet->balance);
+});
+
+it('does not report a credit wallet that agrees with its ledger', function (): void {
+    bidder();
+
+    expect(app(ExceptionCentre::class)->all('credit_wallet'))->toBeEmpty();
+});
+
+it('includes credit_wallet in counts and totals', function (): void {
+    $user = bidder();
+    $wallet = CreditWallet::where('user_id', $user->id)->firstOrFail();
+
+    CreditWallet::permittingBalanceWrites(function () use ($wallet): void {
+        $wallet->balance = 999_999;
+        $wallet->save();
+    });
+
+    $counts = app(ExceptionCentre::class)->counts();
+
+    expect($counts['credit_wallet'] ?? 0)->toBe(1);
+});
+
+it('cannot have its ledger edited, so drift can only come from a bad write', function (): void {
+    // A ledger row cannot be updated -- not by the application, and not by
+    // anybody who reaches the database directly. That is enforced by a trigger,
+    // not by convention, and it is the reason the projection check exists at
+    // all: if the ledger cannot be edited, the only way a materialized balance
+    // can stop matching it is a bug in the code that writes them.
+    $user = bidder();
+    $wallet = CreditWallet::where('user_id', $user->id)->firstOrFail();
+
+    expect(fn (): int => CreditTransaction::where('credit_wallet_id', $wallet->id)
+        ->update(['amount' => -5000]))
+        ->toThrow(QueryException::class);
+});
+
+it('catches a ledger that sums below zero, which is a write bug not an edit', function (): void {
+    // The trigger above blocks edits, but nothing stops the code that writes
+    // new rows from writing a wrong one -- and an INSERT is exactly what a
+    // buggy deduction path would do. A ledger summing below zero means credits
+    // were taken that should not have been, which the unsigned balance column
+    // cannot represent, so it would otherwise be invisible until somebody
+    // tried to spend them.
+    //
+    // Written through the model, bypassing the service, on purpose: the point
+    // is that a row *can* be inserted and the detector must still see it.
+    $user = bidder();
+    $wallet = CreditWallet::where('user_id', $user->id)->firstOrFail();
+
+    CreditTransaction::create([
+        'credit_wallet_id' => $wallet->id,
+        'type' => 'purchase',
+        'amount' => -($wallet->balance + 10_000),
+        'balance_after' => 0,
+        'idempotency_key' => 'test_bogus_deduction_'.$wallet->id,
+    ]);
+
+    expect(app(CreditLedgerReconciler::class)->projectionMismatches())->not->toBeEmpty();
+});
+
+it('bounds the wallet sweep, so it cannot grow into an outage', function (): void {
+    // An operations screen is needed most on the worst day, which is the day a
+    // full pass over every customer's history would take the site down with it.
+    $user = bidder();
+    $wallet = CreditWallet::where('user_id', $user->id)->firstOrFail();
+
+    CreditWallet::permittingBalanceWrites(function () use ($wallet): void {
+        $wallet->balance = 4242;
+        $wallet->save();
+    });
+
+    expect(app(CreditLedgerReconciler::class)->projectionMismatches())->toHaveCount(1)
+        ->and(app(CreditLedgerReconciler::class)->projectionMismatches(0))->toBeEmpty();
 });

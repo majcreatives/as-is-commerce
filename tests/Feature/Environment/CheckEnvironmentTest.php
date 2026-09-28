@@ -460,3 +460,93 @@ it('seeds the site name from APP_NAME so a fresh install cannot diverge', functi
 
     expect(settings()->getString('site_name'))->toBe('Kwaku Mensah Trading');
 });
+
+/*
+ * Whether the log is rotated, and whether anything sees it.
+ *
+ * Found by actually looking. The development log had reached 284MB, entirely
+ * test output, with no rotation configured anywhere and no error tracker
+ * installed. Neither problem is visible in the code; both only show up in the
+ * shape of a file on a disk.
+ */
+
+it('warns when no log channel rotates', function (): void {
+    // The single driver never trims itself. A warning rather than a blocker
+    // because a host may rotate it for us, and only the operator knows.
+    config([
+        'logging.default' => 'stack',
+        'logging.channels.stack' => ['driver' => 'stack', 'channels' => ['single']],
+    ]);
+
+    expect(findings($this->inspector)['logging.rotation']->isWarning())->toBeTrue();
+});
+
+it('is happy when the log rotates', function (): void {
+    config([
+        'logging.default' => 'stack',
+        'logging.channels.stack' => ['driver' => 'stack', 'channels' => ['daily']],
+    ]);
+
+    $finding = findings($this->inspector)['logging.rotation'];
+
+    expect($finding->severity)->toBe('ok')
+        ->and($finding->finding)->toContain('rotates');
+});
+
+it('accepts a rotating channel that is not in a stack', function (): void {
+    // Someone can point LOG_CHANNEL straight at daily without a stack in the
+    // way, and that rotates just as well.
+    config([
+        'logging.default' => 'daily',
+        'logging.channels.daily' => ['driver' => 'daily'],
+    ]);
+
+    expect(findings($this->inspector)['logging.rotation']->severity)->toBe('ok');
+});
+
+it('warns that nobody is watching the log', function (): void {
+    expect(findings($this->inspector)['logging.delivery']->isWarning())->toBeTrue();
+});
+
+it('does not mistake a defined channel for a configured one', function (): void {
+    // This one was wrong in the first version. config/logging.php *defines* a
+    // slack channel out of the box, so checking which channels exist reported
+    // error reporting as configured for every installation on earth. A channel
+    // that is defined and a channel that is in use are different facts, and
+    // only the second one means anyone would hear about a failure.
+    config([
+        'logging.default' => 'stack',
+        'logging.channels.stack' => ['driver' => 'stack', 'channels' => ['single']],
+    ]);
+
+    expect(findings($this->inspector)['logging.delivery']->isWarning())->toBeTrue();
+});
+
+it('is happy when a channel in use sends the log off the host', function (): void {
+    config([
+        'logging.default' => 'stack',
+        'logging.channels.stack' => ['driver' => 'stack', 'channels' => ['daily', 'slack']],
+    ]);
+
+    expect(findings($this->inspector)['logging.delivery']->severity)->toBe('ok');
+});
+
+it('does not treat syslog as off-box delivery', function (): void {
+    // syslog writes into the host's own syslog, which is to say back into the
+    // same machine. Calling that delivery would defeat the point of the check.
+    config([
+        'logging.default' => 'syslog',
+        'logging.channels.syslog' => ['driver' => 'syslog'],
+    ]);
+
+    expect(findings($this->inspector)['logging.delivery']->isWarning())->toBeTrue();
+});
+
+it('keeps the test suite out of the log a real error would land in', function (): void {
+    // 284MB of test output sat in laravel.log, which is where a production
+    // error lands, and buried it to the point that reading the tail of the file
+    // timed out. phpunit.xml pins the cache, queue, session and mail drivers for
+    // exactly this reason and had left logging as the one it missed.
+    expect(config('logging.default'))->toBe('testing')
+        ->and(config('logging.channels.testing.path'))->toContain('testing.log');
+});

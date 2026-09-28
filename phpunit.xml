@@ -75,9 +75,15 @@
         <env name="DB_DATABASE" value="as_is_commerce_testing" force="true"/>
         <server name="DB_DATABASE" value="as_is_commerce_testing" force="true"/>
 
-        <env name="MAIL_MAILER" value="array" force="true"/>
-        <server name="MAIL_MAILER" value="array" force="true"/>
-        <env name="QUEUE_CONNECTION" value="sync" force="true"/>
+    <env name="MAIL_MAILER" value="array" force="true"/>
+    <server name="MAIL_MAILER" value="array" force="true"/>
+    <!-- The suite logs every financial action, and phpunit.xml pins the cache,
+         queue, session and mail drivers for exactly this reason. Logging was the
+         one it missed, so a full run wrote into the same laravel.log a
+         production error would land in, and buried it. -->
+    <env name="LOG_CHANNEL" value="testing" force="true"/>
+    <server name="LOG_CHANNEL" value="testing" force="true"/>
+    <env name="QUEUE_CONNECTION" value="sync" force="true"/>
         <server name="QUEUE_CONNECTION" value="sync" force="true"/>
         <env name="SESSION_DRIVER" value="array" force="true"/>
         <server name="SESSION_DRIVER" value="array" force="true"/>

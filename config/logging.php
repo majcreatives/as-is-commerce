@@ -67,6 +67,30 @@ return [
             'replace_placeholders' => true,
         ],
 
+        /*
+         * Where the test suite writes.
+         *
+         * The suite is the loudest thing in this application: every financial
+         * action carries a structured log line, so a full run produces a volume
+         * no production day would. Pointed at laravel.log it did not just make
+         * that file large, it put test noise in the same file as anything real,
+         * which is the one place a log stops being worth reading. It reached
+         * 284MB, at which point reading the tail of it to find a production
+         * error became slow enough to time out.
+         *
+         * Kept as a rotating file rather than a null channel on purpose. When a
+         * test fails, the log explaining what the domain was doing just before
+         * it failed is most of the diagnosis, and silencing it would trade a
+         * disk problem for a debugging problem.
+         */
+        'testing' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/testing.log'),
+            'level' => env('LOG_LEVEL', 'debug'),
+            'days' => 3,
+            'replace_placeholders' => true,
+        ],
+
         'daily' => [
             'driver' => 'daily',
             'path' => storage_path('logs/laravel.log'),

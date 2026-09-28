@@ -367,6 +367,18 @@ final class EnvironmentInspector
      */
     private function logging(bool $exposed): array
     {
+        return [
+            ...$this->logLevel($exposed),
+            ...$this->logRotation(),
+            ...$this->logDelivery(),
+        ];
+    }
+
+    /**
+     * @return list<EnvironmentFinding>
+     */
+    private function logLevel(bool $exposed): array
+    {
         $level = $this->effectiveLogLevel();
 
         if ($level === null) {
@@ -386,6 +398,104 @@ final class EnvironmentInspector
                 .'personal data.',
             )]
             : [EnvironmentFinding::warning('logging.level', 'Level is debug.', 'Acceptable locally.')];
+    }
+
+    /**
+     * Whether the log file is ever trimmed.
+     *
+     * A warning rather than a blocker, because a host can rotate it for you and
+     * only the operator knows. But it is worth saying out loud, because the
+     * failure is not gradual: the `single` driver appends forever, and when the
+     * volume fills, Laravel can no longer write compiled views or caches. That
+     * is a whole-site outage triggered by something that looked, until that
+     * moment, like only a large log file. Nothing else here protects against it
+     * -- there is no cron and no logrotate on the shared hosting this targets.
+     *
+     * @return list<EnvironmentFinding>
+     */
+    private function logRotation(): array
+    {
+        $rotating = ['daily', 'weekly', 'monthly'];
+
+        foreach ($this->effectiveChannels() as $name) {
+            $driver = $this->config->get("logging.channels.{$name}.driver");
+
+            if (is_string($driver) && in_array($driver, $rotating, true)) {
+                return [EnvironmentFinding::ok(
+                    'logging.rotation',
+                    "Writes to the \"{$name}\" channel, which rotates and trims itself.",
+                )];
+            }
+        }
+
+        return [EnvironmentFinding::warning(
+            'logging.rotation',
+            'No rotating log channel, so the log file only ever grows.',
+            'The single driver appends indefinitely. On a host with a disk quota the file eventually '
+            .'fills the volume, and a full disk stops Laravel writing compiled views and caches -- '
+            .'which is an outage, not just a big file. Set LOG_STACK=daily, which the daily channel '
+            .'already supports, and set LOG_DAILY_DAYS to how long you want to keep it.',
+        )];
+    }
+
+    /**
+     * Whether anything would notice a failure.
+     *
+     * This is about a failure at three in the morning, which is the only time
+     * one ever happens. A log file on the host is evidence, not alerting: nobody
+     * is looking at it, so a payment path breaking over a weekend is found on
+     * Monday by a customer, not by us. The deployment is already sequenced so
+     * the queue work is a deliberate later step, and this is that same decision
+     * reported honestly -- the gap is real, it is a warning, and pretending a
+     * log file solves it would be the actual mistake.
+     *
+     * @return list<EnvironmentFinding>
+     */
+    private function logDelivery(): array
+    {
+        $external = ['slack', 'papertrail', 'sentry', 'bugsnag', 'rollbar'];
+
+        foreach ($this->effectiveChannels() as $name) {
+            $driver = $this->config->get("logging.channels.{$name}.driver");
+
+            if (is_string($driver) && in_array($driver, $external, true)) {
+                return [EnvironmentFinding::ok(
+                    'logging.delivery',
+                    "The \"{$name}\" channel is in use, so the log is configured to leave the host.",
+                )];
+            }
+        }
+
+        return [EnvironmentFinding::warning(
+            'logging.delivery',
+            'Nothing in use receives the log off the host.',
+            'A log file is evidence, not alerting. Nobody is watching it, so a broken payment path at '
+            .'3am is discovered by a customer rather than by us. This is a known, accepted gap for now '
+            .'rather than an oversight, and it is worth closing once there is money flowing -- not before.',
+        )];
+    }
+
+    /**
+     * The channels actually in force, following `stack` one level down.
+     *
+     * @return list<string>
+     */
+    private function effectiveChannels(): array
+    {
+        $default = (string) $this->config->get('logging.default');
+        $channel = $this->config->get("logging.channels.{$default}");
+
+        if (! is_array($channel)) {
+            return [];
+        }
+
+        $nested = $channel['channels'] ?? null;
+
+        if (is_array($nested) && $nested !== []) {
+            return array_values(array_map('strval', $nested));
+        }
+
+        return [$default];
     }
 
     /**

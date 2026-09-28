@@ -195,6 +195,42 @@ Record `schedule:list` (3 events, no referrals line), then the four
 2. Record that `/admin/dashboard` loads, scheduler status shows fresh stamps,
    and the exception centre is empty.
 3. `storage/logs` writable and free of secrets after the above steps.
+4. `php artisan app:check-environment --strict` reports `logging.rotation` as
+   `ok`. The production template ships `LOG_STACK=daily` for this reason: the
+   `single` driver never trims itself, and a full disk stops Laravel writing
+   compiled views and caches, which is an outage rather than a large file.
+   Confirm `ls -la storage/logs` shows date-stamped files after a write.
+
+### Flow H2 — Known monitoring gap, accepted
+
+`logging.delivery` reports a **warning** on any install that has no channel in
+use that sends the log off the host, and it should stay a warning rather than
+being closed before there is money flowing. The reasoning is in the finding
+itself: a log file on the host is evidence, not alerting, so a payment path that
+breaks at 3am is found by a customer rather than by us.
+
+This is a recorded gap, not an oversight, and closing it means choosing a
+hosted error tracker during a stage that has not been approved. Re-check it at
+the first stage after launch.
+
+Two things this audit did find, and which are now fixed rather than deferred:
+
+- **The test suite was writing into the production log.** `phpunit.xml` pins
+  `CACHE_STORE`, `QUEUE_CONNECTION`, `SESSION_DRIVER` and `MAIL_MAILER` for
+  test isolation and had left `LOG_CHANNEL` as the one it missed, so a full run
+  appended every financial log line to `storage/logs/laravel.log` — the same
+  file a real error lands in. It had reached 284MB, at which point reading the
+  tail of it to find a production error took over five minutes. `LOG_CHANNEL`
+  is now pinned to a dedicated rotating `testing` channel at
+  `storage/logs/testing.log`, kept as a file rather than silenced, because when
+  a test fails the log explaining what the domain was doing just beforehand is
+  most of the diagnosis.
+- **The first version of the `logging.delivery` check was wrong.** It tested
+  which channels were *defined* in `config/logging.php`, and Laravel defines a
+  `slack` channel out of the box — so it reported error reporting as configured
+  for every installation on earth. It now tests which channels are *in use*.
+  The same distinction the rest of this project is careful about: a defined
+  channel is not a configured one.
 
 ---
 

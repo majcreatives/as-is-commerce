@@ -188,6 +188,101 @@ Record `schedule:list` (3 events, no referrals line), then the four
 3. Confirm the release zip's artifact is retrievable (the deploy rollback
    boundary also includes re-downloading the release zip).
 
+#### Why `--triggers` is not optional here
+
+The documented command already carries `--triggers`, and it is worth recording
+why that flag is the whole ballgame rather than a nicety.
+
+**This schema has 28 triggers, and they are the financial integrity layer.** They
+are what makes the append-only and freezing rules true at the database rather
+than only in application code:
+
+| Category | Examples | Enforces |
+|---|---|---|
+| Append-only ledgers | `credit_transactions_no_update/_no_delete`, `cash_transactions_*`, `inventory_transactions_*`, `store_wallet_transactions_*` | never UPDATE or DELETE a financial history row (Golden Rules 2–4, §13, §27) |
+| Immutable bids | `bids_no_update`, `bids_no_delete` | a bid can never be rewritten or removed (§20) |
+| Frozen facts | `auctions_frozen_configuration`, `orders_frozen_after_payment`, `order_payments_frozen_request`, `refunds_frozen_request`, `credit_lots_acquisition_frozen`, `deliveries_frozen_address`, `referrals_frozen_relationship` | configuration and commercial figures stop changing at a known point (§16, §25, §48) |
+
+A backup that restores the tables but not the triggers produces a database that
+*looks* healthy and will silently accept `UPDATE credit_transactions SET amount
+= ...`. That is worse than having no backup, because it is the state you would
+only discover during an incident. So the restore test must assert on trigger
+**behaviour**, not on trigger count — a trigger can be present and inert.
+
+#### Roundtrip verified locally (2026-09-28)
+
+Run against a scratch database using the test database as the source, because it
+holds real ledger rows rather than the near-empty development database. Nothing
+was written to either source database; all tampering was against the restored
+copy. The scratch databases and the temporary credentials file were deleted
+afterwards.
+
+| Check | Result |
+|---|---|
+| `mysqldump --single-transaction --routines --triggers` | exit 0, no stderr |
+| Dump size / duration | 324.5 KB, 0.82s |
+| Restore into empty scratch DB | exit 0, no stderr, 4.4s |
+| Tables restored | 52 of 52 |
+| Triggers restored | 28 of 28 |
+| Engine | all InnoDB, so `--single-transaction` is a real consistent snapshot |
+| Collation | `utf8mb4_unicode_ci` on all 52, no drift |
+| Row counts | `credit_transactions` 1→1, `store_wallet_transactions` 3→3, `inventory_transactions` 2→2, `users` 1→1 |
+
+Behaviour after restore, which is the check that matters:
+
+| Tamper attempt on the restored DB | Result |
+|---|---|
+| `UPDATE credit_transactions SET amount=999999` | refused: *Financial history is append-only… Post a compensating entry instead.* |
+| `DELETE FROM store_wallet_transactions` | refused: *Store Wallet history is append-only…* |
+| `UPDATE inventory_transactions SET quantity_delta=999` | refused: *Inventory history is append-only: post a correcting adjustment instead.* |
+| `UPDATE orders SET total_minor=1` on a `paid` order | refused: *A paid order is a historical record…* |
+| `UPDATE auctions SET settlement_amount_minor=777` on a non-`draft` auction | refused: *An auction configuration is frozen once the auction leaves draft.* |
+
+All trigger **bodies** survived verbatim, including the null-safe `<=>`
+comparisons and the per-column lists, so the conditional paths work and not just
+the trigger names.
+
+Two behaviours worth knowing, both of which look like a gap and are not:
+
+- A `draft` auction is exempt from the freezing trigger, and a `pending_payment`
+  order is exempt from the order-freezing trigger. Changing them is allowed by
+  design.
+- The freezing triggers compare `NEW.col <=> OLD.col`, so re-writing a column to
+  the value it already holds does not fire. Setting a field to its existing
+  value is not tampering.
+
+#### What was NOT verified
+
+Stated plainly, because it matters and the local run cannot settle it:
+
+- **The production dump must be taken with the host's MariaDB `mysqldump`**, not
+  the MySQL 8.0 one used here. This dump was produced by MySQL 8.0.46 and shows
+  no MySQL-8-only constructs — no `utf8mb4_0900_*` collation, no `/*!80000`
+  conditional blocks, highest directive `/*!50503`, and the only `GENERATED
+  ALWAYS` columns use syntax MariaDB supports — so it is *indicatively* portable.
+  Indicative is not verified. The MariaDB roundtrip has to be re-run on the real
+  host as part of this flow.
+- **No restore has been performed against MariaDB 11.8.x at all.** The local
+  server is MySQL 8.0.46.
+- No timing at production data volume, no off-site copy, and no restore under
+  real load. 0.82s and 4.4s are small-database numbers and say nothing about a
+  database three orders of magnitude larger.
+
+#### Operational notes
+
+- **The dump does not create the target database.** It contains no `CREATE
+  DATABASE`, no `USE`, and no `GRANT`, so a restore is
+  `CREATE DATABASE` → `mysql <db> < backup.sql`, and users/privileges are not
+  part of the backup. That is usually correct, but it means a restore is two
+  steps and the second one is easy to forget.
+- **Do not pass the password on the command line.** It lands in the process
+  argument list. Use `--defaults-extra-file` with a `my.cnf` outside the repo,
+  and delete it afterwards. Never commit one.
+- `retention: ≥ 7 daily + 1 weekly` is still a policy statement; nothing in the
+  application schedules or performs backups, and nothing stores a backup off the
+  host. Until that exists, a backup that nobody offloads is one disk failure from
+  being worth nothing.
+
 ### Flow H — Monitoring surface
 
 1. `GET /up` → 200; `GET /health` → `{"status":"ok","database":"ok"}` on the

@@ -2396,6 +2396,28 @@ The `--single-transaction` flag ensures a consistent snapshot without
 locking the live tables. Retain at least seven daily backups and one
 weekly; delete older files.
 
+**Do not drop `--triggers`.** This schema has 28 triggers and they *are* the
+financial integrity layer: append-only enforcement on every ledger
+(`credit_transactions`, `cash_transactions`, `inventory_transactions`,
+`store_wallet_transactions`, `bids`) and every freezing rule
+(`auctions_frozen_configuration`, `orders_frozen_after_payment`, and six more).
+A dump without them restores a database that looks healthy and will silently
+accept `UPDATE credit_transactions SET amount = ...`. That is worse than having
+no backup, because you find out during an incident.
+
+Two practical points. The dump contains no `CREATE DATABASE` and no `GRANT`, so
+a restore is `CREATE DATABASE` then `mysql <db> < backup.sql`, and database
+users are not part of the backup. And do not put the password in the command —
+it lands in the process argument list; use `--defaults-extra-file` with a `my.cnf`
+kept outside the repository and delete it afterwards.
+
+Verify a restore, do not assume one. A trigger can be present in a restored
+database and still be inert, so the check has to be behavioural rather than a
+row count. `docs/VERIFY_27_PRODUCTION_PREP.md` § Flow G records the roundtrip
+that was run, the five tamper attempts that were refused, and — importantly —
+what was *not* verified, including that the production dump must be taken with
+the host's MariaDB `mysqldump` and re-tested there.
+
 ### App rollback
 
 If a new deployment introduces a problem, roll back to the previous

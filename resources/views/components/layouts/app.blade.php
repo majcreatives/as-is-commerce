@@ -6,7 +6,14 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
 
     @php
-        $pageTitle = $title ?? config('app.name');
+        // Every title carries the brand, so a lone "Shop" or "FAQs" in a search
+        // result says who it belongs to. Skip it when the page already names the
+        // brand, which the home page does, rather than repeating it twice.
+        $brand = config('app.name');
+        $ownTitle = $title ?? null;
+        $pageTitle = $ownTitle === null
+            ? $brand
+            : (str_contains($ownTitle, $brand) ? $ownTitle : $ownTitle.' — '.$brand);
         // Only what the page actually said about itself. Nothing here invents
         // a description, and no private or customer-specific detail is ever
         // passed in -- these tags are public by definition.
@@ -31,11 +38,11 @@
     @endisset
     <meta name="twitter:card" content="{{ isset($ogImage) ? 'summary_large_image' : 'summary' }}">
 
-    {{-- Pages behind authentication are never worth indexing, and indexing one
-         would put a customer's own view of their account in a search result. --}}
-    @auth
-        <meta name="robots" content="noindex, nofollow">
-    @endauth
+    {{-- No robots meta tag here on purpose. Indexability is decided per route
+         by App\Http\Middleware\NoIndex, which sends an X-Robots-Tag header. The
+         tag this replaced was conditioned on @auth, and a crawler is never
+         authenticated -- so it never reached the party it was meant for, while
+         wrongly marking public pages noindex for signed-in customers. --}}
 
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 
@@ -55,9 +62,13 @@
     @endisset
 </head>
 <body class="flex min-h-full flex-col bg-slate-50 font-sans text-slate-900 antialiased">
+    {{-- WCAG 2.4.1. Without this, a keyboard or screen-reader user has to tab
+         through the whole header on every page. Hidden until focused. --}}
+    <a href="#main" class="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-white focus:px-4 focus:py-2 focus:text-sm focus:shadow-lg">Skip to content</a>
+
     @include('partials.navigation')
 
-    <main class="flex-1 py-8 sm:py-10">
+    <main id="main" class="flex-1 py-8 sm:py-10">
         <x-container>
             @if (session('status'))
                 <x-alert variant="info" class="mb-6">{{ session('status') }}</x-alert>

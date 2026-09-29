@@ -107,6 +107,12 @@ class ProductCatalog extends Component
             'brands' => $products->brands(),
             'conditions' => ProductCondition::cases(),
             'sorts' => self::SORTS,
-        ]);
+        ])
+            // See AuctionIndex: the page-header description is the visible
+            // subheading only, so the page was inheriting the layout default
+            // and duplicating / and /auctions word for word.
+            ->layoutData([
+                'description' => 'Everything currently in our catalog, with its Buy Now price in cedis. Products with a live auction show that too.',
+            ]);
     }
 }

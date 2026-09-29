@@ -21,7 +21,9 @@ beforeEach(function (): void {
 it('serves each company page to a guest with its own title', function (string $route, string $title): void {
     $this->get(route($route))
         ->assertOk()
-        ->assertSee('<title>'.$title.'</title>', false);
+        // The layout appends the brand to every inner page title, read from
+        // config, so renaming the marketplace does not mean editing this table.
+        ->assertSee('<title>'.$title.' — '.config('app.name').'</title>', false);
 })->with([
     'about' => ['about', 'About us'],
     'contact' => ['contact', 'Contact us'],

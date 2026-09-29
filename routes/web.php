@@ -123,7 +123,17 @@ Route::get('/products/{slug}', ProductDetail::class)->name('products.show');
 |--------------------------------------------------------------------------
 */
 
-Route::middleware('guest')->group(function (): void {
+// 'noindex' is listed FIRST so it wraps the middleware that can return a
+// normal response of its own -- 'guest' redirects a signed-in customer away
+// from /login with a plain 302, and that response can carry the header.
+//
+// It cannot help with the auth case, and that is not fixable here: 'auth'
+// throws AuthenticationException, so the redirect is built by the exception
+// handler after this middleware has already unwound, and there is no response
+// left to tag. That case is covered differently -- see public/robots.txt, which
+// stops those paths being fetched at all, and /login, which is itself noindex,
+// so a crawl that arrives anyway terminates on a page that says do not index me.
+Route::middleware(['noindex', 'guest'])->group(function (): void {
     Route::get('/login', Login::class)->name('login');
     Route::get('/register', Register::class)->name('register');
 
@@ -140,7 +150,7 @@ Route::middleware('guest')->group(function (): void {
 |--------------------------------------------------------------------------
 */
 
-Route::middleware('auth')->group(function (): void {
+Route::middleware(['noindex', 'auth'])->group(function (): void {
     Route::get('/dashboard', Dashboard::class)->name('dashboard');
     Route::view('/profile', 'pages.profile')->name('profile.edit');
     Route::post('/logout', LogoutController::class)->name('logout');
@@ -211,7 +221,7 @@ Route::middleware('auth')->group(function (): void {
 |
 */
 
-Route::middleware(['auth', 'role:admin|super_admin'])
+Route::middleware(['noindex', 'auth', 'role:admin|super_admin'])
     ->prefix('admin')
     ->name('admin.')
     ->group(function (): void {

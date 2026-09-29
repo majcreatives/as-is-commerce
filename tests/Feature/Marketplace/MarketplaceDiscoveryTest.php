@@ -375,8 +375,14 @@ it('gives a public page a canonical url and a description', function (): void {
  * their view of their account into a search result.
  */
 it('keeps signed-in pages out of search results', function (): void {
+    // Asserted on the header, not on the body. This used to look for the string
+    // "noindex" in the rendered HTML, which was satisfied by a meta tag that only
+    // appeared for authenticated viewers -- a rule no crawler would ever see,
+    // since a crawler is never signed in. Indexability is now a property of the
+    // route, expressed as an X-Robots-Tag response header, so this pins the
+    // exact value rather than matching a substring anywhere in the page.
     $this->actingAs(userWithRole('customer'))
         ->get(route('dashboard'))
         ->assertOk()
-        ->assertSee('noindex', escape: false);
+        ->assertHeader('X-Robots-Tag', 'noindex, nofollow');
 });

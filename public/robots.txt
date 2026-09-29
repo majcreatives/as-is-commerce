@@ -1,2 +1,34 @@
+# Public, discoverable surface: the home page, the shop, live auctions and the
+# legal pages. These are meant to be found.
 User-agent: *
-Disallow:
+Disallow: /admin
+Disallow: /dashboard
+Disallow: /profile
+Disallow: /cart
+Disallow: /checkout/
+Disallow: /orders
+Disallow: /wallet
+Disallow: /credits
+Disallow: /addresses
+Disallow: /referrals
+Disallow: /notifications
+
+# Sign-in pages earn no search presence, and a crawler following a stale
+# password-reset link should not keep the link alive.
+Disallow: /login
+Disallow: /register
+Disallow: /forgot-password
+Disallow: /reset-password
+
+# Operational endpoints. /up is Laravel's health check and /health is the JSON
+# probe; neither is content.
+Disallow: /up
+Disallow: /health
+
+# Note on the two halves of this file. Disallowing a path stops it being
+# crawled, but it does NOT by itself remove a URL that is already indexed --
+# a blocked URL can still appear as a bare result with no snippet. That is why
+# every private route also sends `X-Robots-Tag: noindex, nofollow`
+# (App\Http\Middleware\NoIndex). The pairing is deliberate: this file keeps
+# crawlers from spending requests on pages that will only ever redirect them to
+# a sign-in page, and the header is the signal that actually governs indexing.

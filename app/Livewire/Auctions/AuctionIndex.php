@@ -92,6 +92,14 @@ class AuctionIndex extends Component
             'categories' => $products->categories(),
             'conditions' => ProductCondition::cases(),
             'sorts' => AuctionDiscoveryQuery::SORTS,
-        ]);
+        ])
+            // The `description` on <x-page-header> is the visible subheading. It
+            // is not the document's meta description, so without this the page
+            // silently fell through to the layout default and shared a
+            // byte-identical description with / and /products. Kept in step with
+            // the heading below so the search snippet and the page agree.
+            ->layoutData([
+                'description' => 'Bid with credits, or buy outright. The largest total of credits committed wins when an auction closes.',
+            ]);
     }
 }

@@ -56,9 +56,11 @@
          not inject them a second time. --}}
     @livewireStyles
 
-    {{-- Truthful structured data only, and only where a page supplies it. --}}
+    {{-- Truthful structured data only, and only where a page supplies it.
+         Nonced to match the policy in App\Http\Middleware\SecurityHeaders,
+         which allows no inline script without one. --}}
     @isset($structuredData)
-        <script type="application/ld+json">{!! json_encode($structuredData, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) !!}</script>
+        <script type="application/ld+json" nonce="{{ $cspNonce ?? '' }}">{!! json_encode($structuredData, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) !!}</script>
     @endisset
 </head>
 <body class="flex min-h-full flex-col bg-slate-50 font-sans text-slate-900 antialiased">

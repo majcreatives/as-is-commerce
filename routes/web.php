@@ -140,7 +140,12 @@ Route::get('/sitemap.xml', SitemapController::class)->name('sitemap');
 // left to tag. That case is covered differently -- see public/robots.txt, which
 // stops those paths being fetched at all, and /login, which is itself noindex,
 // so a crawl that arrives anyway terminates on a page that says do not index me.
-Route::middleware(['noindex', 'guest'])->group(function (): void {
+//
+// 'throttle:auth-pages' bounds how fast these can be fetched by a script. It
+// is deliberately the loosest limit in the application: these pages carry
+// nothing, and the checks that matter happen when the forms are submitted, not
+// when the page is opened. See App\Providers\AppServiceProvider.
+Route::middleware(['noindex', 'guest', 'throttle:auth-pages'])->group(function (): void {
     Route::get('/login', Login::class)->name('login');
     Route::get('/register', Register::class)->name('register');
 
@@ -173,7 +178,15 @@ Route::middleware(['noindex', 'auth'])->group(function (): void {
     Route::get('/credits/history', PurchaseHistory::class)->name('credits.history');
 
     // Where the provider returns the customer's browser. Not proof of payment.
-    Route::get('/credits/callback', PaystackCallbackController::class)->name('credits.callback');
+    //
+    // Throttled, because this is an unauthenticated GET that anyone can fetch,
+    // and because it is the kind of URL that gets shared and re-fetched. The
+    // limit cannot endanger a payment: the credit purchase is fulfilled from
+    // the webhook, which is not throttled, so a payer refused here is still
+    // fulfilled. Nothing about the server-side verification has changed.
+    Route::get('/credits/callback', PaystackCallbackController::class)
+        ->middleware('throttle:payment-callbacks')
+        ->name('credits.callback');
 
     /*
      | Checkout and orders.
@@ -187,7 +200,10 @@ Route::middleware(['noindex', 'auth'])->group(function (): void {
     //
     // Where Paystack returns the browser after paying for a product. Verified
     // server-side before it says anything, exactly like the credits callback.
-    Route::get('/checkout/callback', CheckoutCallbackController::class)->name('checkout.callback');
+    // Throttled for the same reason and with the same guarantee.
+    Route::get('/checkout/callback', CheckoutCallbackController::class)
+        ->middleware('throttle:payment-callbacks')
+        ->name('checkout.callback');
 
     Route::get('/checkout/{order}', CheckoutPage::class)->name('checkout.show');
 

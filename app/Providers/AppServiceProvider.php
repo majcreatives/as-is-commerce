@@ -23,11 +23,13 @@ use App\Listeners\AuctionBroadcastSubscriber;
 use App\Listeners\NotificationSubscriber;
 use App\Listeners\ReferralSubscriber;
 use App\Models\User;
+use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
@@ -133,11 +135,55 @@ class AppServiceProvider extends ServiceProvider
         Validator::excludeUnvalidatedArrayKeys();
 
         // A super admin passes every permission check, including permissions
-        // introduced by later stages that have not been seeded onto the role
-        // yet. Returning null (rather than false) for everyone else leaves the
+        // introduced by later stages that are not yet seeded onto the role yet.
+        // Returning null (rather than false) for everyone else leaves the
         // normal permission checks to decide, instead of short-circuiting them.
         Gate::before(
             fn (User $user, string $ability): ?bool => $user->hasRole('super_admin') ? true : null
         );
+
+        $this->registerRateLimiters();
+    }
+
+    /**
+     * Throttles for the unauthenticated edges of the site.
+     *
+     * These sit in front of the pages, not in front of the work. The
+     * operations that actually matter -- checking a password, presenting a
+     * reset code, issuing a code -- are throttled inside the Livewire
+     * components that perform them, because a limit on a page load does
+     * nothing to stop an action submitted over Livewire's own endpoint.
+     *
+     * Nothing here is keyed by account, and nothing here is the only defence
+     * for anything. The four limits that stop an account being guessed or
+     * created in bulk live in the Livewire components that perform the work:
+     * five wrong passwords a minute by identifier and address, three reset
+     * codes a minute by identifier, five wrong reset codes an hour by account
+     * and address, and twenty accounts a day by address.
+     */
+    private function registerRateLimiters(): void
+    {
+        // The limiter's name already namespaces the key, so by() carries only
+        // what makes the bucket distinct. ThrottleRequests derives the cache key
+        // from the name and this value, and prefixes nothing itself.
+        //
+        // The unauthenticated forms. These pages hold no data and no secrets,
+        // so the limit is here to slow down scripted enumeration and to keep
+        // the login page from being scraped, not to protect anything. The
+        // ceiling is deliberately loose: a limit low enough to matter to an
+        // attacker is also low enough to lock out somebody who mistypes a
+        // password twice, and none of these pages are where that matters.
+        RateLimiter::for('auth-pages', fn (): Limit => Limit::perMinute(30)
+            ->by(request()->ip()));
+
+        // The two Paystack return routes. A payer arrives here once, having
+        // come back from Paystack, so the ceiling is loose by the same
+        // reasoning. Throttling these cannot endanger a payment: the order and
+        // the credit purchase are both fulfilled from the webhook, which is
+        // deliberately not throttled, so a payer who is refused here is still
+        // fulfilled. The server-side Paystack verification is what makes the
+        // route safe to expose at all, and that has not changed.
+        RateLimiter::for('payment-callbacks', fn (): Limit => Limit::perMinute(30)
+            ->by(request()->ip()));
     }
 }

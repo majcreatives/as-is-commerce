@@ -130,13 +130,51 @@ class ProductDetail extends Component
             ->title($this->product->name)
             ->layoutData([
                 'description' => $this->product->short_description
-                    ?? $this->product->name.' — buy now on '.config('app.name').'.',
+                    ?? $this->fallbackDescription($availability),
                 'ogImage' => $this->productImageUrl(),
                 // Truthful only: what it is, its condition, and the price it
                 // can actually be bought at. No rating, no review count, no
                 // availability claim the page cannot stand behind.
                 'structuredData' => $this->structuredData($availability),
             ]);
+    }
+
+    /**
+     * What a product with no written description says about itself instead.
+     *
+     * The previous fallback ended "... buy now on <app>." for every product
+     * that had no `short_description`, which is a claim rather than a
+     * description -- and a false one whenever the listing could not be bought
+     * outright, because an auction is holding the unit, or the product is out of
+     * stock. Indexed metadata asserting an availability the page contradicts is
+     * worse than saying nothing: a search result is the one place a customer
+     * cannot see the page that would correct it.
+     *
+     * So the sentence is built from the same {@see ListingAvailability} the page
+     * renders, and its labels are the server's own. No price is named here
+     * either -- a figure in a search snippet goes stale the moment the price
+     * changes, and the page is where the current one belongs.
+     *
+     * The auction is named in preference to Buy Now, because a live auction
+     * accepts Buy Now too and both are true at once. Bidding is the more
+     * specific fact and the one this page leads with; the buy-now button is
+     * still rendered, so nothing is hidden by describing the auction instead.
+     */
+    private function fallbackDescription(ListingAvailability $availability): string
+    {
+        $howItIsGot = match (true) {
+            $availability->canBid => 'In an auction, open for bidding with credits',
+            $availability->canBuyNow => 'Available to buy now',
+            default => 'Currently unavailable',
+        };
+
+        return sprintf(
+            '%s (%s). %s on %s.',
+            $this->product->name,
+            $this->product->condition->label(),
+            $howItIsGot,
+            config('app.name'),
+        );
     }
 
     /**

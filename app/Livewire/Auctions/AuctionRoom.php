@@ -458,6 +458,43 @@ class AuctionRoom extends Component
         return view(
             'livewire.auctions.auction-room',
             $this->viewFor($bids, $clock, $pricer, $validator, $credits),
-        )->title($this->auction->product->name);
+        )
+            ->title($this->auction->product->name)
+            ->layoutData([
+                'description' => $this->metaDescription(),
+            ]);
+    }
+
+    /**
+     * What this auction says about itself to a search engine.
+     *
+     * An auction room set a title but never a description, so it fell through
+     * to the layout's generic line -- which is the same sentence the home page
+     * uses. Every auction in the catalogue was therefore described identically
+     * to the home page, and a search engine reading the two has no reason to
+     * prefer the auction a bidder actually wanted.
+     *
+     * Composed from facts the room already shows an anonymous visitor: the
+     * product, its condition, and the winner rule in the words the room itself
+     * uses. The rule sentence comes from the frozen snapshot rather than the
+     * current ruleset, so it describes the auction that is running and not one
+     * somebody could still edit underneath it.
+     *
+     * What is deliberately absent: the settlement amount, the buy-now price and
+     * the current highest bid. None is a bidder's business before they sign in,
+     * and a figure in indexed metadata goes stale the moment the auction moves.
+     */
+    private function metaDescription(): string
+    {
+        $product = $this->auction->product;
+
+        return sprintf(
+            '%s (%s). Bid with credits on %s. %s',
+            $product->name,
+            $product->condition->label(),
+            config('app.name'),
+            // From the frozen snapshot, the same source the room renders.
+            $this->auction->rules()->bidModel->ruleSentence(),
+        );
     }
 }

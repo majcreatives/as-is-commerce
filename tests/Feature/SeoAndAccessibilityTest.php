@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use App\Models\Auction;
+use App\Models\Product;
 use App\Models\User;
 use Illuminate\Support\Facades\File;
 
@@ -40,6 +42,20 @@ function documentHead(string $html): string
     $end = strpos($html, '</head>');
 
     return $start === false || $end === false ? $html : substr($html, $start, $end - $start);
+}
+
+/**
+ * The page's own meta description, or an empty string if it has none.
+ *
+ * Separate from {@see documentHead} because "no description at all" and "a
+ * description equal to someone else's" are the two failures worth telling apart,
+ * and an empty string makes the first one an assertion rather than a null.
+ */
+function metaDescription(string $html): string
+{
+    $matched = preg_match('/<meta name="description" content="([^"]*)"/i', documentHead($html), $m);
+
+    return $matched === 1 ? $m[1] : '';
 }
 
 it('keeps public pages indexable', function (string $path): void {
@@ -150,6 +166,102 @@ it('gives every indexable page its own description', function (): void {
     $duplicated = array_diff_assoc($descriptions, array_unique($descriptions));
 
     expect($duplicated)->toBe([], 'these pages share a description: '.implode(', ', array_keys($duplicated)));
+});
+
+/*
+ * The same question, asked of the two page types the check above never
+ * rendered: a single product, and a single auction.
+ *
+ * These are the pages a search engine is most likely to send somebody to, and
+ * they were the two untested ones. The omission was not academic -- an auction
+ * room set a title but no description at all, so it silently inherited the
+ * layout's fallback, which is the home page's sentence verbatim. Every auction
+ * in the catalogue was described as the home page, and the check that should
+ * have caught it was only ever loading `/` and `/auctions`.
+ */
+it('gives a product page a description of its own', function (): void {
+    $described = Product::factory()->active()->create([
+        'name' => 'Kettle',
+        'short_description' => 'A stovetop kettle with a 1.7 litre capacity.',
+    ]);
+    $bare = Product::factory()->active()->create([
+        'name' => 'Toaster',
+        // No written description. The page has to say something true anyway.
+        'short_description' => null,
+    ]);
+
+    $first = metaDescription(test()->get(route('products.show', $described->slug))->assertOk()->getContent());
+    $second = metaDescription(test()->get(route('products.show', $bare->slug))->assertOk()->getContent());
+
+    expect($first)->toContain('1.7 litre')
+        ->and($second)->not->toBe($first)
+        ->and($second)->toContain('Toaster');
+});
+
+it('gives an auction room a description of its own', function (): void {
+    $product = Product::factory()->active()->create(['name' => 'Fan']);
+    $auction = Auction::factory()->forProduct($product)->live()->create();
+
+    $description = metaDescription(test()->get(route('auctions.show', $auction->id))->assertOk()->getContent());
+
+    expect($description)->toContain('Fan')
+        ->and($description)->toContain('credits');
+
+    // And it must not be the home page's sentence in disguise.
+    expect($description)->not->toBe(metaDescription(test()->get('/')->assertOk()->getContent()));
+});
+
+it('says a product can be bought when it can be', function (): void {
+    // `withStock` matters here: the factory ships stock_on_hand at zero, so a
+    // product built without it is genuinely unpurchasable and this would pass
+    // for the wrong reason.
+    $product = Product::factory()->active()->withStock(3)->create(['short_description' => null]);
+
+    $description = metaDescription(test()->get(route('products.show', $product->slug))->assertOk()->getContent());
+
+    expect($description)->toContain('Available to buy now');
+});
+
+it('never claims a product is available when it is not', function (): void {
+    // The half of the rule that matters most. A product with no stock cannot be
+    // bought, and indexed metadata saying it can is the one error a customer
+    // cannot correct -- they never reach the page that would have told them.
+    $product = Product::factory()->active()->withStock(0)->create(['short_description' => null]);
+
+    $description = metaDescription(test()->get(route('products.show', $product->slug))->assertOk()->getContent());
+
+    expect($description)->toContain('Currently unavailable')
+        ->not->toContain('Available to buy now')
+        ->not->toContain('In an auction');
+});
+
+it('describes a product being auctioned as an auction', function (): void {
+    // A live auction accepts Buy Now as well as bids, so both branches of the
+    // sentence are true here. Bidding is named in preference, because it is the
+    // more specific fact and the one the page leads with.
+    $product = Product::factory()->active()->withStock(3)->create(['short_description' => null]);
+    Auction::factory()->forProduct($product)->live()->create();
+
+    $description = metaDescription(test()->get(route('products.show', $product->slug))->assertOk()->getContent());
+
+    expect($description)->toContain('In an auction, open for bidding with credits')
+        ->not->toContain('Available to buy now');
+});
+
+it('keeps money and bidder identity out of an auction description', function (): void {
+    // A description is indexed and cached by engines that will never re-check
+    // the page. What a bidder cannot see before signing in must not be written
+    // into one, and a figure goes stale the moment the auction moves.
+    $product = Product::factory()->active()->create(['name' => 'Generator']);
+    $auction = Auction::factory()->forProduct($product)->settlingAt(45_000)->live()->create();
+
+    $description = metaDescription(test()->get(route('auctions.show', $auction->id))->assertOk()->getContent());
+
+    expect($description)
+        ->not->toContain('45,000')
+        ->not->toContain('450.00')
+        ->not->toContain('45000')
+        ->not->toContain('settlement');
 });
 
 it('gives the shop and the auctions their own title', function (string $path, string $expected): void {

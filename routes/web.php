@@ -7,6 +7,7 @@ use App\Http\Controllers\HealthController;
 use App\Http\Controllers\Orders\CheckoutCallbackController;
 use App\Http\Controllers\Payments\PaystackCallbackController;
 use App\Http\Controllers\Payments\PaystackWebhookController;
+use App\Http\Controllers\SitemapController;
 use App\Livewire\Account\Dashboard;
 use App\Livewire\Account\ReferralDashboard;
 use App\Livewire\Admin\Auctions\AuctionDetail as AdminAuctionDetail;
@@ -116,6 +117,12 @@ Route::view('/cookies', 'pages.cookie')->name('cookies');
 // draft or archived listing 404s rather than existing at a guessable URL.
 Route::get('/products', ProductCatalog::class)->name('products.index');
 Route::get('/products/{slug}', ProductDetail::class)->name('products.show');
+
+// The public URL map. Not linked in the navigation: it is addressed to crawlers,
+// which find /sitemap.xml by convention, and there is nothing for a customer to
+// do with it. Sits outside the noindex groups above and below because a sitemap
+// that asked not to be fetched would be a contradiction.
+Route::get('/sitemap.xml', SitemapController::class)->name('sitemap');
 
 /*
 |--------------------------------------------------------------------------

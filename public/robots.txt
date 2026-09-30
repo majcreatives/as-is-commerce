@@ -25,10 +25,23 @@ Disallow: /reset-password
 Disallow: /up
 Disallow: /health
 
-# Note on the two halves of this file. Disallowing a path stops it being
-# crawled, but it does NOT by itself remove a URL that is already indexed --
-# a blocked URL can still appear as a bare result with no snippet. That is why
-# every private route also sends `X-Robots-Tag: noindex, nofollow`
-# (App\Http\Middleware\NoIndex). The pairing is deliberate: this file keeps
-# crawlers from spending requests on pages that will only ever redirect them to
-# a sign-in page, and the header is the signal that actually governs indexing.
+  # Note on the two halves of this file. Disallowing a path stops it being
+  # crawled, but it does NOT by itself remove a URL that is already indexed --
+  # a blocked URL can still appear as a bare result with no snippet. That is why
+  # every private route also sends `X-Robots-Tag: noindex, nofollow`
+  # (App\Http\Middleware\NoIndex). The pairing is deliberate: this file keeps
+  # crawlers from spending requests on pages that will only ever redirect them to
+  # a sign-in page, and the header is the signal that actually governs indexing.
+
+  # The sitemap is served from /sitemap.xml, built by SitemapQuery: the standing
+  # public pages, the public catalog, and the auctions a customer can still join.
+  #
+  # There is deliberately no `Sitemap:` line here yet. This file is static, so
+  # the directive has to name a real origin, and there is no production domain to
+  # name -- writing one would advertise a host that does not exist. Search
+  # engines also look for /sitemap.xml at the root by convention, so nothing is
+  # lost while this line is absent.
+  #
+  # To add it at launch, once the domain is settled, append:
+  #
+  #   Sitemap: https://<your-domain>/sitemap.xml

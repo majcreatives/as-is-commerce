@@ -19,7 +19,7 @@
     </x-alert>
 
     @if (! $showingForm)
-        <x-button class="mb-6" wire:click="startAdding">Add an address</x-button>
+        <x-button class="mb-6" wire:click="startAdding" wire:loading.attr="disabled">Add an address</x-button>
     @endif
 
     @if ($showingForm)
@@ -83,8 +83,8 @@
                 </x-field>
 
                 <div class="flex gap-3 sm:col-span-2">
-                    <x-button type="submit">Save address</x-button>
-                    <x-button type="button" variant="ghost" wire:click="cancel">Cancel</x-button>
+                    <x-button type="submit" wire:loading.attr="disabled">Save address</x-button>
+                    <x-button type="button" variant="ghost" wire:click="cancel" wire:loading.attr="disabled">Cancel</x-button>
                 </div>
             </form>
         </x-card>
@@ -119,15 +119,15 @@
                     </div>
 
                     <div class="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-3">
-                        <x-button size="sm" variant="ghost" wire:click="startEditing({{ $address->id }})">
+                        <x-button size="sm" variant="ghost" wire:click="startEditing({{ $address->id }})" wire:loading.attr="disabled">
                             Edit
                         </x-button>
 
                         @unless ($address->is_default)
-                            <x-button size="sm" variant="ghost" wire:click="makeDefault({{ $address->id }})">
+                            <x-button size="sm" variant="ghost" wire:click="makeDefault({{ $address->id }})" wire:loading.attr="disabled">
                                 Make default
                             </x-button>
-                            <x-button size="sm" variant="ghost" wire:click="delete({{ $address->id }})">
+                            <x-button size="sm" variant="ghost" wire:click="delete({{ $address->id }})" wire:loading.attr="disabled">
                                 Delete
                             </x-button>
                         @endunless

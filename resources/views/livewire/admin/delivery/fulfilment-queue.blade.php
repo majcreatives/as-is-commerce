@@ -31,8 +31,15 @@
     <div class="mb-6 grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
         @foreach (['outstanding', 'awaiting_address', 'preparing', 'dispatched', 'delivery_failed'] as $key)
             <button type="button" wire:click="$set('filter', '{{ $key }}')"
-                    class="rounded-lg border px-4 py-3 text-left transition
-                           {{ $filter === $key ? 'border-brand-600 bg-brand-50' : 'border-slate-200 bg-white hover:border-brand-300' }}">
+                    wire:loading.attr="disabled"
+                    aria-pressed="{{ $filter === $key ? 'true' : 'false' }}"
+                    @class([
+                        'rounded-lg border px-4 py-3 text-left transition',
+                        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600',
+                        $filter === $key
+                            ? 'border-brand-600 bg-brand-50'
+                            : 'border-slate-200 bg-white hover:border-brand-300',
+                    ])>
                 <span class="block text-2xl font-bold tabular-nums text-slate-900">
                     {{ number_format($counts[$key] ?? 0) }}
                 </span>

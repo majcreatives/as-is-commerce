@@ -66,7 +66,7 @@
                             </select>
                         </x-field>
 
-                        <x-button type="submit">Send it here</x-button>
+                        <x-button type="submit" wire:loading.attr="disabled">Send it here</x-button>
                     </form>
                 @endif
             </x-card>

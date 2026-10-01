@@ -99,7 +99,14 @@
     ];
 @endphp
 
-<header x-data="{ open: false }" class="sticky top-0 z-40 border-b border-slate-200 bg-white/90 backdrop-blur">
+{{-- The drawer closes on Escape and on a click outside, for the same reason the
+     account menu below does. A drawer that can only be dismissed by the button
+     that opened it is a keyboard trap on a phone-sized window, and Escape is
+     the one key a keyboard user can always reach. --}}
+<header x-data="{ open: false }"
+        x-on:keydown.escape.window="open = false"
+        x-on:click.outside="if (open) { open = false }"
+        class="sticky top-0 z-40 border-b border-slate-200 bg-white/90 backdrop-blur">
     <x-container class="flex h-16 items-center justify-between">
         <div class="flex items-center gap-8">
             <a href="{{ route('home') }}" aria-label="{{ config('app.name') }} home">
@@ -175,7 +182,16 @@
 
                      Closes on Escape and on a click outside, because a menu
                      that can only be dismissed by the button that opened it is
-                     a trap for anybody navigating by keyboard. --}}
+                     a trap for anybody navigating by keyboard.
+
+                     This is a DISCLOSURE, not a menu, and deliberately does not
+                     claim role="menu". The menu role promises arrow-key
+                     navigation, a roving tabindex and managed focus, none of
+                     which is implemented here -- and a partial implementation of
+                     a widget pattern is worse than none, because it tells
+                     assistive technology to expect keys that do nothing. These
+                     are ordinary links that open and close a list, which is
+                     what aria-expanded plus aria-controls already describes. --}}
                 <div x-data="{ account: false }"
                      x-on:keydown.escape.window="account = false"
                      x-on:click.outside="account = false"
@@ -184,7 +200,6 @@
                     <button type="button"
                             x-on:click="account = ! account"
                             x-bind:aria-expanded="account.toString()"
-                            aria-haspopup="true"
                             aria-controls="account-menu"
                             @class([
                                 'inline-flex items-center gap-2 rounded-full py-1 pl-1 pr-2.5 text-sm font-medium transition',
@@ -217,7 +232,7 @@
                          x-transition:leave-start="opacity-100 scale-100"
                          x-transition:leave-end="opacity-0 scale-95"
                          class="absolute right-0 z-50 mt-2 w-72 origin-top-right rounded-xl border border-slate-200 bg-white shadow-lg ring-1 ring-black/5"
-                         role="menu" aria-label="Your account">
+                         aria-label="Your account">
 
                         {{-- Who is signed in, said once and plainly. Phone is
                              the primary identity on this platform and email is
@@ -237,7 +252,8 @@
                                 @foreach ($group as [$label, $routeName, $pattern, $iconPaths])
                                     @php($isActive = request()->routeIs($pattern))
 
-                                    <a href="{{ route($routeName) }}" role="menuitem"
+                                    <a href="{{ route($routeName) }}"
+                                       @if ($isActive) aria-current="page" @endif
                                        @class([
                                            'flex items-center gap-3 px-4 py-2 text-sm transition',
                                            'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-600',
@@ -264,7 +280,7 @@
 
                         <form method="POST" action="{{ route('logout') }}" class="border-t border-slate-100 py-1.5">
                             @csrf
-                            <button type="submit" role="menuitem"
+                            <button type="submit"
                                     class="flex w-full items-center gap-3 px-4 py-2 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50 hover:text-slate-900 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-600">
                                 <svg class="size-5 shrink-0 text-slate-400" fill="none" stroke="currentColor"
                                      stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true">

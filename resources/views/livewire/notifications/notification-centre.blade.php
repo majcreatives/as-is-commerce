@@ -12,8 +12,14 @@
     <div class="mb-6 flex flex-wrap items-center gap-3">
         @foreach (['all' => 'All', 'unread' => 'Unread'] as $value => $label)
             <button type="button" wire:click="$set('filter', '{{ $value }}')"
-                    class="rounded-lg px-3 py-1.5 text-sm font-semibold transition
-                           {{ $filter === $value ? 'bg-brand-700 text-white' : 'text-brand-800 hover:bg-brand-50' }}">
+                    wire:loading.attr="disabled"
+                    @class([
+                        'rounded-lg px-3 py-1.5 text-sm font-semibold transition',
+                        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600',
+                        $filter === $value
+                            ? 'bg-brand-700 text-white'
+                            : 'text-brand-800 hover:bg-brand-50',
+                    ])>
                 {{ $label }}
                 @if ($value === 'unread' && $unreadCount > 0)
                     <span class="ml-1 rounded-full bg-white/20 px-1.5 text-xs">{{ $unreadCount }}</span>

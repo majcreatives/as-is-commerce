@@ -33,8 +33,26 @@
         </x-card>
     </div>
 
-    {{-- Tabs --}}
-    <div class="mb-4 flex flex-wrap gap-1 border-b border-slate-200 pb-3" role="tablist">
+    {{-- Tabs.
+
+         A tab that does not say which panel it controls is not a tab, it is a
+         button with a role that promises something the page never delivers. Each
+         tab below points at the panel it reveals, and each panel points back, so
+         the relationship survives being read out of context by a screen reader.
+
+         All three panels are in the document at once, and the two that are not
+         selected carry the hidden attribute. That is the pattern the ARIA
+         authoring practices describe, and it is also the only version in which
+         every tab's aria-controls resolves: if the unselected panels were simply
+         not rendered, the other two tabs would each point at an id that does not
+         exist, which is a reference the screen reader cannot follow.
+
+         It costs nothing to keep them all in the document, because the component
+         has already run all three queries by the time this view is reached --
+         the data is loaded whatever tab is showing. --}}
+    <div class="mb-4 flex flex-wrap gap-1 border-b border-slate-200 pb-3"
+         role="tablist"
+         aria-label="Wallet activity">
         @foreach ([
             'credits' => 'Credit history',
             'store_wallet' => 'Store Wallet history',
@@ -42,10 +60,14 @@
         ] as $key => $label)
             <button type="button"
                     role="tab"
+                    id="wallet-tab-{{ $key }}"
+                    aria-controls="wallet-panel-{{ $key }}"
                     wire:click="$set('tab', '{{ $key }}')"
+                    wire:loading.attr="disabled"
                     aria-selected="{{ $tab === $key ? 'true' : 'false' }}"
                     @class([
                         'rounded-md px-3 py-2 text-sm font-medium transition',
+                        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600',
                         'bg-brand-50 text-brand-800' => $tab === $key,
                         'text-slate-600 hover:bg-slate-100 hover:text-slate-900' => $tab !== $key,
                     ])>
@@ -54,8 +76,11 @@
         @endforeach
     </div>
 
-    @if ($tab === 'credits')
-        <x-card :padded="false">
+    <div @if ($tab !== 'credits') hidden @endif>
+        <x-card :padded="false"
+                role="tabpanel"
+                id="wallet-panel-credits"
+                aria-labelledby="wallet-tab-credits">
             @if ($creditTransactions->isEmpty())
                 <div class="p-6">
                     <x-empty-state
@@ -102,10 +127,13 @@
                 @endif
             @endif
         </x-card>
-    @endif
+    </div>
 
-    @if ($tab === 'store_wallet')
-        <x-card :padded="false">
+    <div @if ($tab !== 'store_wallet') hidden @endif>
+        <x-card :padded="false"
+                role="tabpanel"
+                id="wallet-panel-store_wallet"
+                aria-labelledby="wallet-tab-store_wallet">
             @if ($storeWalletTransactions->isEmpty())
                 <div class="p-6">
                     <x-empty-state
@@ -152,10 +180,13 @@
                 @endif
             @endif
         </x-card>
-    @endif
+    </div>
 
-    @if ($tab === 'lots')
-        <x-card :padded="false">
+    <div @if ($tab !== 'lots') hidden @endif>
+        <x-card :padded="false"
+                role="tabpanel"
+                id="wallet-panel-lots"
+                aria-labelledby="wallet-tab-lots">
             @if ($lots->isEmpty())
                 <div class="p-6">
                     <x-empty-state
@@ -198,5 +229,5 @@
                 </div>
             @endif
         </x-card>
-    @endif
+    </div>
 </div>

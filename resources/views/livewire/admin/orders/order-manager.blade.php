@@ -14,8 +14,8 @@
             {{ Str::plural('order', $blockedCount) }} were paid but could not be completed —
             somebody else acquired the item while the customer was paying. Each needs a decision.
 
-            <button type="button" wire:click="$set('blocked', true)"
-                    class="ml-1 font-semibold underline">Show them</button>
+            <button type="button" wire:click="$set('blocked', true)" wire:loading.attr="disabled"
+                    class="ml-1 font-semibold underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600">Show them</button>
         </x-alert>
     @endif
 

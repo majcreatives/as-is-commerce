@@ -71,8 +71,9 @@
                 @foreach ($links as [$label, $routeName, $pattern])
                     @php($isActive = request()->routeIs($pattern))
                     <a href="{{ route($routeName) }}" wire:navigate
+                       @if ($isActive) aria-current="page" @endif
                        @class([
-                           'whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium transition',
+                           'whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600',
                            'bg-brand-50 font-semibold text-brand-800' => $isActive,
                            'text-slate-600 hover:bg-slate-100 hover:text-slate-900' => ! $isActive,
                        ])>
@@ -97,6 +98,7 @@
                         @foreach ($links as [$label, $routeName, $pattern])
                             @php($isActive = request()->routeIs($pattern))
                             <a href="{{ route($routeName) }}" wire:navigate
+                               @if ($isActive) aria-current="page" @endif
                                @class([
                                    'relative flex items-center rounded-md px-3 py-2 text-sm font-medium transition',
                                    'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600',

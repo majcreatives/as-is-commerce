@@ -109,7 +109,7 @@
                 </x-field>
 
                 <div class="flex gap-3">
-                    <x-button type="submit">Create draft auction</x-button>
+                    <x-button type="submit" wire:loading.attr="disabled">Create draft auction</x-button>
                     <x-button type="button" variant="ghost" wire:click="cancelForm">Cancel</x-button>
                 </div>
             </form>

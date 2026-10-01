@@ -39,6 +39,6 @@
             quietly stop telling you that we have your money.
         </x-alert>
 
-        <x-button type="submit">Save preferences</x-button>
+        <x-button type="submit" wire:loading.attr="disabled">Save preferences</x-button>
     </form>
 </x-card>

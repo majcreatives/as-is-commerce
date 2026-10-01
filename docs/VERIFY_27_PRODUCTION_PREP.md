@@ -359,6 +359,53 @@ Gate verdict: **PENDING (runbook only — production approval + access required)
   purchase in Stage 27.
 - **Never** run `migrate:fresh` or `migrate:rollback` against the production
   schema. Rollback = restore the pre-migration backup.
+- **Hostinger replaces `Content-Security-Policy`.** The strict nonce CSP added in
+  `7134528` is correct and verified, but it does not reach the browser on Hostinger
+  shared hosting. See §5.1. This is a property of that host, not of the code, and
+  it is a hard pre-production gate item.
+
+### 5.1 Hostinger replaces `Content-Security-Policy` (staging-host limitation)
+
+Observed 2026-10-01 on `stage32.6`. The application emits a correct 368-byte
+nonce policy, but the header that reaches the browser is Hostinger's own
+`Content-Security-Policy: upgrade-insecure-requests`.
+
+Evidence that this is the host and not the application:
+
+- The framework response on the server itself carries the full policy:
+  `default-src 'self'; ... script-src 'self' 'nonce-CJRCUGKbMQ…'`.
+- Every other header from the same middleware arrives intact (`X-Frame-Options:
+  DENY`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`,
+  `Strict-Transport-Security`).
+- Static files that never reach Laravel — `/favicon.ico`,
+  `/build/manifest.json` — also carry `upgrade-insecure-requests`.
+- No `.htaccess` on the host sets it, so it originates in the hPanel vhost.
+
+Consequence: on Hostinger the CSP is **inert**. The site is not broken, because
+no policy is enforced beyond HTTPS upgrade. Every other security header is live
+and verified on staging.
+
+Decision: **do not** work around this on the host. A `<meta http-equiv>` copy
+would duplicate the policy in two places so the two can drift, `frame-ancestors`
+is ignored in a meta policy, and the workaround exists only to satisfy a
+Hostinger setting that will not exist on the launch target.
+
+**Pre-production gates (both required, on the real production host):**
+
+1. The production web server must not inject, append to, or replace
+   `Content-Security-Policy`. Confirm with
+   `curl -sSI https://<domain>/ | grep -i content-security-policy` and check the
+   value is the application's own policy, not a host default.
+2. Browser verification with the policy actually enforced — Home, a Livewire
+   page, `/login`, and `/register` — with the console open. Required: password
+   toggle, `x-show` reveal, cart badge, auction-room polling, Livewire morphing,
+   and the JSON-LD block. Zero CSP violations expected.
+
+Alpine `x-show` and Livewire transitions set CSS through `element.style.*`
+assignments, which CSP does not block — it blocks inline `style` *attributes* in
+markup and `<style>` elements, and the rendered pages contain none of either. The
+residual risk is therefore low but **unverified**, which is why gate 2 is not
+optional.
 
 ---
 

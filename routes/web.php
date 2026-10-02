@@ -16,6 +16,7 @@ use App\Livewire\Admin\Catalog\InventoryManager;
 use App\Livewire\Admin\Catalog\ProductManager;
 use App\Livewire\Admin\Catalog\ProductMediaManager;
 use App\Livewire\Admin\Catalog\TaxonomyManager;
+use App\Livewire\Admin\Content\ContentManager;
 use App\Livewire\Admin\Customers\CustomerDetail;
 use App\Livewire\Admin\Customers\CustomerIndex;
 use App\Livewire\Admin\Delivery\FulfilmentQueue;
@@ -48,6 +49,8 @@ use App\Livewire\Catalog\CartPage;
 use App\Livewire\Catalog\ProductCatalog;
 use App\Livewire\Catalog\ProductDetail;
 use App\Livewire\Checkout\CheckoutPage;
+use App\Livewire\Content\PartnerIndex;
+use App\Livewire\Content\SuccessStoryIndex;
 use App\Livewire\Credits\CreditPackages;
 use App\Livewire\Credits\PurchaseHistory;
 use App\Livewire\Delivery\AddressBookPage;
@@ -112,6 +115,17 @@ Route::view('/faqs', 'pages.faqs')->name('faqs');
 Route::view('/privacy', 'pages.privacy')->name('privacy');
 Route::view('/terms', 'pages.terms')->name('terms');
 Route::view('/cookies', 'pages.cookie')->name('cookies');
+
+// Partners and success stories. Livewire rather than Route::view because these
+// read the two content tables, unlike the pages above which are static.
+//
+// There is no per-record URL: a partner or a story is reached through the list
+// or the homepage block, never on a page of its own, so nothing here can 404 by
+// being unguessable. Both components read only published records through the
+// model's scope, and an empty section is a 200 with an honest empty state -- the
+// page exists, there is simply nothing published on it yet.
+Route::get('/partners', PartnerIndex::class)->name('partners.index');
+Route::get('/success-stories', SuccessStoryIndex::class)->name('success-stories.index');
 
 // The catalog. Both routes resolve only publicly visible products, so a
 // draft or archived listing 404s rather than existing at a guessable URL.
@@ -351,6 +365,15 @@ Route::middleware(['noindex', 'auth', 'role:admin|super_admin'])
         Route::get('/taxonomy', TaxonomyManager::class)
             ->middleware('can:categories.view')
             ->name('taxonomy');
+
+        // The company content a non-technical administrator publishes: the
+        // partners strip and the success stories. Gated on either view
+        // permission rather than both, because the screen has two tabs and
+        // holding one is a legitimate reason to be here -- switchTab re-checks
+        // per tab, and the view only renders a tab you may view.
+        Route::get('/content', ContentManager::class)
+            ->middleware('can:partners.view,success_stories.view')
+            ->name('content');
 
         Route::get('/inventory', InventoryManager::class)
             ->middleware('can:inventory.view')

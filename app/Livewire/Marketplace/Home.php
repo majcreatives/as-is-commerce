@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Livewire\Marketplace;
 
+use App\Domain\Marketplace\Queries\ContentDiscoveryQuery;
 use App\Domain\Marketplace\Queries\ProductDiscoveryQuery;
 use Illuminate\View\View;
 use Livewire\Attributes\Layout;
@@ -22,14 +23,15 @@ use Livewire\Component;
  * guarantee of anything. The copy says what the mechanism is and lets somebody
  * decide -- which is also the only kind of claim the backend could support.
  *
- * REAL CONTENT OR NONE. What appears here is read from the catalog. When there
- * is nothing live, the page says so rather than showing examples: a fabricated
- * product on a homepage is the same lie as a fabricated one anywhere else.
+ * REAL CONTENT OR NONE. What appears here is read from the catalog and from the
+ * company content an administrator has published. When there is nothing live,
+ * the page says so rather than showing examples: a fabricated product on a
+ * homepage is the same lie as a fabricated one anywhere else.
  */
 #[Layout('components.layouts.app')]
 class Home extends Component
 {
-    public function render(ProductDiscoveryQuery $products): View
+    public function render(ProductDiscoveryQuery $products, ContentDiscoveryQuery $content): View
     {
         $featured = $products->featured(8);
         $trending = $products->trending(8);
@@ -42,6 +44,11 @@ class Home extends Component
             'featured' => $featured,
             'trending' => $trending,
             'availability' => $availability,
+            // Bounded by the query, and both are empty until an administrator
+            // has published something. The view hides a section it is given
+            // nothing for, rather than rendering an empty frame.
+            'partners' => $content->homepagePartners(),
+            'stories' => $content->homepageStories(),
         ])->title(config('app.name').' — the shop, and the auction');
     }
 }

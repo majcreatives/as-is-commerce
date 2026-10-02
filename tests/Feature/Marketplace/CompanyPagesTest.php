@@ -74,6 +74,8 @@ it('loads the script that runs the header menu on every public page', function (
     'home',
     'products.index',
     'auctions.index',
+    'partners.index',
+    'success-stories.index',
 ]);
 
 it('does not load the script twice on a page that is also a Livewire component', function (): void {
@@ -101,6 +103,11 @@ it('links the company pages from the footer on every public page', function (str
         ->assertSee(route('about'), false)
         ->assertSee(route('contact'), false)
         ->assertSee(route('faqs'), false)
+        // The two admin-maintained sections live in the footer too, and they
+        // are linked whether or not anything has been published: an empty one
+        // renders an honest empty state rather than a 404.
+        ->assertSee(route('partners.index'), false)
+        ->assertSee(route('success-stories.index'), false)
         // The legal pages live in the footer on every page too, including
         // themselves, so no page is a place a policy cannot be reached from.
         ->assertSee(route('privacy'), false)
@@ -110,7 +117,11 @@ it('links the company pages from the footer on every public page', function (str
         ->assertSee(route('products.index'), false)
         ->assertSee(route('auctions.index'), false)
         ->assertSee(route('how-it-works'), false);
-})->with(['home', 'products.index', 'auctions.index', 'how-it-works', 'about', 'contact', 'faqs', 'privacy', 'terms', 'cookies']);
+})->with([
+    'home', 'products.index', 'auctions.index', 'how-it-works',
+    'about', 'contact', 'faqs', 'partners.index', 'success-stories.index',
+    'privacy', 'terms', 'cookies',
+]);
 
 it('does not link a page that does not exist yet', function (): void {
     // Blog still needs content, and a legal author, and until it exists a footer

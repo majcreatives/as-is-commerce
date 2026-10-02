@@ -10,10 +10,16 @@
 
      Each link is hidden unless the signed-in administrator holds the permission
      behind it, and a group with nothing visible in it does not render its
-     heading either. --}}
+     heading either. A link whose permission is a list is shown when the
+     administrator holds any of them. --}}
 
 @php
     // label => [route name, active pattern, permission]
+    //
+    // The permission may also be a LIST, which is read as "any of these". That is
+    // how a screen with two independent halves is reachable: this screen is
+    // genuinely two sets of authority, and requiring both to see the link would
+    // hide it from a narrower role that is entitled to one of them.
     $groups = [
         'Operations' => [
             ['Overview', 'admin.dashboard', 'admin.dashboard', 'admin.dashboard.view'],
@@ -40,6 +46,9 @@
             ['Categories', 'admin.taxonomy', 'admin.taxonomy', 'categories.view'],
             ['Inventory', 'admin.inventory', 'admin.inventory', 'inventory.view'],
         ],
+        'Content' => [
+            ['Partners & stories', 'admin.content', 'admin.content', ['partners.view', 'success_stories.view']],
+        ],
         'Configuration' => [
             ['Auction rulesets', 'admin.rulesets.index', 'admin.rulesets.*', 'auction_rulesets.view'],
             ['Credit packages', 'admin.credit-packages', 'admin.credit-packages', 'credit_packages.view'],
@@ -53,7 +62,9 @@
     foreach ($groups as $heading => $links) {
         $visible = array_values(array_filter(
             $links,
-            fn (array $link): bool => auth()->user()?->can($link[3]) ?? false,
+            fn (array $link): bool => collect(is_array($link[3]) ? $link[3] : [$link[3]])->contains(
+                fn (string $permission): bool => auth()->user()?->can($permission) ?? false,
+            ),
         ));
 
         if ($visible !== []) {

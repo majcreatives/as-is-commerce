@@ -99,7 +99,7 @@
                     @endif
                 </x-empty-state>
             @else
-                <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                <div class="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-3">
                     @foreach ($products as $product)
                         <x-product-card :product="$product" :availability="$availability[$product->id] ?? null" />
                     @endforeach

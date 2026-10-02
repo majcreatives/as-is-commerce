@@ -41,7 +41,9 @@
         @endif
     </div>
 
-    <div class="flex flex-1 flex-col p-4">
+    {{-- p-3 on a phone, for the same reason as the product card: a two-column
+     mobile grid leaves roughly 180px, which p-4 makes cramped. --}}
+    <div class="flex flex-1 flex-col p-3 sm:p-4">
         <div class="flex flex-wrap items-center gap-1.5">
             <x-badge :classes="$product->condition->badgeClasses()">
                 {{ $product->condition->label() }}
@@ -62,8 +64,13 @@
             {{ $product->name }}
         </h3>
 
+        {{-- flex-wrap rather than a forced one-row flex: in a two-column phone
+             grid these cards are around 180px wide, and a label like
+             "Highest Bid (Credits)" beside its value has nowhere to go on a
+             single line. Wrapping drops the value onto its own line rather than
+             crushing both, and a card wide enough still shows them side by side. --}}
         <dl class="mt-3 space-y-1.5 border-t border-slate-100 pt-3 text-sm">
-            <div class="flex items-baseline justify-between gap-3">
+            <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
                 {{-- The platform's own locked wording. Naming the unit in the
                      label is what stops the value beside it ever being read as
                      a price -- and "auction price" is a phrase that must never
@@ -78,7 +85,7 @@
                 </dd>
             </div>
 
-            <div class="flex items-baseline justify-between gap-3">
+            <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
                 {{-- Cedis. A different quantity, rendered by a different
                      component, and never derived from the bid above. --}}
                 <dt class="text-slate-600">Buy Now (GH₵)</dt>

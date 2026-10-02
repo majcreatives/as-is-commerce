@@ -73,12 +73,12 @@
                     description="Products will appear here as soon as they are published." />
             </div>
         @else
-            <div class="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <x-scroll-row label="Newly added products">
                 @foreach ($featured as $product)
                     <x-product-card :product="$product"
                                     :availability="$availability[$product->id] ?? null" />
                 @endforeach
-            </div>
+            </x-scroll-row>
         @endif
     </section>
 
@@ -101,12 +101,12 @@
                     description="Trending fills in as people start buying and bidding." />
             </div>
         @else
-            <div class="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <x-scroll-row label="Trending products">
                 @foreach ($trending as $product)
                     <x-product-card :product="$product"
                                     :availability="$availability[$product->id] ?? null" />
                 @endforeach
-            </div>
+            </x-scroll-row>
         @endif
     </section>
 

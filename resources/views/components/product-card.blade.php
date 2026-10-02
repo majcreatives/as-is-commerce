@@ -43,7 +43,9 @@
         @endif
     </div>
 
-    <div class="flex flex-1 flex-col p-4">
+    {{-- p-3 on a phone: in a two-column mobile grid these cards are about 180px
+     wide, and a full p-4 leaves the price and badges very little room. --}}
+    <div class="flex flex-1 flex-col p-3 sm:p-4">
         <div class="flex flex-wrap items-center gap-1.5">
             <x-badge :classes="$product->condition->badgeClasses()">
                 {{ $product->condition->label() }}

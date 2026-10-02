@@ -386,3 +386,59 @@ it('keeps signed-in pages out of search results', function (): void {
         ->assertOk()
         ->assertHeader('X-Robots-Tag', 'noindex, nofollow');
 });
+
+// ------------------------------------------------- Mobile listing layout
+
+/*
+ * The two changes that made a phone usable, and the reason they are NOT the
+ * same change.
+ *
+ * The homepage rows became a single swipeable line. At the old one-column grid
+ * eight cards stacked into eight screenfuls and the second row was out of reach.
+ *
+ * The listing pages got a two-column mobile grid and KEPT their pagination. Load
+ * more was considered and rejected: it removes the numbered page links, breaks
+ * every shared ?page= link, and makes the scroll longer rather than shorter,
+ * which is the opposite of the problem. So the tests below pin the pagination
+ * in place, because "add a load more button" is the change most likely to
+ * quietly delete it later.
+ */
+
+it('lets a keyboard reach the homepage carousel, which tabbing alone would not', function (): void {
+    Product::factory()->active()->withStock(2)->create(['name' => 'Swipeable Widget']);
+
+    $this->get(route('home'))
+        ->assertOk()
+        // The row is a scroll container, so it needs a tab stop of its own.
+        // Without one, a keyboard user can never reach the cards past the first.
+        ->assertSee('role="group"', escape: false)
+        ->assertSee('tabindex="0"', escape: false)
+        ->assertSee('aria-label="Newly added products"', escape: false)
+        // And the styling that makes it a line rather than a stack.
+        ->assertSee('snap-x', escape: false)
+        ->assertSee('overflow-x-auto', escape: false);
+});
+
+it('keeps real pagination on the listings rather than replacing it with a load more button', function (): void {
+    Product::factory()->count(40)->create()->each(
+        fn (Product $product) => $product->forceFill(['status' => ProductStatus::Active])->save()
+    );
+
+    $this->get(route('products.index'))
+        ->assertOk()
+        // A real paginator, reachable as a labelled landmark: numbered pages, not
+        // a button that appends. 40 products at 12 a page is four pages.
+        ->assertSee('aria-label="Pagination Navigation"', escape: false)
+        ->assertSee('gotoPage(2, ', escape: false)
+        ->assertSee('Showing', escape: false)
+        ->assertDontSee('load more', escape: false)
+        ->assertDontSee('Load more', escape: false);
+
+    // And a shared page link still lands on that page. This is the part Load more
+    // would have broken: ?page=2 would silently show the first twelve again.
+    $this->get(route('products.index', ['page' => 2]))
+        ->assertOk()
+        ->assertSee('Showing', escape: false)
+        ->assertSee('13', escape: false)
+        ->assertSee('24', escape: false);
+});

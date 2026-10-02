@@ -80,6 +80,8 @@ it('lists the standing public pages', function (string $name, string $path): voi
     ['about', '/about'],
     ['contact', '/contact'],
     ['faqs', '/faqs'],
+    ['partners.index', '/partners'],
+    ['success-stories.index', '/success-stories'],
     ['privacy', '/privacy'],
     ['terms', '/terms'],
     ['cookies', '/cookies'],

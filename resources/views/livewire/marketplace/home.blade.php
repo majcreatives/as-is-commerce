@@ -110,6 +110,58 @@
         @endif
     </section>
 
+    {{-- What customers have said. Only published, featured stories reach here,
+         and only three. The section disappears entirely when nothing qualifies:
+         a "Success stories" heading over nothing reads as an absence of
+         customers rather than an absence of content, which is not the same
+         claim and is not one we get to make. --}}
+    @if ($stories->isNotEmpty())
+        <section class="mt-12">
+            <div class="flex flex-wrap items-end justify-between gap-3">
+                <div>
+                    <h2 class="text-xl font-bold tracking-tight text-slate-900">Success stories</h2>
+                    <p class="mt-1 text-sm text-slate-600">
+                        In their own words.
+                    </p>
+                </div>
+
+                <a href="{{ route('success-stories.index') }}" wire:navigate
+                   class="text-sm font-semibold text-brand-800 underline">All stories</a>
+            </div>
+
+            <div class="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                @foreach ($stories as $story)
+                    <x-success-story-card :story="$story" />
+                @endforeach
+            </div>
+        </section>
+    @endif
+
+    {{-- Who we work with. Hidden for the same reason as the stories above: an
+         empty strip of partner logos would imply there are no partners, which
+         is a statement about the business rather than about this page. --}}
+    @if ($partners->isNotEmpty())
+        <section class="mt-12">
+            <div class="flex flex-wrap items-end justify-between gap-3">
+                <div>
+                    <h2 class="text-xl font-bold tracking-tight text-slate-900">Partners</h2>
+                    <p class="mt-1 text-sm text-slate-600">
+                        Businesses that work with us.
+                    </p>
+                </div>
+
+                <a href="{{ route('partners.index') }}" wire:navigate
+                   class="text-sm font-semibold text-brand-800 underline">All partners</a>
+            </div>
+
+            <div class="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                @foreach ($partners as $partner)
+                    <x-partner-card :partner="$partner" />
+                @endforeach
+            </div>
+        </section>
+    @endif
+
     {{-- The three trust cards that sat here explained how the platform works
          rather than giving a reason to shop, and were repeated in full on the
          How It Works page. They now live only there ("What you can rely on"),

@@ -28,7 +28,7 @@ use Illuminate\Support\Facades\File;
  */
 
 /** Public pages that must stay discoverable. */
-const PUBLIC_PAGES = ['/', '/auctions', '/products', '/about', '/how-it-works', '/contact', '/faqs', '/privacy', '/terms', '/cookies'];
+const PUBLIC_PAGES = ['/', '/auctions', '/products', '/about', '/how-it-works', '/contact', '/faqs', '/partners', '/success-stories', '/privacy', '/terms', '/cookies'];
 
 /** Pages a crawler must be kept out of, reachable only when signed in. */
 const PRIVATE_PATHS = ['/admin', '/dashboard', '/orders', '/wallet', '/credits', '/cart', '/addresses', '/referrals', '/notifications'];

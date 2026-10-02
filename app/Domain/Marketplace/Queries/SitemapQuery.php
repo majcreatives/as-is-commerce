@@ -96,6 +96,12 @@ class SitemapQuery
      * advertising a page that asks not to be indexed is the one way this file
      * could work against itself.
      *
+     * /partners and /success-stories are here even when empty. They are standing
+     * pages that return 200 and say plainly that nothing has been published, so
+     * there is nothing to 404 and no secret on them -- unlike an individual
+     * record, which this file never advertises because there is no per-record
+     * URL to advertise.
+     *
      * @return list<string>
      */
     public function staticPages(): array
@@ -108,6 +114,8 @@ class SitemapQuery
             'about',
             'contact',
             'faqs',
+            'partners.index',
+            'success-stories.index',
             'privacy',
             'terms',
             'cookies',

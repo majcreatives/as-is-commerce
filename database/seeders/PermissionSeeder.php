@@ -73,6 +73,25 @@ class PermissionSeeder extends Seeder
         'inventory.view',
         'inventory.adjust',
 
+        // Publishing company content on the public site: the partners strip and
+        // the success stories. Staff-only and split the same way the catalog is
+        // -- reading the admin screen is not the authority to change what the
+        // public site says, and `activate` (the publish flag) is its own
+        // capability so an editor can prepare a record without being the person
+        // who puts it in front of customers.
+        //
+        // Deliberately not `*.delete`. There is nothing a partner or a story is
+        // referenced by that a delete could orphan, and retiring one is done by
+        // publishing `active` = false, which keeps the row and its history.
+        'partners.view',
+        'partners.create',
+        'partners.update',
+        'partners.activate',
+        'success_stories.view',
+        'success_stories.create',
+        'success_stories.update',
+        'success_stories.activate',
+
         // Auction administration. Staff-only, all of them: `auctions.view`
         // means "see every auction, including drafts", which is not what a
         // customer browsing the public listing is doing.

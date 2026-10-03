@@ -449,6 +449,41 @@ it('opens the content screen to a role holder with one of the two permissions', 
         ->assertDontSee('What they said');
 });
 
+/*
+ * The mirror of the test above, and the reason this pair exists at all.
+ *
+ * $tab is #[Url]-bound and defaults to 'partners', so mount() used to authorize
+ * partners.view regardless of what else the person held. An admin holding only
+ * the success_stories.* permissions passed the "either one will do" gate and
+ * were then refused on the default tab -- handed a link by the nav that led to
+ * a 403. Only the partner-only direction was covered before, which is exactly
+ * why that survived review.
+ */
+it('opens the stories tab to a role holder who cannot see partners at all', function (): void {
+    $admin = userWithRole('admin');
+    foreach (['view', 'create', 'update', 'activate'] as $action) {
+        Role::findByName('admin')->revokePermissionTo("partners.{$action}");
+    }
+
+    $this->actingAs($admin->fresh())
+        ->get(route('admin.content'))
+        ->assertOk()
+        // The stories columns, not the partner ones.
+        ->assertSee('What they said')
+        ->assertDontSee('Website');
+});
+
+it('does not let the tab be set to something that is not a tab', function (): void {
+    $admin = userWithRole('admin');
+
+    // Unvalidated, an arbitrary value fell through to the success_stories
+    // permissions simply by not being 'partners' -- so a URL decided which
+    // permission set was checked.
+    $this->actingAs($admin->fresh())
+        ->get(route('admin.content', ['tab' => 'not-a-tab']))
+        ->assertNotFound();
+});
+
 it('refuses the partner tab to someone holding only the story permissions', function (): void {
     $admin = userWithRole('admin');
     foreach (['view', 'create', 'update', 'activate'] as $action) {

@@ -367,12 +367,16 @@ Route::middleware(['noindex', 'auth', 'role:admin|super_admin'])
             ->name('taxonomy');
 
         // The company content a non-technical administrator publishes: the
-        // partners strip and the success stories. Gated on either view
-        // permission rather than both, because the screen has two tabs and
-        // holding one is a legitimate reason to be here -- switchTab re-checks
-        // per tab, and the view only renders a tab you may view.
+        // partners strip and the success stories. Gated on either view permission
+        // rather than both, because the screen has two tabs and holding one is a
+        // legitimate reason to be here -- switchTab re-checks per tab, and the view
+        // only renders a tab you may view.
+        //
+        // `content.view` is a Gate ability, not a permission, and it is the only
+        // way to express "either": `can:partners.view,success_stories.view` reads
+        // like an OR but authorizes partners.view alone. See AppServiceProvider.
         Route::get('/content', ContentManager::class)
-            ->middleware('can:partners.view,success_stories.view')
+            ->middleware('can:content.view')
             ->name('content');
 
         Route::get('/inventory', InventoryManager::class)

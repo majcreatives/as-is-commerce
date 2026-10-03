@@ -142,6 +142,21 @@ class AppServiceProvider extends ServiceProvider
             fn (User $user, string $ability): ?bool => $user->hasRole('super_admin') ? true : null
         );
 
+        // The company content screen has two tabs behind two separate permission
+        // sets, and holding either one is a legitimate reason to open it.
+        //
+        // This exists as a Gate ability because `can:` cannot express that.
+        // Illuminate\Auth\Middleware\Authorize::handle() takes the first segment
+        // as the ability and passes the REST to the gate as model arguments, so
+        // `can:partners.view,success_stories.view` authorizes partners.view alone
+        // and treats success_stories.view as a class name to load. It is an AND
+        // dressed as an OR, and reading it the other way round is easy.
+        Gate::define(
+            'content.view',
+            fn (User $user): bool => $user->can('partners.view')
+                || $user->can('success_stories.view')
+        );
+
         $this->registerRateLimiters();
     }
 

@@ -51,6 +51,21 @@ class ContentManager extends Component
 {
     use WithFileUploads;
 
+    /**
+     * The tab names, and the permission prefix each one answers to.
+     *
+     * The two vocabularies deliberately do not match: the stories tab is
+     * "stories" in the URL and "success_stories." in the permission set. Written
+     * out once here rather than reassembled at each check, because deriving one
+     * from the other is how a tab ends up authorizing the wrong thing.
+     *
+     * @var array<string, string>
+     */
+    private const TAB_PERMISSION_PREFIX = [
+        'partners' => 'partners',
+        'stories' => 'success_stories',
+    ];
+
     #[Url]
     public string $tab = 'partners';
 
@@ -83,16 +98,33 @@ class ContentManager extends Component
 
     public function mount(): void
     {
-        // At least one of the two. What is permitted once inside is decided per
-        // tab by each action, not by this check.
-        abort_unless(Gate::any(['partners.view', 'success_stories.view']), 403);
+        // $tab is bound from the query string, so it cannot be assumed to be one
+        // of the two. Validated here and not only in switchTab() because mount()
+        // is what decides which permission set opens the screen -- an unchecked
+        // value reaching authorizeTab() falls through to the stories permissions
+        // simply by not being 'partners'.
+        abort_unless(array_key_exists($this->tab, self::TAB_PERMISSION_PREFIX), 404);
 
-        $this->authorizeTab('view');
+        // WHICH TABS THIS PERSON CAN SEE. Checked rather than assumed, so the
+        // screen opens on a tab that is actually permitted instead of refusing a
+        // request the nav has already offered: the nav links here on the strength
+        // of EITHER view permission, so someone who manages only one of the two
+        // would otherwise be handed a link that leads to a 403.
+        $viewable = array_values(array_filter(
+            array_keys(self::TAB_PERMISSION_PREFIX),
+            fn (string $tab): bool => Gate::check(self::TAB_PERMISSION_PREFIX[$tab].'.view'),
+        ));
+
+        abort_if($viewable === [], 403);
+
+        if (! in_array($this->tab, $viewable, true)) {
+            $this->tab = $viewable[0];
+        }
     }
 
     public function switchTab(string $tab): void
     {
-        abort_unless(in_array($tab, ['partners', 'stories'], true), 404);
+        abort_unless(array_key_exists($tab, self::TAB_PERMISSION_PREFIX), 404);
 
         $this->authorizeTab('view', $tab);
 
@@ -389,11 +421,7 @@ class ContentManager extends Component
      */
     private function authorizeTab(string $action, ?string $tab = null): void
     {
-        $this->authorize(
-            ($tab ?? $this->tab) === 'partners'
-                ? "partners.{$action}"
-                : "success_stories.{$action}",
-        );
+        $this->authorize(self::TAB_PERMISSION_PREFIX[$tab ?? $this->tab].".$action");
     }
 
     private function isPartners(): bool

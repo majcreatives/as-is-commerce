@@ -174,7 +174,8 @@ class AppServiceProvider extends ServiceProvider
      * created in bulk live in the Livewire components that perform the work:
      * five wrong passwords a minute by identifier and address, three reset
      * codes a minute by identifier, five wrong reset codes an hour by account
-     * and address, and twenty accounts a day by address.
+     * and address, twenty accounts a day by address, and sixty newsletter
+     * confirmation or unsubscribe clicks an hour by address.
      */
     private function registerRateLimiters(): void
     {
@@ -199,6 +200,19 @@ class AppServiceProvider extends ServiceProvider
         // fulfilled. The server-side Paystack verification is what makes the
         // route safe to expose at all, and that has not changed.
         RateLimiter::for('payment-callbacks', fn (): Limit => Limit::perMinute(30)
+            ->by(request()->ip()));
+
+        // The two newsletter email links, confirmation and unsubscribe.
+        //
+        // TIGHTER THAN auth-pages, and for a different reason: those pages have
+        // nothing on them, whereas these act on a record. The tokens are 64
+        // random characters so they cannot be guessed in any practical number of
+        // requests, but this is the one place where a guessed or harvested token
+        // has a real effect -- confirming an address somebody did not own, or
+        // silently removing somebody who did. Sixty an hour is generous for a
+        // person clicking one link they received, and slow enough that a run
+        // through tokens is pointless.
+        RateLimiter::for('newsletter-links', fn (): Limit => Limit::perHour(60)
             ->by(request()->ip()));
     }
 }

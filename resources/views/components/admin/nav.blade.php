@@ -54,6 +54,10 @@
             ['Credit packages', 'admin.credit-packages', 'admin.credit-packages', 'credit_packages.view'],
             ['Referrals', 'admin.referrals', 'admin.referrals', 'referrals.view'],
             ['Notifications', 'admin.notifications', 'admin.notifications', 'notifications.inspect'],
+            // Next to Notifications because it is the same kind of screen: a
+            // read-only view of outbound communication, with no capability to
+            // edit or send.
+            ['Newsletter', 'admin.newsletter.index', 'admin.newsletter.*', 'newsletter.view'],
             ['Settings', 'admin.settings', 'admin.settings', 'settings.view'],
         ],
     ];

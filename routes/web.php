@@ -20,6 +20,7 @@ use App\Livewire\Admin\Content\ContentManager;
 use App\Livewire\Admin\Customers\CustomerDetail;
 use App\Livewire\Admin\Customers\CustomerIndex;
 use App\Livewire\Admin\Delivery\FulfilmentQueue;
+use App\Livewire\Admin\Newsletter\SubscriberIndex;
 use App\Livewire\Admin\Notifications\NotificationIndex;
 use App\Livewire\Admin\Operations\AuditLog;
 use App\Livewire\Admin\Operations\ExceptionCentrePage;
@@ -56,6 +57,8 @@ use App\Livewire\Credits\PurchaseHistory;
 use App\Livewire\Delivery\AddressBookPage;
 use App\Livewire\Delivery\OrderTracking;
 use App\Livewire\Marketplace\Home;
+use App\Livewire\Newsletter\ConfirmSubscription;
+use App\Livewire\Newsletter\Unsubscribe;
 use App\Livewire\Notifications\NotificationCentre;
 use App\Livewire\Orders\OrderDetail;
 use App\Livewire\Orders\OrderIndex;
@@ -126,6 +129,36 @@ Route::view('/cookies', 'pages.cookie')->name('cookies');
 // page exists, there is simply nothing published on it yet.
 Route::get('/partners', PartnerIndex::class)->name('partners.index');
 Route::get('/success-stories', SuccessStoryIndex::class)->name('success-stories.index');
+
+/*
+|--------------------------------------------------------------------------
+| Newsletter email links
+|--------------------------------------------------------------------------
+|
+| The two addresses a newsletter subscriber is sent, and the only two places
+| that act on a row in this list.
+|
+| BOTH ARE NOINDEX. They are reached from an inbox, never linked from the site,
+| and a URL map should not be advertising a route that only means something to
+| whoever already holds the token.
+|
+| BOTH ACT ON GET, which is what an email link has to be. That is safe here
+| precisely because the token is the authorization: 64 random characters, and
+| the confirmation token is destroyed the moment it works. Neither route requires
+| a session or a CSRF token, because somebody confirming an address they have no
+| account for cannot produce either. What stops a third party from acting here is
+| that the token is in the recipient's inbox and nowhere else.
+|
+| UNSUBSCRIBE IS NOT EXEMPT FROM ANYTHING. It is throttled rather than exempted
+| so it cannot be hammered, and it takes effect immediately rather than asking
+| for confirmation, because an unsubscribe that takes two clicks is one people
+| click once and then distrust.
+*/
+Route::middleware(['noindex', 'throttle:newsletter-links'])->group(function (): void {
+    Route::get('/newsletter/confirm/{token}', ConfirmSubscription::class)->name('newsletter.confirm');
+
+    Route::get('/newsletter/unsubscribe/{token}', Unsubscribe::class)->name('newsletter.unsubscribe');
+});
 
 // The catalog. Both routes resolve only publicly visible products, so a
 // draft or archived listing 404s rather than existing at a guessable URL.
@@ -378,6 +411,14 @@ Route::middleware(['noindex', 'auth', 'role:admin|super_admin'])
         Route::get('/content', ContentManager::class)
             ->middleware('can:content.view')
             ->name('content');
+
+        // The newsletter list. Read-only and gated on newsletter.view. Note the
+        // singular `can:newsletter.view`: a comma there would authorize
+        // `newsletter` and pass `view` as a model argument, exactly the mistake
+        // documented above.
+        Route::get('/newsletter', SubscriberIndex::class)
+            ->middleware('can:newsletter.view')
+            ->name('newsletter.index');
 
         Route::get('/inventory', InventoryManager::class)
             ->middleware('can:inventory.view')

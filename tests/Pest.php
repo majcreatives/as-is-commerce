@@ -873,3 +873,25 @@ function staffWith(array $permissions): User
 
     return $user->fresh();
 }
+
+/**
+ * Just the page's own content: the region between <main> and </main>, which
+ * excludes the header and the footer.
+ *
+ * Used where a test needs to say something about what a page itself claims,
+ * independently of site chrome that every page shares. Without it, "this page
+ * has no form" silently becomes "this page is the only page with no form".
+ */
+function pageMainContent(TestResponse $response): string
+{
+    $html = $response->getContent();
+
+    if (preg_match('/<main\b[^>]*>(.*)<\/main>/s', $html, $matches) !== 1) {
+        // Fail loudly rather than returning the whole document: a helper that
+        // silently widens its own scope would make every assertion built on it
+        // weaker than it looks.
+        test()->fail('The response has no <main> region to scope an assertion to.');
+    }
+
+    return $matches[1];
+}

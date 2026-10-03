@@ -52,6 +52,32 @@
         </nav>
     </x-container>
 
+    {{-- The newsletter form gets its own full-width row rather than another
+         column. It is the one footer element that is not a list of links, it
+         needs more width than a column would give it without cramping the label,
+         and putting it in the grid would make it the sixth thing competing with
+         five columns of navigation.
+
+         Below the grid and above the copyright, because the copyright bar is the
+         smallest text on the page and this is the only part of the footer a
+         visitor is asked to do something in.
+
+         Inline in the footer only: no popup, no modal, no dismissal state. A
+         signup form that arrives unasked over the catalogue is a decision to
+         interrupt somebody rather than offer them something, and the footer is
+         the one place on the page where asking is appropriate. --}}
+    <div class="border-t border-slate-100">
+        <x-container class="py-8">
+            <div class="max-w-md">
+                <h2 class="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Hear about new auctions
+                </h2>
+
+                <livewire:newsletter.signup />
+            </div>
+        </x-container>
+    </div>
+
     <div class="border-t border-slate-100 py-4">
         <x-container class="text-xs text-slate-500">
             &copy; {{ date('Y') }} {{ config('app.name') }}. All rights reserved.

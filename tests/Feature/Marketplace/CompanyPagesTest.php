@@ -142,13 +142,32 @@ it('keeps the main navigation, rather than moving it into the footer', function 
 // ----------------------------------------------------------------- Contact
 
 it('says so plainly when no contact details have been published', function (): void {
-    $this->get(route('contact'))
-        ->assertOk()
-        ->assertSee('Contact details are not published yet')
-        // There is no inbox behind this page, so it does not offer a form.
-        ->assertDontSee('<form', false)
-        ->assertDontSee('mailto:', false)
+    $response = $this->get(route('contact'))->assertOk();
+
+    $response->assertSee('Contact details are not published yet');
+
+    // There is no inbox behind this page, so it does not offer a form.
+    //
+    // Scoped to <main> rather than the whole document. The footer is site chrome
+    // on every page and carries the newsletter signup, which is a form that does
+    // work -- so a page-wide "no <form>" assertion would be asserting that this
+    // particular page is unusual rather than that it makes no contact-form
+    // promise. Keep this inside <main>.
+    expect(pageMainContent($response))->not->toContain('<form');
+
+    $response->assertDontSee('mailto:', false)
         ->assertDontSee('tel:', false);
+});
+
+it('keeps the no-contact-form guarantee meaningful as the footer changes', function (): void {
+    // The narrowing above is only honest if the contact page really is the only
+    // thing it is about. This pins both halves: the page has no form of its own,
+    // and the footer still has one -- so a future edit that moves the newsletter
+    // form into the page content fails here instead of passing quietly.
+    $response = $this->get(route('contact'))->assertOk();
+
+    expect(pageMainContent($response))->not->toContain('<form')
+        ->and($response->getContent())->toContain('<form');
 });
 
 it('shows the contact details an administrator has set', function (): void {

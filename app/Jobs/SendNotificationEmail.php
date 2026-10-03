@@ -15,7 +15,7 @@ use Throwable;
 /**
  * Send one notification's email, away from the request that caused it.
  *
- * THE ONLY QUEUED WORK ON THIS PLATFORM, AND DELIBERATELY SO. Nothing
+ * COMMUNICATION, NEVER DECISION-MAKING, AND DELIBERATELY SO. Nothing
  * financial is queued: bids, credit consumption, Buy Now acquisition,
  * inventory, payment verification, order transitions, closure, settlement,
  * refunds and delivery all remain synchronous and transactional. This job

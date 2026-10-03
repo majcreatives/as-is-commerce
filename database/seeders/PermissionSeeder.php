@@ -124,6 +124,19 @@ class PermissionSeeder extends Seeder
         // resend or delete a notification, because no such capability exists.
         'notifications.inspect',
 
+        // Seeing who has asked to hear from us, and whether they finished
+        // confirming. Staff-only and read-only, deliberately, and for the same
+        // reason there is no permission to edit a notification: no such
+        // capability exists. A subscriber is removed by them, through their own
+        // unsubscribe link -- not by an administrator, and not by a button on
+        // this screen.
+        //
+        // There is no `newsletter.send` because nothing sends. When a sending
+        // mechanism is agreed, the act of mailing a list is a separate and much
+        // larger permission, and it should not be implied by being able to look
+        // at one.
+        'newsletter.view',
+
         // Returning money. Split deliberately rather than granted as one
         // capability: seeing that a customer is owed something, deciding to
         // give it back, and sending it to the provider are three different

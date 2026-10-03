@@ -16,7 +16,8 @@ use Symfony\Component\Finder\SplFileInfo;
 /*
  * Queued notification email.
  *
- * The only queued work on this platform. It exists because `auctions:tick`
+ * One of two queued job classes, and both carry a message rather than make
+ * one. This one exists because `auctions:tick`
  * closes auctions and emails their winners inline, on a schedule of every
  * minute with a five-minute overlap lock -- so SMTP latency was inside the
  * sweep.
@@ -190,16 +191,29 @@ it('queues no financial work of any kind', function (): void {
 
 });
 
-it('has exactly one job class, and it carries a message', function (): void {
+it('queues communication only: every job class is a named email carrier', function (): void {
     // The structural guarantee behind the test above. Nothing financial can be
-    // queued because there is nothing to queue it with: this is the only job
-    // in the application, and it sends an email about something that has
-    // already committed.
+    // queued because nothing that decides money, credits, inventory or order
+    // state is allowed to be handed to the queue -- and the mechanism for that
+    // is that every job class is one a person has read and named here.
+    //
+    // Named rather than counted. "There is exactly one job" was true once and
+    // stopped being true when the newsletter needed a confirmation link; what
+    // actually matters is that the set is deliberate and communication-only. A
+    // new job class still fails this test, until somebody decides it is safe to
+    // defer -- which is the moment the decision gets made on purpose.
+    //
+    //   SendNewsletterConfirmation -- a confirmation link for a request that is
+    //                                 already committed as `pending`
+    //   SendNotificationEmail      -- a notification about a committed event
     $jobs = collect(File::allFiles(app_path('Jobs')))
         ->map(fn (SplFileInfo $f): string => $f->getFilenameWithoutExtension())
         ->sort()
         ->values()
         ->all();
 
-    expect($jobs)->toBe(['SendNotificationEmail']);
+    expect($jobs)->toBe([
+        'SendNewsletterConfirmation',
+        'SendNotificationEmail',
+    ]);
 });

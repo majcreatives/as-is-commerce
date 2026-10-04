@@ -221,6 +221,11 @@ class ContentManager extends Component
      *
      * This is the file on disk and the column together. Removing an image is
      * not publishing a record, so it sits behind `update`.
+     *
+     * Logged, because creating and publishing a record both are. A logo or
+     * photograph can disappear from a page someone is responsible for, and
+     * "who removed this" is exactly the question asked afterwards and answered
+     * badly when the answer is "nothing recorded that".
      */
     public function removeImage(int $id, ContentMediaService $media): void
     {
@@ -232,13 +237,22 @@ class ContentManager extends Component
             $partner->logo_path = null;
             $partner->updated_by = auth()->id();
             $partner->save();
+
+            $record = $partner;
         } else {
             $story = SuccessStory::findOrFail($id);
             $media->delete($story->image_path);
             $story->image_path = null;
             $story->updated_by = auth()->id();
             $story->save();
+
+            $record = $story;
         }
+
+        activity('content')
+            ->performedOn($record)
+            ->causedBy(auth()->user())
+            ->log('image removed');
 
         session()->flash('status', 'Image removed.');
     }
@@ -273,18 +287,48 @@ class ContentManager extends Component
         ]);
     }
 
+    /**
+     * The validation rules for both forms.
+     *
+     * Public and gathered in one place so the image size limit is stated once.
+     * The number itself belongs to the media service, which is what actually
+     * enforces it -- these rules only decide what the person uploading is told
+     * before that happens.
+     *
+     * @return array<string, array<string, list<string>>>
+     */
+    public function rules(): array
+    {
+        $image = ['nullable', 'image', 'max:'.ContentMediaService::MAX_KILOBYTES, 'mimes:jpg,jpeg,png,webp,gif'];
+
+        return [
+            'partner' => [
+                'name' => ['required', 'string', 'max:160'],
+                'url' => ['nullable', 'string', 'max:500', 'url'],
+                'description' => ['nullable', 'string', 'max:1000'],
+                'sortOrder' => ['required', 'integer', 'min:0', 'max:9999'],
+                'logo' => $image,
+            ],
+            'story' => [
+                'name' => ['required', 'string', 'max:160'],
+                'storyTitle' => ['required', 'string', 'max:160'],
+                'quote' => ['required', 'string', 'max:1200'],
+                'sortOrder' => ['required', 'integer', 'min:0', 'max:9999'],
+                'photo' => $image,
+            ],
+        ];
+    }
+
     private function savePartner(ContentMediaService $media): void
     {
-        $validated = $this->validate([
-            'name' => ['required', 'string', 'max:160'],
-            'url' => ['nullable', 'string', 'max:500', 'url'],
-            'description' => ['nullable', 'string', 'max:1000'],
-            'sortOrder' => ['required', 'integer', 'min:0', 'max:9999'],
-            'logo' => ['nullable', 'image', 'max:2048', 'mimes:jpg,jpeg,png,webp,gif'],
-        ], [], [
-            'sortOrder' => 'position',
-            'logo' => 'logo',
-        ]);
+        $validated = $this->validate(
+            $this->rules()['partner'],
+            [],
+            [
+                'sortOrder' => 'position',
+                'logo' => 'logo',
+            ],
+        );
 
         $partner = $this->editingId === null ? new Partner : Partner::findOrFail($this->editingId);
 
@@ -319,17 +363,15 @@ class ContentManager extends Component
 
     private function saveStory(ContentMediaService $media): void
     {
-        $validated = $this->validate([
-            'name' => ['required', 'string', 'max:160'],
-            'storyTitle' => ['required', 'string', 'max:160'],
-            'quote' => ['required', 'string', 'max:1200'],
-            'sortOrder' => ['required', 'integer', 'min:0', 'max:9999'],
-            'photo' => ['nullable', 'image', 'max:2048', 'mimes:jpg,jpeg,png,webp,gif'],
-        ], [], [
-            'storyTitle' => 'title',
-            'sortOrder' => 'position',
-            'photo' => 'photo',
-        ]);
+        $validated = $this->validate(
+            $this->rules()['story'],
+            [],
+            [
+                'storyTitle' => 'title',
+                'sortOrder' => 'position',
+                'photo' => 'photo',
+            ],
+        );
 
         $story = $this->editingId === null ? new SuccessStory : SuccessStory::findOrFail($this->editingId);
 

@@ -9,15 +9,20 @@ use DomainException;
 /**
  * A partner or success-story image operation that is not permitted.
  *
- * Three failures only: the upload is not an accepted image, the file could not
- * be stored, and the caller asked for a directory this service does not own.
- * All carry wording an admin screen can show verbatim.
+ * Four failures only: the upload is not an accepted image, it is too large, the
+ * file could not be stored, and the caller asked for a directory this service
+ * does not own. All carry wording an admin screen can show verbatim.
  */
 final class InvalidContentMedia extends DomainException
 {
     public static function unsupportedType(): self
     {
         return new self('Only JPEG, PNG, WebP and GIF images are accepted.');
+    }
+
+    public static function tooLarge(): self
+    {
+        return new self('That image is larger than 2 MB. Please choose a smaller one.');
     }
 
     public static function storeFailed(): self

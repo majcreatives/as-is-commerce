@@ -19,10 +19,12 @@ use Illuminate\Support\Str;
  *
  * THE WHITELIST IS THE DEFENCE THAT SURVIVES A BYPASSED COMPONENT. The admin
  * form validates the upload, but a crafted request can skip that, so the
- * extension AND the MIME type are re-checked here. A file is only ever written
- * under partners/ or success-stories/ with a uuid name and one of those
- * extensions, which is what stops an uploaded disguise from being served as
- * something executable.
+ * extension AND the MIME type are re-checked here. Size is re-checked for the
+ * same reason. A file is only ever written under partners/ or
+ * success-stories/ with a uuid name, one of those extensions, and within the
+ * size limit -- which is what stops an uploaded disguise from being served as
+ * something executable, and what stops one oversized request from becoming a
+ * memory spike on a shared host.
  *
  * DELETES ARE SCOPED. Only a path inside the directory this service writes is
  * ever deleted, so a hand-edited column value cannot turn "remove this logo"
@@ -30,6 +32,19 @@ use Illuminate\Support\Str;
  */
 class ContentMediaService
 {
+    /**
+     * The largest image this service will write, in kilobytes.
+     *
+     * Public and named so the admin form's rule can quote it instead of
+     * restating 2048. Two places stating one number is how a limit starts
+     * being enforced on the path somebody remembered and nowhere else.
+     *
+     * A logo and a photograph are both display-sized, and on the shared host a
+     * large upload is a memory spike rather than a useful picture. 2 MB is
+     * generous for either.
+     */
+    public const MAX_KILOBYTES = 2048;
+
     /** The directories this service is allowed to write to and delete from. */
     private const DIRECTORIES = ['partners', 'success-stories'];
 
@@ -47,6 +62,14 @@ class ContentMediaService
     public function store(UploadedFile $file, string $directory): string
     {
         $this->guardDirectory($directory);
+
+        // Checked here, not only in the form. The admin component validates
+        // first and gives the uploader a readable message, but a crafted request
+        // skips validation entirely -- so the size has to be re-checked at the
+        // same boundary as the extension, or it protects one caller.
+        if ($file->getSize() > self::MAX_KILOBYTES * 1024) {
+            throw InvalidContentMedia::tooLarge();
+        }
 
         $path = $file->storeAs(
             $directory,

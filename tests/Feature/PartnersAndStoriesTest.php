@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Domain\Content\Exceptions\InvalidContentMedia;
 use App\Domain\Content\Services\ContentMediaService;
 use App\Domain\Marketplace\Queries\ContentDiscoveryQuery;
 use App\Livewire\Admin\Content\ContentManager;
@@ -383,6 +384,36 @@ it('refuses to delete a path outside the directories this service owns', functio
     Storage::disk('public')->assertExists('products/1/someone-elses-image.jpg');
 });
 
+it('refuses an oversized image inside the media service itself', function (): void {
+    Storage::fake('public');
+
+    $oversized = TemporaryUploadedFile::fake()
+        ->create('logo.jpg', (ContentMediaService::MAX_KILOBYTES + 512), 'image/jpeg');
+
+    // Called directly, with no Livewire form in front of it. The size limit is
+    // currently a validation rule on the admin component, so it protects that
+    // one caller and nothing else -- the service writes whatever it is handed.
+    expect(fn () => app(ContentMediaService::class)->store($oversized, 'partners'))
+        ->toThrow(InvalidContentMedia::class, '2 MB');
+
+    expect(Storage::disk('public')->allFiles())->toBe([]);
+});
+
+it('keeps the component and the service agreed on the size limit', function (): void {
+    $rules = (new ReflectionClass(ContentManager::class))
+        ->getMethod('rules')
+        ->invoke(new ContentManager);
+
+    $for = static fn (string $tab, string $field): string => implode('|', (array) ($rules[$tab][$field] ?? []));
+
+    // Two places state this number today. The component's rule is friendlier to
+    // the person uploading; the service is what actually decides. If they drift,
+    // the admin sees a message the service does not enforce. Pin them together
+    // rather than trusting the copy to stay put.
+    expect($for('partner', 'logo'))->toContain('max:'.ContentMediaService::MAX_KILOBYTES)
+        ->and($for('story', 'photo'))->toContain('max:'.ContentMediaService::MAX_KILOBYTES);
+});
+
 it('removes an image and clears the reference', function (): void {
     Storage::fake('public');
     $admin = userWithRole('admin');
@@ -406,6 +437,50 @@ it('removes an image and clears the reference', function (): void {
     expect($partner->fresh()->logo_path)->toBeNull();
 
     Storage::disk('public')->assertMissing($path);
+});
+
+it('records an image removal in the activity log', function (): void {
+    Storage::fake('public');
+    $admin = userWithRole('admin');
+
+    $partner = Partner::factory()->create(['logo_path' => 'partners/whatever.jpg']);
+    Storage::disk('public')->put('partners/whatever.jpg', 'x');
+
+    Livewire::actingAs($admin)
+        ->test(ContentManager::class, ['tab' => 'partners'])
+        ->call('removeImage', $partner->id)
+        ->assertHasNoErrors();
+
+    // Creating and publishing a record are both logged, so an operator can
+    // answer "who changed this". Removing the image is the one mutation on this
+    // screen that left no trace, which is also the one nobody would think to ask
+    // about afterwards.
+    expect(Activity::query()
+        ->where('description', 'image removed')
+        ->where('subject_type', Partner::class)
+        ->where('subject_id', $partner->id)
+        ->exists()
+    )->toBeTrue();
+});
+
+it('records an image removal on a story too', function (): void {
+    Storage::fake('public');
+    $admin = userWithRole('admin');
+
+    $story = SuccessStory::factory()->create(['image_path' => 'success-stories/whatever.jpg']);
+    Storage::disk('public')->put('success-stories/whatever.jpg', 'x');
+
+    Livewire::actingAs($admin)
+        ->test(ContentManager::class, ['tab' => 'stories'])
+        ->call('removeImage', $story->id)
+        ->assertHasNoErrors();
+
+    expect(Activity::query()
+        ->where('description', 'image removed')
+        ->where('subject_type', SuccessStory::class)
+        ->where('subject_id', $story->id)
+        ->exists()
+    )->toBeTrue();
 });
 
 /*

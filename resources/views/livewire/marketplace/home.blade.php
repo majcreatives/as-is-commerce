@@ -53,8 +53,12 @@
                 //
                 // Three columns of two, each a vertical run with its own top offset and its
                 // own proportions. Column-major, which is what makes it stagger
-                // instead of forming a grid. The pale edge is what separates a
-                // photograph from the dark panel behind it.
+                // instead of forming a grid. The pale frame is what separates a
+                // photograph from the dark panel behind it, and it is thick on
+                // purpose -- a hairline left a pale picture with no edge to end
+                // on. The cost is that a fifth of a small tile is frame rather
+                // than photograph, which is why this is the value to revisit
+                // before the collage is shown at true three-column width.
                 $galleryColumns = [
                     ['offset' => 'pt-8', 'ratios' => ['aspect-3/4', 'aspect-square']],
                     ['offset' => '', 'ratios' => ['aspect-3/5', 'aspect-4/3']],
@@ -84,7 +88,7 @@
                             @endphp
                             <div class="{{ trim('flex flex-col gap-3 sm:gap-4 '.$spec['offset']) }}">
                                 @foreach ($cards as $card)
-                                    <div class="{{ $spec['ratios'][$loop->index] ?? 'aspect-square' }} overflow-hidden rounded-xl border border-white/20 shadow-md">
+                                    <div class="{{ $spec['ratios'][$loop->index] ?? 'aspect-square' }} overflow-hidden rounded-xl border-[5px] border-white/25 shadow-md">
                                         <img src="{{ $card['product']->image() }}"
                                              class="h-full w-full object-cover"
                                              alt=""

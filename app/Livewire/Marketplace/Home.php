@@ -48,10 +48,12 @@ class Home extends Component
         // Free: featured() and trending() both eager-load `images`, so reading
         // the URL costs no query. De-duplicated because a recently published
         // product can also be trending, and it must not appear twice.
+        // Six, because the collage is three columns of two. A seventh has
+        // nowhere to go and would only push the visible cards further down.
         $gallery = $featured->concat($trending)
             ->filter(fn (Product $product): bool => $product->image() !== null)
             ->unique(fn (Product $product): int => $product->getKey())
-            ->take(9)
+            ->take(6)
             ->values();
 
         return view('livewire.marketplace.home', [

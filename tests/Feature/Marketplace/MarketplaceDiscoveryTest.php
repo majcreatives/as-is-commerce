@@ -287,8 +287,10 @@ it('builds the hero collage out of real products that actually have a picture', 
 });
 
 it('lays the hero out as text beside a staggered three-column collage', function (): void {
-    // Seven fills all three columns: three, three, one.
-    $products = Product::factory()->count(7)->active()->create();
+    // Six fills all three columns, two to a column. Two rather than three is
+    // the point: at three the columns were short enough to read as a grid of
+    // thumbnails, and the tiles had no room to be anything but squares.
+    $products = Product::factory()->count(6)->active()->create();
     foreach ($products as $product) {
         ProductImage::factory()->create(['product_id' => $product->id]);
     }
@@ -315,6 +317,11 @@ it('lays the hero out as text beside a staggered three-column collage', function
         ->toContain('aspect-4/3')
         ->toContain('aspect-square')
         ->toContain('h-full w-full object-cover');
+
+    // A hairline of white, so a pale photograph has an edge to end on. A tile
+    // that dissolves into the brand background reads as a hole in the collage
+    // rather than as a picture of something.
+    expect($hero)->toContain('border border-white/20');
 });
 
 it('shows no collage frame at all when no product has a picture', function (): void {
@@ -330,7 +337,7 @@ it('shows no collage frame at all when no product has a picture', function (): v
         ->assertDontSee('min-h-[480px]', false);
 });
 
-it('caps the collage at nine cards however much the catalog has', function (): void {
+it('caps the collage at six cards however much the catalog has', function (): void {
     // These four are created first, so they fall outside the eight most
     // recently published that featured() returns. Making these the ones that
     // sell is what puts products into the collage twice over -- once from each
@@ -347,9 +354,10 @@ it('caps the collage at nine cards however much the catalog has', function (): v
         payOrder(buyNowCheckout(bidder(), $product->fresh())->fresh());
     }
 
-    // Twelve distinct products are on offer; the collage shows nine.
+    // Twelve distinct products are on offer; the collage shows six, which is
+    // three columns of two. A seventh card would have nowhere to sit.
     Livewire::test(Home::class)
-        ->assertViewHas('gallery', fn ($gallery): bool => $gallery->count() === 9);
+        ->assertViewHas('gallery', fn ($gallery): bool => $gallery->count() === 6);
 });
 
 it('never spends an extra query on the collage', function (): void {

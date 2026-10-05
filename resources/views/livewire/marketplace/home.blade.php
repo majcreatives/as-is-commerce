@@ -51,13 +51,14 @@
                 // -- a fabricated picture on the front page is the same lie as a
                 // fabricated product.
                 //
-                // Three columns, each a vertical run of cards with its own top
-                // offset and its own proportions. Column-major, which is what makes
-                // it stagger instead of forming a grid.
+                // Three columns of two, each a vertical run with its own top offset and its
+                // own proportions. Column-major, which is what makes it stagger
+                // instead of forming a grid. The pale edge is what separates a
+                // photograph from the dark panel behind it.
                 $galleryColumns = [
-                    ['offset' => 'pt-8', 'ratios' => ['aspect-3/4', 'aspect-square', 'aspect-3/4']],
-                    ['offset' => '', 'ratios' => ['aspect-3/5', 'aspect-4/3', 'aspect-square']],
-                    ['offset' => 'pt-12', 'ratios' => ['aspect-3/4', 'aspect-3/5', 'aspect-square']],
+                    ['offset' => 'pt-8', 'ratios' => ['aspect-3/4', 'aspect-square']],
+                    ['offset' => '', 'ratios' => ['aspect-3/5', 'aspect-4/3']],
+                    ['offset' => 'pt-12', 'ratios' => ['aspect-square', 'aspect-3/5']],
                 ];
 
                 $galleryCards = $gallery->values()->map(
@@ -66,7 +67,7 @@
                         // The first card of each column sits near the top of the
                         // collage at every width, so those are worth having early.
                         // The rest wait for a reader who gets that far.
-                        'eager' => $place % 3 === 0,
+                        'eager' => $place % 2 === 0,
                     ],
                 );
             @endphp
@@ -77,13 +78,13 @@
                      price, in the rows below. Announcing it twice is only noise. --}}
                 <div class="lg:col-span-6">
                     <div class="grid h-full min-h-[480px] grid-cols-3 gap-3 sm:gap-4" aria-hidden="true">
-                        @foreach ($galleryCards->chunk(3) as $column => $cards)
+                        @foreach ($galleryCards->chunk(2) as $column => $cards)
                             @php
                                 $spec = $galleryColumns[$column] ?? ['offset' => '', 'ratios' => []];
                             @endphp
                             <div class="{{ trim('flex flex-col gap-3 sm:gap-4 '.$spec['offset']) }}">
                                 @foreach ($cards as $card)
-                                    <div class="{{ $spec['ratios'][$loop->index] ?? 'aspect-square' }} overflow-hidden rounded-xl shadow-md">
+                                    <div class="{{ $spec['ratios'][$loop->index] ?? 'aspect-square' }} overflow-hidden rounded-xl border border-white/20 shadow-md">
                                         <img src="{{ $card['product']->image() }}"
                                              class="h-full w-full object-cover"
                                              alt=""
@@ -219,4 +220,9 @@
          rather than giving a reason to shop, and were repeated in full on the
          How It Works page. They now live only there ("What you can rely on"),
          so the front page is the shop and the explanation has one home. --}}
+
+    {{-- The newsletter prompt. On this page only, and only for a visitor the
+         server decides is worth asking -- see the partial for the reasoning and
+         for what it does and does not decide. --}}
+    @include('partials.newsletter-prompt')
 </div>

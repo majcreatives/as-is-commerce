@@ -148,26 +148,33 @@ it('says so plainly when no contact details have been published', function (): v
 
     // There is no inbox behind this page, so it does not offer a form.
     //
-    // Scoped to <main> rather than the whole document. The footer is site chrome
-    // on every page and carries the newsletter signup, which is a form that does
-    // work -- so a page-wide "no <form>" assertion would be asserting that this
-    // particular page is unusual rather than that it makes no contact-form
-    // promise. Keep this inside <main>.
+    // Scoped to <main> rather than the whole document. Chrome can carry forms
+    // that do work -- the newsletter prompt does, on the front page -- so a
+    // page-wide "no <form>" assertion would be asserting that this particular
+    // page is unusual rather than that it makes no contact-form promise. Keep
+    // this inside <main>.
     expect(pageMainContent($response))->not->toContain('<form');
 
     $response->assertDontSee('mailto:', false)
         ->assertDontSee('tel:', false);
 });
 
-it('keeps the no-contact-form guarantee meaningful as the footer changes', function (): void {
-    // The narrowing above is only honest if the contact page really is the only
-    // thing it is about. This pins both halves: the page has no form of its own,
-    // and the footer still has one -- so a future edit that moves the newsletter
-    // form into the page content fails here instead of passing quietly.
-    $response = $this->get(route('contact'))->assertOk();
+it('keeps the no-contact-form guarantee meaningful as the newsletter moves', function (): void {
+    // The narrowing above is only honest if this project does ship forms
+    // elsewhere. The anchor has moved -- the newsletter form was in the footer
+    // and is now a modal on the front page -- so the site-wide half of the
+    // guarantee is checked on the front page, and the contact page is checked
+    // end to end rather than only inside <main>.
+    //
+    // Both halves matter. Without the first, "no <form>" here is a property of
+    // every page and says nothing about this one. Without the second, a future
+    // edit could quietly add a contact form back into the page content.
+    $contact = $this->get(route('contact'))->assertOk();
 
-    expect(pageMainContent($response))->not->toContain('<form')
-        ->and($response->getContent())->toContain('<form');
+    expect($contact->getContent())->not->toContain('<form');
+
+    $home = $this->get(route('home'))->assertOk();
+    expect($home->getContent())->toContain('<form');
 });
 
 it('shows the contact details an administrator has set', function (): void {

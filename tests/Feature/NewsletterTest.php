@@ -443,16 +443,93 @@ describe('newsletter database constraints', function (): void {
 });
 
 describe('newsletter placement', function (): void {
-    it('offers the form in the footer of the public pages', function (): void {
-        foreach (['home', 'products.index', 'auctions.index'] as $route) {
+    it('offers the form in a modal on the front page', function (): void {
+        $this->get(route('home'))
+            ->assertOk()
+            ->assertSee('Hear about new auctions')
+            // The input id, because that is ours and stays put. Livewire's own
+            // component marker contains a generated wire:id and would be an
+            // assertion about Livewire rather than about this feature.
+            ->assertSee('id="newsletter-email"', false);
+    });
+
+    it('offers the form as a dialog rather than as loose markup', function (): void {
+        $html = $this->get(route('home'))->assertOk()->getContent();
+
+        // A panel that appears on its own has to be announced as one. Without
+        // role="dialog" and aria-modal, a screen reader has no reason to treat
+        // this as anything more than a div that used to be empty, and the
+        // reader behind it is not told that it is no longer reachable.
+        expect($html)
+            ->toContain('role="dialog"')
+            ->toContain('aria-modal="true"')
+            ->toContain('aria-labelledby="newsletter-prompt-title"');
+
+        // The three ways out. Escape is a keyboard action and has no visible
+        // control to assert on, so the close button is checked here instead.
+        expect($html)
+            ->toContain('keydown.escape.window="dismiss()"')
+            ->toContain('click.outside="dismiss()"')
+            ->toContain('x-on:click="dismiss()"');
+    });
+
+    it('waits before opening rather than covering the shop on arrival', function (): void {
+        // The delay is a product decision, not a tuning knob, so it is pinned:
+        // somebody arriving at an eight-second decision should not find it has
+        // become a two-second one without anyone choosing that.
+        $html = $this->get(route('home'))->assertOk()->getContent();
+        expect($html)->toContain('newsletterPrompt()');
+
+        $source = file_get_contents(resource_path('js/newsletter-prompt.js'));
+        expect($source)->toContain('DELAY_MS = 8000');
+    });
+
+    it('keeps the form out of the pages it has no business interrupting', function (): void {
+        foreach (['products.index', 'auctions.index', 'login'] as $route) {
             $this->get(route($route))
                 ->assertOk()
-                ->assertSee('Hear about new auctions')
-                // The input id, because that is ours and stays put. Livewire's own
-                // component marker contains a generated wire:id and would be an
-                // assertion about Livewire rather than about this feature.
-                ->assertSee('id="newsletter-email"', false);
+                ->assertDontSee('id="newsletter-email"', false);
         }
+    });
+
+    it('takes the form out of the footer entirely', function (): void {
+        // The prompt is a front-page modal and not a footer element, so the
+        // footer no longer carries a second copy of the same form. A visitor
+        // would otherwise be able to sign up twice from one page, once by
+        // scrolling and once by being interrupted.
+        $html = $this->get(route('home'))->assertOk()->getContent();
+
+        expect($html)->toContain('<footer');
+        expect(substr_count($html, 'id="newsletter-email"'))->toBe(1);
+    });
+
+    it('stops asking a reader who has already closed it', function (): void {
+        // Thirty days, not forever. The cookie answers "have we already asked",
+        // and nothing about subscribing depends on it -- but a dismissal that
+        // silently became permanent would be a decision nobody made.
+        $this->withCookie('as_is_newsletter_prompt', '1')
+            ->get(route('home'))
+            ->assertOk()
+            ->assertDontSee('newsletter-prompt-title');
+    });
+
+    it('does not interrupt a signed-in customer', function (): void {
+        // A customer who already has an account has already told us who they
+        // are. Being asked to also hand over an address is asking twice, and on
+        // a screen they may be reading an order.
+        $this->actingAs(bidder())
+            ->get(route('home'))
+            ->assertOk()
+            ->assertDontSee('newsletter-prompt-title');
+    });
+
+    it('records the modal as where the signup came from', function (): void {
+        Livewire::test(Signup::class)
+            ->set('email', 'ama@example.com')
+            ->call('requestConfirmation')
+            ->assertHasNoErrors();
+
+        expect(NewsletterSubscriber::sole()->source)->toBe('modal');
     });
 
     it('does not promise a sending schedule it cannot keep', function (): void {
@@ -473,11 +550,12 @@ describe('newsletter placement', function (): void {
             ->get(route('admin.newsletter.index'))
             ->assertOk();
 
-        // The admin area shares the public layout, so the footer -- and its
-        // signup form -- is present on every admin page. That is pre-existing
-        // chrome and not this feature's business to change. What matters is that
-        // the admin screen's own content does not present itself as a place to
-        // subscribe or unsubscribe anyone.
+        // Two separate guarantees, and they used to be different tests. The
+        // modal is suppressed for signed-in visitors, so staff never get it at
+        // all. And the admin screen's own content does not present itself as a
+        // place to subscribe or unsubscribe anyone. What matters is that an
+        // operator managing the list is not also being asked to join it.
+        expect($response->getContent())->not->toContain('newsletter-prompt-title');
         expect(pageMainContent($response))
             ->not->toContain('id="newsletter-email"')
             ->not->toContain('requestConfirmation');

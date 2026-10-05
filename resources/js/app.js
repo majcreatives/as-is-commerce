@@ -13,12 +13,14 @@
 import { resolveEcho } from './echo.js';
 import { listenToAuction } from './auction-stream.js';
 import { productGallery } from './product-gallery.js';
+import { newsletterPrompt } from './newsletter-prompt.js';
 
 // Alpine ships inside Livewire, and components have to be registered before it
 // starts. Nothing on a page depends on this having happened: the markup the
 // gallery enhances is rendered by the server and readable on its own.
 document.addEventListener('alpine:init', () => {
     window.Alpine?.data('productGallery', productGallery);
+    window.Alpine?.data('newsletterPrompt', newsletterPrompt);
 });
 
 const subscriptions = new WeakMap();

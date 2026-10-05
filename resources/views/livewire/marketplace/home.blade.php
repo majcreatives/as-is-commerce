@@ -11,42 +11,95 @@
 <div>
     {{-- Hero --}}
     <section class="overflow-hidden rounded-2xl bg-brand-900 px-6 py-12 sm:px-10 sm:py-16">
-        <div class="max-w-2xl">
-            <span class="inline-flex items-center rounded-full bg-brand-800 px-3 py-1 text-xs font-semibold text-accent-300 ring-1 ring-inset ring-brand-700">
-                Built for Ghana &middot; GH&#8373;
-            </span>
+        <div class="grid grid-cols-1 items-center gap-8 lg:grid-cols-12 lg:gap-12">
+            <div class="flex flex-col items-start gap-5 lg:col-span-6">
+                <h1 class="text-3xl font-bold tracking-tight text-white sm:text-5xl">
+                    Shop smart<br class="hidden sm:block">
+                    Find your deal.
+                </h1>
 
-            <h1 class="mt-4 text-3xl font-bold tracking-tight text-white sm:text-5xl">
-                The shop, first.<br class="hidden sm:block">
-                Some products are also auctioned.
-            </h1>
+                {{-- Two sentences, not a lesson. It says that both ways of
+                     buying exist and leaves the choice to the reader; the full
+                     explanation lives on How It Works, linked below. --}}
+                <p class="text-base text-brand-100 sm:text-lg">
+                    Buy what you want instantly &mdash; or compete for selected products in live auctions. From everyday shopping to the thrill of an auction, you decide how you want to get the deal.
+                </p>
 
-            {{-- Two sentences, not a lesson. The full explanation lives on How
-                 It Works, linked below; a front page that teaches the whole
-                 model before somebody has looked at a product is asking them to
-                 read before they can shop. --}}
-            <p class="mt-4 text-base text-brand-100 sm:text-lg">
-                Every product has a Buy Now price in cedis, and most are yours the moment you pay.
-                Some are also auctioned: you bid with credits, and the largest total of credits committed wins.
-            </p>
+                <div class="flex flex-wrap items-center gap-4">
+                    <x-button href="{{ route('products.index') }}" wire:navigate variant="accent" size="lg">
+                        Shop now
+                    </x-button>
+                    <x-button href="{{ route('auctions.index') }}" wire:navigate variant="secondary" size="lg">
+                        Explore auctions
+                    </x-button>
+                </div>
 
-            <div class="mt-8 flex flex-wrap gap-3">
-                <x-button href="{{ route('products.index') }}" wire:navigate variant="accent" size="lg">
-                    Shop now
-                </x-button>
-                <x-button href="{{ route('auctions.index') }}" wire:navigate variant="secondary" size="lg">
-                    Explore auctions
-                </x-button>
+                {{-- The disclosure a bidder most needs, on the front page rather
+                     than only deep in a legal note. --}}
+                <p class="text-sm text-brand-200">
+                    Credits you bid are consumed straight away and are not returned if you do not win.
+                    <a href="{{ route('how-it-works') }}" wire:navigate class="font-semibold text-white underline">
+                        How it works
+                    </a>
+                </p>
             </div>
 
-            {{-- The disclosure a bidder most needs, on the front page rather
-                 than only deep in a legal note. --}}
-            <p class="mt-6 text-sm text-brand-200">
-                Credits you bid are consumed straight away and are not returned if you do not win.
-                <a href="{{ route('how-it-works') }}" wire:navigate class="font-semibold text-white underline">
-                    How it works
-                </a>
-            </p>
+            @php
+                // What the collage is made of, decided in the component: the real
+                // products this page has already read, and only those that have a
+                // picture. No stock image and no example product ever appears here
+                // -- a fabricated picture on the front page is the same lie as a
+                // fabricated product.
+                //
+                // Three columns, each a vertical run of cards with its own top
+                // offset and its own proportions. Column-major, which is what makes
+                // it stagger instead of forming a grid.
+                $galleryColumns = [
+                    ['offset' => 'pt-8', 'ratios' => ['aspect-3/4', 'aspect-square', 'aspect-3/4']],
+                    ['offset' => '', 'ratios' => ['aspect-3/5', 'aspect-4/3', 'aspect-square']],
+                    ['offset' => 'pt-12', 'ratios' => ['aspect-3/4', 'aspect-3/5', 'aspect-square']],
+                ];
+
+                $galleryCards = $gallery->values()->map(
+                    fn (\App\Models\Product $product, int $place): array => [
+                        'product' => $product,
+                        // The first card of each column sits near the top of the
+                        // collage at every width, so those are worth having early.
+                        // The rest wait for a reader who gets that far.
+                        'eager' => $place % 3 === 0,
+                    ],
+                );
+            @endphp
+
+            @if ($galleryCards->isNotEmpty())
+                {{-- Decorative, so it is hidden from assistive technology: every
+                     product pictured here is presented properly, with its name and
+                     price, in the rows below. Announcing it twice is only noise. --}}
+                <div class="lg:col-span-6">
+                    <div class="grid h-full min-h-[480px] grid-cols-3 gap-3 sm:gap-4" aria-hidden="true">
+                        @foreach ($galleryCards->chunk(3) as $column => $cards)
+                            @php
+                                $spec = $galleryColumns[$column] ?? ['offset' => '', 'ratios' => []];
+                            @endphp
+                            <div class="{{ trim('flex flex-col gap-3 sm:gap-4 '.$spec['offset']) }}">
+                                @foreach ($cards as $card)
+                                    <div class="{{ $spec['ratios'][$loop->index] ?? 'aspect-square' }} overflow-hidden rounded-xl shadow-md">
+                                        <img src="{{ $card['product']->image() }}"
+                                             class="h-full w-full object-cover"
+                                             alt=""
+                                             @if ($card['eager'])
+                                                 loading="eager" fetchpriority="high"
+                                             @else
+                                                 loading="lazy" decoding="async"
+                                             @endif
+                                        >
+                                    </div>
+                                @endforeach
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+            @endif
         </div>
     </section>
 

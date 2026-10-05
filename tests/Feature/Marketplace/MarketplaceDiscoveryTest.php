@@ -11,10 +11,13 @@ use App\Enums\AuctionStatus;
 use App\Enums\ProductStatus;
 use App\Livewire\Auctions\AuctionIndex;
 use App\Livewire\Catalog\ProductCatalog;
+use App\Livewire\Marketplace\Home;
 use App\Models\Auction;
 use App\Models\Brand;
 use App\Models\Category;
 use App\Models\Product;
+use App\Models\ProductImage;
+use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 
 /*
@@ -258,11 +261,124 @@ it('shows a live auction figure on a product card', function (): void {
 it('shows a guest a shop-first front page with the auction way in', function (): void {
     $this->get(route('home'))
         ->assertOk()
-        ->assertSee('The shop, first.')
+        ->assertSee('Find your deal.')
         ->assertSee('Shop now')
         ->assertSee('Explore auctions')
         // The disclosure that matters, on the front page.
         ->assertSee('not returned if you do not win');
+});
+
+// ------------------------------------------------------- The hero collage
+
+it('builds the hero collage out of real products that actually have a picture', function (): void {
+    $pictured = Product::factory()->active()->create(['name' => 'Collage Pictured']);
+    Product::factory()->active()->create(['name' => 'Collage Unpictured']);
+    ProductImage::factory()->create(['product_id' => $pictured->id]);
+
+    // The rule the component note states: only a product that has an image can
+    // fill a collage slot. A card with nothing in it would be worse than none.
+    Livewire::test(Home::class)
+        ->assertOk()
+        ->assertViewHas('gallery', fn ($gallery): bool => $gallery->pluck('id')->all() === [$pictured->id]);
+
+    $this->get(route('home'))
+        ->assertOk()
+        ->assertSee($pictured->image(), false);
+});
+
+it('lays the hero out as text beside a staggered three-column collage', function (): void {
+    // Seven fills all three columns: three, three, one.
+    $products = Product::factory()->count(7)->active()->create();
+    foreach ($products as $product) {
+        ProductImage::factory()->create(['product_id' => $product->id]);
+    }
+
+    $main = pageMainContent($this->get(route('home'))->assertOk());
+    expect(preg_match('/<section[^>]*bg-brand-900.*?<\/section>/s', $main, $hero))->toBe(1);
+    $hero = $hero[0];
+
+    // One column on a phone, two on a wide screen. The class names are the
+    // layout here, so nothing else would notice them being quietly changed.
+    expect($hero)
+        ->toContain('grid grid-cols-1')
+        ->toContain('lg:grid-cols-12')
+        ->toContain('lg:col-span-6');
+
+    // Three columns, each dropped further than the last, which is what staggers
+    // the collage instead of leaving it as a plain grid of equal cards.
+    expect($hero)
+        ->toContain('grid-cols-3')
+        ->toContain('gap-3 sm:gap-4 pt-8')
+        ->toContain('gap-3 sm:gap-4 pt-12')
+        ->toContain('aspect-3/4')
+        ->toContain('aspect-3/5')
+        ->toContain('aspect-4/3')
+        ->toContain('aspect-square')
+        ->toContain('h-full w-full object-cover');
+});
+
+it('shows no collage frame at all when no product has a picture', function (): void {
+    Product::factory()->active()->create(['name' => 'Nothing To Show']);
+
+    Livewire::test(Home::class)
+        ->assertViewHas('gallery', fn ($gallery): bool => $gallery->isEmpty());
+
+    // An empty collage would be three columns of placeholder squares, which
+    // says nothing and looks like stock photography.
+    $this->get(route('home'))
+        ->assertOk()
+        ->assertDontSee('min-h-[480px]', false);
+});
+
+it('caps the collage at nine cards however much the catalog has', function (): void {
+    // These four are created first, so they fall outside the eight most
+    // recently published that featured() returns. Making these the ones that
+    // sell is what puts products into the collage twice over -- once from each
+    // query -- and so gives the cap something to actually cut.
+    $older = Product::factory()->count(4)->active()->create();
+    $newer = Product::factory()->count(8)->active()->create();
+
+    foreach ($older->concat($newer) as $product) {
+        ProductImage::factory()->create(['product_id' => $product->id]);
+    }
+
+    foreach ($older as $product) {
+        app(InventoryService::class)->initialStock($product, 1);
+        payOrder(buyNowCheckout(bidder(), $product->fresh())->fresh());
+    }
+
+    // Twelve distinct products are on offer; the collage shows nine.
+    Livewire::test(Home::class)
+        ->assertViewHas('gallery', fn ($gallery): bool => $gallery->count() === 9);
+});
+
+it('never spends an extra query on the collage', function (): void {
+    $products = Product::factory()->count(6)->active()->create();
+
+    // Warm up first, so a cold cache in one request cannot be mistaken for the
+    // collage costing something.
+    $this->get(route('home'))->assertOk();
+
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+    $this->get(route('home'))->assertOk();
+    $withoutPictures = count(DB::getQueryLog());
+    DB::disableQueryLog();
+
+    foreach ($products as $product) {
+        ProductImage::factory()->create(['product_id' => $product->id]);
+    }
+
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+    $this->get(route('home'))->assertOk();
+    $withPictures = count(DB::getQueryLog());
+    DB::disableQueryLog();
+
+    // Reading a picture URL is free, because the listing query already
+    // eager-loads images. Were the collage ever to ask product by product,
+    // the second number would be the larger one.
+    expect($withPictures)->toBe($withoutPictures);
 });
 
 it('surfaces a live auction inline on its product card instead of a band', function (): void {

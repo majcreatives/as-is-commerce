@@ -6,6 +6,7 @@ namespace App\Livewire\Marketplace;
 
 use App\Domain\Marketplace\Queries\ContentDiscoveryQuery;
 use App\Domain\Marketplace\Queries\ProductDiscoveryQuery;
+use App\Models\Product;
 use Illuminate\View\View;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -40,10 +41,24 @@ class Home extends Component
         // appears once with the auction that is actually relevant to it.
         $availability = $products->availabilityFor($featured->concat($trending));
 
+        // What the hero collage is made of: the real products this page has
+        // already read, never an example or a stock image, for the reason in
+        // the class note above. Only products that actually have a picture can
+        // appear -- a card with nothing in it is worse than a missing card.
+        // Free: featured() and trending() both eager-load `images`, so reading
+        // the URL costs no query. De-duplicated because a recently published
+        // product can also be trending, and it must not appear twice.
+        $gallery = $featured->concat($trending)
+            ->filter(fn (Product $product): bool => $product->image() !== null)
+            ->unique(fn (Product $product): int => $product->getKey())
+            ->take(9)
+            ->values();
+
         return view('livewire.marketplace.home', [
             'featured' => $featured,
             'trending' => $trending,
             'availability' => $availability,
+            'gallery' => $gallery,
             // Bounded by the query, and both are empty until an administrator
             // has published something. The view hides a section it is given
             // nothing for, rather than rendering an empty frame.

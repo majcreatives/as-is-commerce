@@ -1,7 +1,8 @@
-{{-- Footer newsletter signup.
+{{-- Newsletter signup.
 
-     Wording note, and it is the important part of this template: the heading and
-     the button both avoid promising a schedule. "Weekly deals" or "monthly
+     Rendered inside a modal on the front page. It was in the footer before, and
+     the wording note below is the important part of this template: the heading
+     and the button both avoid promising a schedule. "Weekly deals" or "monthly
      drops" is a commitment to somebody's inbox, and nothing in this project can
      send one yet (see the newsletter_subscribers migration). If a sending
      mechanism is ever agreed, this copy can grow a frequency -- and only then,
@@ -38,8 +39,8 @@
 
                 {{-- Disabled while the request is in flight, so a double-click
                      cannot queue a second confirmation email -- and visibly so,
-                     because a form in the footer gives a person very little else to
-                     look at while they wait. --}}
+                     because the request may be the only thing happening on the
+                     page at that moment. --}}
                 <button
                     type="submit"
                     wire:loading.attr="disabled"

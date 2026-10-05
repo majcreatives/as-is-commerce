@@ -13,7 +13,12 @@ use Livewire\Attributes\Validate;
 use Livewire\Component;
 
 /**
- * The footer signup form.
+ * The newsletter signup form.
+ *
+ * Rendered inside a modal on the front page, which is where it lived in the
+ * footer before. Nothing else about it changed: the same form, the same rules,
+ * the same wording. Where it appears is a presentation decision and this
+ * component is deliberately unaware of it.
  *
  * SUBMITTING DOES NOT SUBSCRIBE ANYBODY. It records that somebody asked, and
  * queues them a confirmation link. They are on the list only once they have
@@ -31,7 +36,7 @@ use Livewire\Component;
  *
  * THE COPY PROMISES NOTHING ABOUT FREQUENCY. See the note in
  * NewsletterConfirmationMail: nothing in this project can send a newsletter yet,
- * and a footer promising a weekly series we cannot currently deliver is a broken
+ * and a prompt promising a weekly series we cannot currently deliver is a broken
  * promise made to somebody who has only read it.
  */
 class Signup extends Component
@@ -85,7 +90,7 @@ class Signup extends Component
 
         $subscriber = NewsletterSubscriber::request(
             email: $this->email,
-            source: 'footer',
+            source: 'modal',
         );
 
         // Only queue when this particular request actually produced a token to

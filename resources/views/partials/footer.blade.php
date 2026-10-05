@@ -52,31 +52,17 @@
         </nav>
     </x-container>
 
-    {{-- The newsletter form gets its own full-width row rather than another
-         column. It is the one footer element that is not a list of links, it
-         needs more width than a column would give it without cramping the label,
-         and putting it in the grid would make it the sixth thing competing with
-         five columns of navigation.
+    {{-- The newsletter signup used to live here, as its own full-width row.
 
-         Below the grid and above the copyright, because the copyright bar is the
-         smallest text on the page and this is the only part of the footer a
-         visitor is asked to do something in.
+         It is now a modal on the front page instead (see
+         partials/newsletter-prompt), which is a deliberate reversal of the
+         reasoning that put it here: the argument for the footer was that asking
+         quietly beats interrupting somebody, and the decision taken was that a
+         popup is worth that interruption after all. The reassurance copy went
+         with it -- nothing is sent to an address until the confirmation link
+         is followed -- so it now lives inside the modal rather than here.
 
-         Inline in the footer only: no popup, no modal, no dismissal state. A
-         signup form that arrives unasked over the catalogue is a decision to
-         interrupt somebody rather than offer them something, and the footer is
-         the one place on the page where asking is appropriate. --}}
-    <div class="border-t border-slate-100">
-        <x-container class="py-8">
-            <div class="max-w-md">
-                <h2 class="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Hear about new auctions
-                </h2>
-
-                <livewire:newsletter.signup />
-            </div>
-        </x-container>
-    </div>
+         Nothing else about the footer changes. --}}
 
     <div class="border-t border-slate-100 py-4">
         <x-container class="text-xs text-slate-500">

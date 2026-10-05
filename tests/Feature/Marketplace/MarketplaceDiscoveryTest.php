@@ -318,10 +318,10 @@ it('lays the hero out as text beside a staggered three-column collage', function
         ->toContain('aspect-square')
         ->toContain('h-full w-full object-cover');
 
-    // A hairline of white, so a pale photograph has an edge to end on. A tile
-    // that dissolves into the brand background reads as a hole in the collage
-    // rather than as a picture of something.
-    expect($hero)->toContain('border border-white/20');
+    // A visible frame of white, so a pale photograph has an edge to end on. A
+    // tile that dissolves into the brand background reads as a hole in the
+    // collage rather than as a picture of something.
+    expect($hero)->toContain('border-[5px] border-white/25');
 });
 
 it('shows no collage frame at all when no product has a picture', function (): void {

@@ -1,16 +1,19 @@
 {{-- Newsletter signup.
 
-     Rendered inside a modal on the front page. It was in the footer before, and
-     the wording note below is the important part of this template: the heading
-     and the button both avoid promising a schedule. "Weekly deals" or "monthly
-     drops" is a commitment to somebody's inbox, and nothing in this project can
-     send one yet (see the newsletter_subscribers migration). If a sending
-     mechanism is ever agreed, this copy can grow a frequency -- and only then,
-     because by then we would be able to keep it.
+     Rendered inside a modal on the front page. It was in the footer before. The
+     modal's heading, description and icon belong to that template; this one owns
+     the field, the button, and what happens after submitting -- which is the part
+     that must not vary by where the form happens to sit.
 
-     The confirmation message is deliberately identical whether or not the
-     address was already on the list, so the form cannot be used to find out
-     whether a given person is subscribed to us. --}}
+     THE WORDING BELOW PROMISES NO SCHEDULE, and that is the important part. "Weekly
+     deals" or "monthly drops" is a commitment to somebody's inbox, and nothing in
+     this project can send one yet (see the newsletter_subscribers migration). If a
+     sending mechanism is ever agreed, this copy can grow a frequency -- and only
+     then, because by then we would be able to keep it.
+
+     THE CONFIRMATION MESSAGE IS DELIBERATELY IDENTICAL whether or not the address
+     was already on the list, so the form cannot be used to find out whether a
+     given person is subscribed to us. --}}
 
 <div>
     @if ($confirmationRequested)
@@ -18,45 +21,49 @@
             If that address can receive mail, we have sent it a link to confirm.
         </p>
     @else
-        <form wire:submit="requestConfirmation" class="space-y-2">
-            <label for="newsletter-email" class="block text-sm font-medium text-slate-700">
-                Occasional email about new auctions
-            </label>
+        <form wire:submit="requestConfirmation" class="w-full space-y-4 text-left">
+            <x-label for="newsletter-email">
+                Email <span class="text-red-500" aria-hidden="true">*</span>
+            </x-label>
 
-            <div class="flex gap-2">
-                <input
-                    id="newsletter-email"
-                    type="email"
-                    wire:model="email"
-                    wire:loading.attr="disabled"
-                    autocomplete="email"
-                    placeholder="you@example.com"
-                    @class([
-                        'w-full rounded-lg border-slate-300 text-sm shadow-sm focus:border-accent-500 focus:ring-accent-500',
-                        'border-red-400' => $errors->has('email'),
-                    ])
-                >
+            {{-- x-input, so this field reports an error the way every other
+                 field in the project does: aria-invalid plus aria-describedby
+                 pointing at the message below. That pairing needs the error
+                 paragraph to carry this exact id, which is why it is hard-coded
+                 in both places -- x-input derives it from the control's id. --}}
+            <x-input
+                id="newsletter-email"
+                type="email"
+                wire:model="email"
+                wire:loading.attr="disabled"
+                autocomplete="email"
+                placeholder="you@example.com"
+                :error="$errors->has('email')"
+            />
 
-                {{-- Disabled while the request is in flight, so a double-click
-                     cannot queue a second confirmation email -- and visibly so,
-                     because the request may be the only thing happening on the
-                     page at that moment. --}}
-                <button
-                    type="submit"
-                    wire:loading.attr="disabled"
-                    wire:loading.remove.class="opacity-70"
-                    class="shrink-0 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700"
-                >
-                    <span wire:loading.remove>Notify me</span>
-                    <span wire:loading>Sending&hellip;</span>
-                </button>
-            </div>
+            {{-- The shared button, so this is the same indigo as every other
+                 primary action rather than one hand-picked colour. Uppercase by
+                 class, not in the markup: assistive technology reads "Notify me"
+                 either way, and the DOM stays case-stable. --}}
+            <x-button
+                type="submit"
+                size="lg"
+                wire:loading.attr="disabled"
+                wire:loading.remove.class="opacity-70"
+                class="w-full uppercase tracking-wider"
+            >
+                <span wire:loading.remove>Notify me</span>
+                <span wire:loading>Sending&hellip;</span>
+            </x-button>
 
             @error('email')
-                <p class="text-sm text-red-600">{{ $message }}</p>
+                <p id="newsletter-email-error" class="text-sm text-red-600">{{ $message }}</p>
             @enderror
 
-            {{-- Says what will happen, so nobody is surprised by a second email. --}}
+            {{-- Says what will happen, so nobody is surprised by a second email.
+                 In a modal this matters more than it did in a footer: the panel
+                 covers the page, so this is the only place the reader is told
+                 what they have just agreed to. --}}
             <p class="text-xs text-slate-500">
                 One confirmation email first. Nothing is sent to the address until
                 that link is followed, and every email carries a one-click

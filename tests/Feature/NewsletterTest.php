@@ -446,7 +446,10 @@ describe('newsletter placement', function (): void {
     it('offers the form in a modal on the front page', function (): void {
         $this->get(route('home'))
             ->assertOk()
-            ->assertSee('Hear about new auctions')
+            // Matched without the apostrophe entity: Blade prints Don&rsquo;t
+            // and escaping a bare entity would be an assertion about our own
+            // punctuation rather than about this feature.
+            ->assertSee('miss the next great deal')
             // The input id, because that is ours and stays put. Livewire's own
             // component marker contains a generated wire:id and would be an
             // assertion about Livewire rather than about this feature.
@@ -471,6 +474,72 @@ describe('newsletter placement', function (): void {
             ->toContain('keydown.escape.window="dismiss()"')
             ->toContain('click.outside="dismiss()"')
             ->toContain('x-on:click="dismiss()"');
+
+        // The close control sits in the corner rather than in the flow, so it
+        // needs its own name. A bare cross with no accessible name is not a
+        // control a screen reader can reach.
+        expect($html)
+            ->toContain('absolute right-4 top-4')
+            ->toContain('<span class="sr-only">Close</span>', false);
+    });
+
+    it('presents the panel as a card over a blurred backdrop', function (): void {
+        $html = $this->get(route('home'))->assertOk()->getContent();
+
+        // Blur behind the card, card sharp in front. And overflow-y-auto, which
+        // is load-bearing rather than decorative: the panel locks body scroll
+        // while open, so without it a card taller than a landscape phone could
+        // not be scrolled to and its button could not be reached.
+        expect($html)
+            ->toContain('backdrop-blur-sm')
+            ->toContain('overflow-y-auto')
+            ->toContain('max-w-md');
+
+        // The icon and the two centred lines above the field. The envelope is
+        // decorative, so it must stay out of the accessibility tree -- the
+        // heading already names the thing.
+        expect($html)
+            ->toContain('h-12 w-12')
+            ->toContain('text-brand-700')
+            ->toContain('miss the next great deal')
+            ->toContain('Be the first to hear about new products');
+    });
+
+    it('stacks the field and button so the whole width is usable', function (): void {
+        $html = $this->get(route('home'))->assertOk()->getContent();
+
+        // A label the reader can see, marked required, a placeholder, and a
+        // full-width button. Uppercase by class, not in the markup, so assistive
+        // technology reads "Notify me" rather than spelling the capitals out.
+        expect($html)
+            ->toContain('Email <span class="text-red-500"', false)
+            ->toContain('placeholder="you@example.com"', false)
+            ->toContain('uppercase tracking-wider')
+            ->toContain('Notify me');
+
+        // The reassurance sits in a modal now, covering the page, so it is the
+        // only place the reader is told a confirmation comes first.
+        expect($html)->toContain('One confirmation email first');
+    });
+
+    it('reports a bad address through the field itself, not just beside it', function (): void {
+        // x-input wires this: aria-invalid on the control, aria-describedby
+        // aimed at the message. Getting only one half right is the usual way
+        // this goes wrong -- a red message nobody is told about, or a field
+        // flagged invalid with nothing to explain why.
+        $component = Livewire::test(Signup::class)
+            ->set('email', 'not-an-address')
+            ->call('requestConfirmation')
+            ->assertHasErrors('email');
+
+        $html = $component->html();
+
+        expect($html)
+            ->toContain('aria-invalid="true"', false)
+            ->toContain('aria-describedby="newsletter-email-error"', false)
+            // The id the message actually carries. If the two drift apart the
+            // reference above dangles and assistive technology has to recover.
+            ->toContain('id="newsletter-email-error"', false);
     });
 
     it('waits before opening rather than covering the shop on arrival', function (): void {

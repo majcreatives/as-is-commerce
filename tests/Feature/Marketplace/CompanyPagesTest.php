@@ -324,7 +324,7 @@ it('still gives the front page its shop-first identity and its disclosure', func
     // the moment of decision: the credit warning stays where a bidder sees it.
     $this->get(route('home'))
         ->assertOk()
-        ->assertSee('The shop, first.')
+        ->assertSee('Find your deal.')
         ->assertSee('Newly added')
         ->assertSee('Credits you bid are consumed straight away and are not returned if you do not win.')
         ->assertSee(route('how-it-works'), false);

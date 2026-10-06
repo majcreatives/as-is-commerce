@@ -24,7 +24,7 @@
 
 <a href="{{ route('products.show', $product->slug) }}" wire:navigate
    {{ $attributes->merge([
-       'class' => 'group flex flex-col rounded-xl border border-slate-200 bg-white shadow-sm transition hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600',
+       'class' => 'group flex flex-col rounded-xl border-[5px] border-white/25 bg-white shadow-sm transition hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600',
    ]) }}
    aria-label="{{ $product->name }}">
 

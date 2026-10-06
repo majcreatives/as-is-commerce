@@ -53,6 +53,7 @@ class Home extends Component
         $gallery = $featured->concat($trending)
             ->filter(fn (Product $product): bool => $product->image() !== null)
             ->unique(fn (Product $product): int => $product->getKey())
+            ->shuffle()
             ->take(6)
             ->values();
 

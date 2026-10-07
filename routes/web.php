@@ -51,6 +51,8 @@ use App\Livewire\Catalog\ProductCatalog;
 use App\Livewire\Catalog\ProductDetail;
 use App\Livewire\Checkout\CheckoutPage;
 use App\Livewire\Content\PartnerIndex;
+use App\Livewire\Content\PostIndex;
+use App\Livewire\Content\PostShow;
 use App\Livewire\Content\SuccessStoryIndex;
 use App\Livewire\Credits\CreditPackages;
 use App\Livewire\Credits\PurchaseHistory;
@@ -103,8 +105,7 @@ Route::view('/how-it-works', 'pages.how-it-works')->name('how-it-works');
 
 // Company pages. Static views, deliberately: there is no content system behind
 // them, and what each may say is limited to what the platform demonstrably is
-// and does. Blog is not here yet -- it needs content, and a link to a page
-// that does not exist is worse than none.
+// and does.
 //
 // The three legal pages below exist and are linked, unlike the rest of the
 // 31.3 plan, because they are not marketing prose: every factual claim in them
@@ -119,15 +120,19 @@ Route::view('/privacy', 'pages.privacy')->name('privacy');
 Route::view('/terms', 'pages.terms')->name('terms');
 Route::view('/cookies', 'pages.cookie')->name('cookies');
 
-// Partners and success stories. Livewire rather than Route::view because these
-// read the two content tables, unlike the pages above which are static.
+// Partners, success stories and blog posts. Livewire rather than Route::view
+// because these read the content tables, unlike the pages above which are
+// static.
 //
-// There is no per-record URL: a partner or a story is reached through the list
-// or the homepage block, never on a page of its own, so nothing here can 404 by
-// being unguessable. Both components read only published records through the
-// model's scope, and an empty section is a 200 with an honest empty state -- the
-// page exists, there is simply nothing published on it yet.
+// There is no per-record URL for a partner or a story: each is reached through
+// the list or the homepage block, never on a page of its own, so nothing here
+// can 404 by being unguessable. Blog posts do have per-record URLs, resolved by
+// slug. All three read only published records through their model's scope, and
+// an empty section is a 200 with an honest empty state -- the page exists,
+// there is simply nothing published on it yet.
 Route::get('/partners', PartnerIndex::class)->name('partners.index');
+Route::get('/blog', PostIndex::class)->name('blog.index');
+Route::get('/blog/{post:slug}', PostShow::class)->name('blog.show');
 Route::get('/success-stories', SuccessStoryIndex::class)->name('success-stories.index');
 
 /*

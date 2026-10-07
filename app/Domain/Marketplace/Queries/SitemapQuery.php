@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domain\Marketplace\Queries;
 
 use App\Models\Auction;
+use App\Models\Post;
 use App\Models\Product;
 use Illuminate\Support\Collection;
 
@@ -49,6 +50,8 @@ class SitemapQuery
 
     public const MAX_AUCTIONS = 5000;
 
+    public const MAX_POSTS = 5000;
+
     /**
      * How long a rendered map is reused, in seconds.
      *
@@ -76,14 +79,17 @@ class SitemapQuery
     {
         [$products, $productsCapped] = $this->productEntries(self::MAX_PRODUCTS);
         [$auctions, $auctionsCapped] = $this->auctionEntries(self::MAX_AUCTIONS);
+        [$posts, $postsCapped] = $this->postEntries(self::MAX_POSTS);
 
         return [
             'static' => $this->staticPages(),
             'products' => $products,
             'auctions' => $auctions,
+            'posts' => $posts,
             'notes' => array_values(array_filter([
                 $productsCapped ? 'Catalog is truncated at '.self::MAX_PRODUCTS.' listings. Split this into a sitemap index before raising the cap.' : null,
                 $auctionsCapped ? 'Auctions are truncated at '.self::MAX_AUCTIONS.' listings. Split this into a sitemap index before raising the cap.' : null,
+                $postsCapped ? 'Blog posts are truncated at '.self::MAX_POSTS.' listings. Split this into a sitemap index before raising the cap.' : null,
             ])),
         ];
     }
@@ -119,6 +125,7 @@ class SitemapQuery
             'privacy',
             'terms',
             'cookies',
+            'blog.index',
         ];
     }
 
@@ -178,6 +185,31 @@ class SitemapQuery
     }
 
     /**
+     * Blog post URLs, most recently changed first.
+     *
+     * Only published posts. A draft, or a post awaiting a publish date, has no
+     * page the public can reach -- the detail route itself 404s on those rows,
+     * so advertising them here would be a lie.
+     *
+     * @return array{0: list<array{loc: string, lastmod: string}>, 1: bool}
+     */
+    public function postEntries(int $limit): array
+    {
+        $rows = Post::query()
+            ->published()
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
+            ->limit($limit + 1)
+            ->get(['slug', 'updated_at']);
+
+        return $this->toEntries(
+            $rows->take($limit),
+            fn (Post $post): string => route('blog.show', $post->slug),
+            $rows->count() > $limit,
+        );
+    }
+
+    /**
      * Pair each row with its absolute URL, and say whether the cap was hit.
      *
      * The cap is detected by asking for one row more than is wanted rather than
@@ -188,7 +220,7 @@ class SitemapQuery
      * and `Collection` is invariant in its value type -- a single-model
      * signature would reject one of the two call sites.
      *
-     * @template T of Product|Auction
+     * @template T of Product|Auction|Post
      *
      * @param  Collection<int, T>  $rows
      * @param  callable(T): string  $locator
@@ -198,7 +230,7 @@ class SitemapQuery
     {
         return [
             $rows
-                ->map(fn (Product|Auction $row): array => [
+                ->map(fn (Product|Auction|Post $row): array => [
                     'loc' => $locator($row),
                     'lastmod' => $row->updated_at->toAtomString(),
                 ])

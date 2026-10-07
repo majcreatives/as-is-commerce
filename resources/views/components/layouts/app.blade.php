@@ -28,7 +28,7 @@
          pagination does not read as a separate page to a search engine. --}}
     <link rel="canonical" href="{{ url()->current() }}">
 
-    <meta property="og:type" content="website">
+    <meta property="og:type" content="{{ $ogType ?? 'website' }}">
     <meta property="og:site_name" content="{{ config('app.name') }}">
     <meta property="og:title" content="{{ $pageTitle }}">
     <meta property="og:description" content="{{ Str::limit(strip_tags($pageDescription), 160) }}">

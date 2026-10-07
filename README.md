@@ -679,7 +679,7 @@ card.
 
 ### What is deliberately not here
 
-No blog or CMS, no coupons, no referrals, no loyalty scheme, no reviews or
+Minimal admin-managed blog and company content, no coupons, no referrals, no loyalty scheme, no reviews or
 ratings, no recommendation engine, no personalisation or tracking, no analytics
 platform, and no gamification beyond the auction mechanism itself. Related
 products are the same category, topped up from the same brand — deterministic,

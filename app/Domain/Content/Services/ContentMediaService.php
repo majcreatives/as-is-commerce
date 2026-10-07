@@ -20,9 +20,9 @@ use Illuminate\Support\Str;
  * THE WHITELIST IS THE DEFENCE THAT SURVIVES A BYPASSED COMPONENT. The admin
  * form validates the upload, but a crafted request can skip that, so the
  * extension AND the MIME type are re-checked here. Size is re-checked for the
- * same reason. A file is only ever written under partners/ or
- * success-stories/ with a uuid name, one of those extensions, and within the
- * size limit -- which is what stops an uploaded disguise from being served as
+ * same reason. A file is only ever written under partners/, success-stories/
+ * or posts/ with a uuid name, one of those extensions, and within the size
+ * limit -- which is what stops an uploaded disguise from being served as
  * something executable, and what stops one oversized request from becoming a
  * memory spike on a shared host.
  *
@@ -46,7 +46,7 @@ class ContentMediaService
     public const MAX_KILOBYTES = 2048;
 
     /** The directories this service is allowed to write to and delete from. */
-    private const DIRECTORIES = ['partners', 'success-stories'];
+    private const DIRECTORIES = ['partners', 'success-stories', 'posts'];
 
     /** @var list<string> */
     private const ALLOWED_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'gif'];

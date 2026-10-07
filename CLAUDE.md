@@ -961,9 +961,10 @@ shows a human, and nothing invents a rating or a review count.
 
 ### Do not build here
 
-A CMS, blog, coupons, referrals, loyalty, reviews, recommendations,
-personalisation, analytics, or any gamification beyond the auction mechanism
-itself. This layer improves usability; it does not change economics.
+A CMS, coupons, loyalty, reviews, recommendations, personalisation,
+analytics, or any gamification beyond the auction mechanism itself. This
+layer improves usability; it does not change economics. The blog is an
+approved, admin-managed content surface with honest empty states (see D3/F5).
 
 ## Fulfilment and delivery
 

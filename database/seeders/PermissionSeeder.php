@@ -91,6 +91,10 @@ class PermissionSeeder extends Seeder
         'success_stories.create',
         'success_stories.update',
         'success_stories.activate',
+        'posts.view',
+        'posts.create',
+        'posts.update',
+        'posts.activate',
 
         // Auction administration. Staff-only, all of them: `auctions.view`
         // means "see every auction, including drafts", which is not what a

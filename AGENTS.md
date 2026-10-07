@@ -1547,7 +1547,7 @@ Public pages must contain truthful SEO information.
 
 Authenticated/private pages should not accidentally become indexable.
 
-Do not build a CMS/blog/personalization system merely because it could improve SEO unless explicitly requested.
+Do not build a CMS/personalization system merely because it could improve SEO unless explicitly requested. A blog has been explicitly approved as an admin-managed content surface.
 
 ---
 
@@ -2576,7 +2576,7 @@ Unless explicitly requested as the next stage, do not introduce:
 * coupons;
 * personalization;
 * recommendation engines;
-* CMS/blog infrastructure;
+* CMS infrastructure;
 * unnecessary microservices;
 * unnecessary real-time infrastructure.
 

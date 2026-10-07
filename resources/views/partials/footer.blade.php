@@ -2,12 +2,12 @@
      not earn a slot in the main navigation. It does not replace that
      navigation: Shop, Auctions and How It Works stay in the header too.
 
-     Only pages that exist are linked. Blog is still to come; Privacy, Cookie and
+     Only pages that exist are linked. Privacy, Cookie and
      Terms are here now, and the legal note below is the one place that says so
-     plainly rather than leaving a reader to assume they are final. Partners and
-     Success stories are here too, and unlike the rest of this column they are
-     content an administrator maintains -- an empty one says so rather than
-     showing examples. --}}
+     plainly rather than leaving a reader to assume they are final. Partners,
+     Success stories and the Blog are here too, and unlike the rest of this
+     column they are content an administrator maintains -- an empty one says so
+     rather than showing examples. --}}
 
 <footer class="border-t border-slate-200 bg-white">
     <x-container class="grid gap-8 py-10 sm:grid-cols-2 lg:grid-cols-5">
@@ -35,6 +35,7 @@
                 <li><a href="{{ route('faqs') }}" class="text-slate-600 hover:text-slate-900">FAQs</a></li>
                 <li><a href="{{ route('partners.index') }}" class="text-slate-600 hover:text-slate-900">Partners</a></li>
                 <li><a href="{{ route('success-stories.index') }}" class="text-slate-600 hover:text-slate-900">Success stories</a></li>
+                <li><a href="{{ route('blog.index') }}" class="text-slate-600 hover:text-slate-900">Blog</a></li>
             </ul>
         </nav>
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Enums\AuctionStatus;
 use App\Enums\ProductStatus;
 use App\Models\Auction;
+use App\Models\Post;
 use App\Models\Product;
 
 /*
@@ -81,6 +82,7 @@ it('lists the standing public pages', function (string $name, string $path): voi
     ['contact', '/contact'],
     ['faqs', '/faqs'],
     ['partners.index', '/partners'],
+    ['blog.index', '/blog'],
     ['success-stories.index', '/success-stories'],
     ['privacy', '/privacy'],
     ['terms', '/terms'],
@@ -139,6 +141,25 @@ it('omits a draft auction', function (): void {
         ->not->toContain(route('auctions.show', $auction->id));
 });
 
+it('lists a published post by slug', function (): void {
+    $post = Post::factory()->published()->create();
+
+    expect(sitemapLocations(test()->get('/sitemap.xml')->getContent()))
+        ->toContain(route('blog.show', $post->slug));
+});
+
+it('omits a post that is not public yet', function (string $state): void {
+    $post = Post::factory()->{$state}()->create();
+
+    // The detail route 404s for these rows, so advertising them here would be a
+    // lie. A dash in an archive travels exactly as far as the page behind it.
+    expect(sitemapLocations(test()->get('/sitemap.xml')->getContent()))
+        ->not->toContain(route('blog.show', $post->slug));
+})->with([
+    'inactive but dated' => ['inactive'],
+    'active but undated' => ['undated'],
+]);
+
 it('never lists a private path', function (string $path): void {
     // Not one mechanism but two: robots.txt keeps crawlers off, and the route
     // sends noindex. A sitemap that advertised either would be handing a
@@ -193,6 +214,7 @@ it('lists only urls that actually resolve', function (): void {
     Product::factory()->count(2)->active()->create();
     Auction::factory()->live()->create();
     Auction::factory()->scheduled()->create();
+    Post::factory()->published()->create();
 
     $locations = sitemapLocations(test()->get('/sitemap.xml')->getContent());
 

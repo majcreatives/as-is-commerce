@@ -14,6 +14,7 @@ use App\Support\RichText;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Exists;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use Livewire\Attributes\Layout;
@@ -49,8 +50,13 @@ use Livewire\WithFileUploads;
  * person who decides to show it to customers, and a form that carried the flag
  * would let an edit republish a record nobody meant to bring back.
  *
- * NOTHING IS DELETED. `active` retires a record without destroying the row,
- * which is why a story that was once published keeps standing in the database.
+ * DELETE IS REAL, ARCHIVE IS THE SOFT OPTION. `active = false` retires a record
+ * without destroying the row -- a story that was once published keeps standing
+ * in the database. `delete` is the opposite end: a permanent removal, gated on
+ * its own `*.delete` permission, image file and row together, logged in the
+ * activity audit. Unpublished records are the intended delete candidates; a
+ * published post that is deleted leaves the site and the sitemap immediately,
+ * which is what "permanent" means.
  *
  * BLOG POSTS ARE NOT A CATALOGUE. A post has a title, a slug and a body rather
  * than a position to sort into: the public blog lists by publish date, newest
@@ -353,6 +359,68 @@ class ContentManager extends Component
     }
 
     /**
+     * Permanently delete one record of the current tab.
+     *
+     * This is the destructive end of the lifecycle and it is gated on its own
+     * `*.delete` permission, separate from `archive`: deciding that a record
+     * should stop appearing is different from deciding it should cease to
+     * exist. The image file and the row go together, and the activity log keeps
+     * the `deleted` entry (logged while the row still exists so the audit has a
+     * record to point at). Unpublishing first is not required -- a mistaken
+     * active record can be deleted outright -- but the confirmation dialog is
+     * the moment that decision is made deliberately.
+     */
+    public function delete(int $id, ContentMediaService $media): void
+    {
+        $this->authorizeTab('delete');
+
+        $record = match ($this->tab) {
+            'partners' => Partner::findOrFail($id),
+            'stories' => SuccessStory::findOrFail($id),
+            default => Post::findOrFail($id),
+        };
+
+        $image = match ($this->tab) {
+            'partners' => $record->logo_path,
+            default => $record->image_path,
+        };
+        $label = $this->deletableLabel($record);
+
+        activity('content')
+            ->performedOn($record)
+            ->causedBy(auth()->user())
+            ->withProperties(['label' => $label])
+            ->log('deleted');
+
+        $record->delete();
+
+        // The file delete happens after the row is gone so a failure to remove
+        // the image does not leave the record half-deleted in the database.
+        // ContentMediaService::delete() already ignores null and any path it
+        // did not write itself.
+        $media->delete($image);
+
+        session()->flash('status', 'Deleted permanently.');
+    }
+
+    /**
+     * A short human name for the audit entry, since the deleted row is gone
+     * the moment after the log was written.
+     */
+    private function deletableLabel(Partner|SuccessStory|Post $record): string
+    {
+        if ($record instanceof Partner) {
+            return $record->name;
+        }
+
+        if ($record instanceof SuccessStory) {
+            return $record->name;
+        }
+
+        return $record->title;
+    }
+
+    /**
      * The tab's records, in display order.
      *
      * Not paginated: these tables hold a handful of rows and the screen has to
@@ -397,7 +465,7 @@ class ContentManager extends Component
      * enforces it -- these rules only decide what the person uploading is told
      * before that happens.
      *
-     * @return array<string, array<string, list<string|\Illuminate\Validation\Rules\Exists>>>
+     * @return array<string, array<string, list<string|Exists>>>
      */
     public function rules(): array
     {

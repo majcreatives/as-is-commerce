@@ -697,3 +697,88 @@ it('records a story\'s featured flag in the log properties', function (): void {
     expect($entry)->not->toBeNull()
         ->and($entry->properties->get('featured'))->toBeTrue();
 });
+
+/*
+ * ---------------------------------------------------------------------------
+ * Deleting
+ * ---------------------------------------------------------------------------
+ *
+ * Delete is the permanent end of a content record's life: the row is gone and
+ * the image file goes with it. It is gated on its own `*.delete` permission
+ * (separate from `activate`, because deciding something should stop appearing
+ * is not the same act as deciding it should cease to exist), and it is logged
+ * while the row still exists so the audit has a record to point at.
+ */
+
+it('deletes a partner, its logo file and its row', function (): void {
+    Storage::fake('public');
+
+    $admin = userWithRole('admin');
+    $partner = Partner::factory()->create([
+        'name' => 'Doomed Partner',
+        'logo_path' => 'partners/doomed.jpg',
+    ]);
+    Storage::disk('public')->put('partners/doomed.jpg', 'x');
+
+    Livewire::actingAs($admin)
+        ->test(ContentManager::class, ['tab' => 'partners'])
+        ->call('delete', $partner->id)
+        ->assertHasNoErrors();
+
+    expect(Partner::whereKey($partner->id)->doesntExist())->toBeTrue()
+        ->and(Storage::disk('public')->missing('partners/doomed.jpg'))->toBeTrue();
+
+    // Gone from the public partners page the moment the row is gone.
+    $this->get(route('partners.index'))->assertDontSee('Doomed Partner');
+});
+
+it('deletes a success story, its file and its row', function (): void {
+    Storage::fake('public');
+
+    $admin = userWithRole('admin');
+    $story = SuccessStory::factory()->create([
+        'name' => 'Doomed Story',
+        'image_path' => 'success-stories/doomed.jpg',
+    ]);
+    Storage::disk('public')->put('success-stories/doomed.jpg', 'x');
+
+    Livewire::actingAs($admin)
+        ->test(ContentManager::class, ['tab' => 'stories'])
+        ->call('delete', $story->id)
+        ->assertHasNoErrors();
+
+    expect(SuccessStory::whereKey($story->id)->doesntExist())->toBeTrue()
+        ->and(Storage::disk('public')->missing('success-stories/doomed.jpg'))->toBeTrue();
+});
+
+it('leaves the label on the audit entry when a record is deleted', function (): void {
+    $admin = userWithRole('admin');
+    $partner = Partner::factory()->create(['name' => 'Logged Partner']);
+
+    Livewire::actingAs($admin)
+        ->test(ContentManager::class, ['tab' => 'partners'])
+        ->call('delete', $partner->id);
+
+    $entry = Activity::query()
+        ->where('description', 'deleted')
+        ->where('subject_type', Partner::class)
+        ->where('subject_id', $partner->id)
+        ->first();
+
+    // The deleted row is gone, so the log carries the name itself.
+    expect($entry)->not->toBeNull()
+        ->and($entry->properties->get('label'))->toBe('Logged Partner');
+});
+
+it('refuses a delete without the tab\'s delete permission', function (): void {
+    $admin = userWithRole('admin');
+    Role::findByName('admin')->revokePermissionTo('partners.delete');
+    $partner = Partner::factory()->create(['name' => 'Safe Partner']);
+
+    Livewire::actingAs($admin->fresh())
+        ->test(ContentManager::class, ['tab' => 'partners'])
+        ->call('delete', $partner->id)
+        ->assertForbidden();
+
+    expect(Partner::whereKey($partner->id)->exists())->toBeTrue();
+});

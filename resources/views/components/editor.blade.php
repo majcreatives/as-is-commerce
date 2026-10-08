@@ -16,11 +16,11 @@
 
          The whole surface is wrapped in wire:ignore so Livewire never morphs the
          toolbar or the ProseMirror surface while the editor holds the user's
-         cursor. The value travels both ways through $wire.entangle().deferrable
-         inside the Alpine component: typing is written into the Livewire
-         property without a request per keystroke (Save flushes it), and a
-         component re-render that changes the property -- edit() refilling the
-         form, a fresh record -- flows back in and replaces the document.
+         cursor. The value travels one way through a deferred $wire.set inside the
+         Alpine component: typing is written into the Livewire property without a
+         request per keystroke (Save flushes it), and a component re-render that
+         changes the property -- edit() refilling the form, a fresh record --
+         flows back in through $wire.$watch and replaces the document.
 
          There is no JS without Alpine, and there is no fallback textarea here by
          design: where the bundle cannot load there is simply no editor on the

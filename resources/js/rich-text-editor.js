@@ -8,13 +8,20 @@
  * render. Where there is no JS at all the field is not on the page, because
  * the server renders the plain textarea, not this.
  *
- * The editor speaks to Livewire through `$wire.entangle().deferrable`: typing
- * writes the HTML into the component's property without a request per
- * keystroke (the save button flushes it), and when the component re-renders
- * with a different value -- an edit() that refills the form, a fresh record --
- * the change flows back in here and the document is replaced. `wire:ignore`
- * keeps Livewire from morphing the toolbar and ProseMirror surface while that
- * happens.
+ * The editor speaks to Livewire through `$wire.set(property, html, false)`:
+ * typing writes the HTML into the component's property without a request per
+ * keystroke (the save button flushes the deferred value), and when the
+ * component re-renders with a different value -- an edit() that refills the
+ * form, a fresh record -- `$wire.$watch` flows it back in here and the
+ * document is replaced. `wire:ignore` keeps Livewire from morphing the toolbar
+ * and ProseMirror surface while that happens.
+ *
+ * NO `$wire.entangle()`. Livewire v4 discourages entangle for two-way edited
+ * rich content: it keeps a second source of truth on the Alpine side that does
+ * not reliably reach the wire model, so a save can flush an empty property
+ * even though the editor visibly shows text. A plain deferred `$wire.set`
+ * writes the HTML straight into the component's reactive state, and the watch
+ * below handles server -> editor refill instead of entanglement.
  */
 
 /**
@@ -34,7 +41,7 @@ export function richTextEditor(options = {}) {
         focused: false,
         /** Bumped on every transaction so the toolbar active states re-evaluate. */
         refresh: 0,
-        /** The Livewire-bound HTML, two-way entangled (outgoing deferrable). */
+        /** The editor's HTML on this side of the wire. */
         body: '',
 
         init() {
@@ -42,13 +49,16 @@ export function richTextEditor(options = {}) {
                 return;
             }
 
-            this.body = this.$wire.entangle(this.property).deferrable;
+            // Read the server value from the wire model rather than entangling
+            // a second copy of it. The server-rendered @js($value) is the
+            // fallback for the moment before Livewire has hydrated.
+            this.body = this.$wire.get(this.property) ?? options.initialHtml ?? '';
 
             // Server -> editor: refill the document when the component's value
             // changes behind the editor's back (edit(), save(), validation
             // re-render). Guarded so a write that came from the editor itself
             // does not re-set the document and jump the cursor.
-            this.$watch('body', (value) => {
+            this.$wire.$watch(this.property, (value) => {
                 if (this.editor && this.editor.getHTML() !== (value ?? '')) {
                     this.editor.commands.setContent(value ?? '', false);
                 }
@@ -96,7 +106,10 @@ export function richTextEditor(options = {}) {
 
         editorWasUpdated() {
             if (this.editor) {
-                this.body = this.editor.getHTML();
+                // Deferred ($wire.set's third argument is "live"; false queues
+                // the value locally instead of firing a request per keystroke)
+                // so the save button flushes it with the rest of the form.
+                this.$wire.set(this.property, this.editor.getHTML(), false);
             }
         },
 

@@ -26,7 +26,11 @@ enum ProductStatus: string
     /** Listed, but nothing available to sell right now. */
     case OutOfStock = 'out_of_stock';
 
-    /** Retired. Never deleted, so its history stays readable. */
+    /**
+     * Retired. Keeps its row and history readable; a product that is part of
+     * auction, order or stock history can never go past this -- hard delete is
+     * reserved for a product nothing surviving references.
+     */
     case Archived = 'archived';
 
     public function label(): string

@@ -25,10 +25,12 @@ use Livewire\Component;
  * taxonomy records an administrator manages -- so they share a screen rather
  * than two nearly identical ones.
  *
- * NEITHER CAN BE DELETED. `BlogCategory` and `Tag` have no delete: archiving is
- * the way to retire either, and a post keeps its tags through an archive (the
- * public pages simply never read them). A category is nullable on the post, so
- * archiving one never orphans a row.
+ * DELETE IS AVAILABLE AND IT IS PERMANENT. `BlogCategory` and `Tag` have a
+ * delete on their own `*.delete` permission -- the opposite end of archiving.
+ * A deleted category leaves its posts behind with `category_id` cleared, never
+ * a dangling reference (the column is nullable); a deleted tag's link to every
+ * post is removed with it. Archive is the soft option that keeps the row and
+ * the audit history; Delete removes the row entirely.
  *
  * SLUGS ARE DERIVED, NOT TYPED. A category or tag's web address grows from its
  * name -- {@see self::uniqueSlug()} guarantees it is unique before saving -- so
@@ -198,6 +200,26 @@ class BlogTaxonomyManager extends Component
         $record->save();
 
         session()->flash('status', 'Status updated.');
+    }
+
+    /**
+     * Permanently delete a category or tag.
+     *
+     * Gated on its own `*.delete` permission, separate from `archive`: retiring
+     * a label is not the same act as removing it from existence. Both models
+     * are safe to delete by construction -- a category's posts simply lose
+     * their category reference (the column is nullable), and a tag's post links
+     * go with the row -- and both log a `deleted` activity entry through their
+     * model trait.
+     */
+    public function delete(int $id): void
+    {
+        $this->authorize($this->isCategories() ? 'blog_categories.delete' : 'blog_tags.delete');
+
+        $record = $this->isCategories() ? BlogCategory::findOrFail($id) : Tag::findOrFail($id);
+        $record->delete();
+
+        session()->flash('status', 'Deleted permanently.');
     }
 
     /**

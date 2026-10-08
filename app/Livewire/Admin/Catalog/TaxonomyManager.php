@@ -23,9 +23,13 @@ use Livewire\Component;
  * taxonomy records that organise the catalog -- and splitting them would mean
  * two nearly identical screens.
  *
- * Neither can be deleted. A category holding products or child categories is
- * refused by the database, and archiving is the supported way to retire
- * either, so nothing is ever orphaned.
+ * DELETE IS AVAILABLE AND IT DIFFERS BY TAB. A category holding products or
+ * child categories is refused -- deleting it would orphan either -- and is
+ * exactly what the restrict foreign keys back up. `archive` is the lifecycle
+ * that retires such a category without destroying the rows under it. A brand
+ * is the other end: the product reference is nullable, so deleting one clears
+ * the brand from whatever carries it. Both log a `deleted` activity entry
+ * through their model trait.
  */
 #[Layout('components.layouts.app')]
 #[Title('Categories & brands')]
@@ -196,6 +200,37 @@ class TaxonomyManager extends Component
         $record->save();
 
         session()->flash('status', 'Status updated.');
+    }
+
+    /**
+     * Permanently delete a category or a brand.
+     *
+     * Gated on its own `*.delete` permission, separate from `archive` -- retiring
+     * a label is not the same act as removing it from existence. A category
+     * holding products or child categories is refused rather than orphaned, and
+     * points at `archive` as the lifecycle that keeps everything in place. A
+     * brand's product reference is nullable, so deleting one only clears the
+     * brand from whatever carries it.
+     */
+    public function delete(int $id): void
+    {
+        $this->authorize($this->isCategories() ? 'categories.delete' : 'brands.delete');
+
+        if ($this->isCategories()) {
+            $category = Category::findOrFail($id);
+
+            if ($category->products()->exists() || Category::where('parent_id', $category->id)->exists()) {
+                session()->flash('error', 'This category cannot be deleted because it holds products or child categories. Archive it instead, which keeps the rows under it.');
+
+                return;
+            }
+
+            $category->delete();
+        } else {
+            Brand::findOrFail($id)->delete();
+        }
+
+        session()->flash('status', 'Deleted permanently.');
     }
 
     /**

@@ -4,7 +4,7 @@
         <x-page-header
             class="mb-0"
             title="Blog categories &amp; tags"
-            description="The vocabulary of the blog. Neither can be deleted — archive to retire one, and a post keeps working through it. A category or tag appears on the public site only once a published post uses it." />
+            description="The vocabulary of the blog. Archive retires a category or tag without destroying its history; Delete removes it permanently. Deleting a category leaves posts working without one, and a category or tag appears on the public site only once a published post uses it." />
 
         @if ($tab === 'categories' || $tab === 'tags')
             <x-button wire:click="create" variant="primary" class="shrink-0">
@@ -109,6 +109,12 @@
                                         <x-button wire:click="setStatus({{ $row->id }}, 'archived')"
                                                   variant="ghost" size="sm">Archive</x-button>
                                     @endif
+
+                                    @can($tab === 'categories' ? 'blog_categories.delete' : 'blog_tags.delete')
+                                        <x-button wire:click="delete({{ $row->id }})"
+                                                  wire:confirm="Delete this {{ $tab === 'categories' ? 'category' : 'tag' }} permanently? Posts are left intact. This cannot be undone."
+                                                  variant="danger" size="sm">Delete</x-button>
+                                    @endcan
                                 </div>
                             </td>
                         </tr>

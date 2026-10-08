@@ -5,8 +5,11 @@ declare(strict_types=1);
 use App\Enums\CatalogStatus;
 use App\Livewire\Admin\Content\BlogTaxonomyManager;
 use App\Models\BlogCategory;
+use App\Models\Post;
 use App\Models\Tag;
+use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
+use Spatie\Activitylog\Models\Activity;
 use Spatie\Permission\Models\Role;
 
 /*
@@ -195,4 +198,75 @@ it('refuses a categories-only holder the tags tab', function (): void {
         ->test(BlogTaxonomyManager::class, ['tab' => 'categories'])
         ->call('switchTab', 'tags')
         ->assertForbidden();
+});
+
+it('deletes a category and clears it from its posts', function (): void {
+    $category = BlogCategory::factory()->create(['name' => 'Doomed']);
+    $post = Post::factory()->create(['category_id' => $category->id]);
+
+    Livewire::actingAs(userWithRole('admin'))
+        ->test(BlogTaxonomyManager::class, ['tab' => 'categories'])
+        ->call('delete', $category->id)
+        ->assertHasNoErrors();
+
+    expect(BlogCategory::whereKey($category->id)->doesntExist())->toBeTrue()
+        // The category column is nullable: deleting the label never orphans a
+        // post.
+        ->and($post->fresh()->category_id)->toBeNull();
+});
+
+it('deletes a tag and the links posts hold to it', function (): void {
+    $tag = Tag::factory()->create(['name' => 'Doomed Tag']);
+    $post = Post::factory()->create();
+    $post->tags()->attach($tag);
+
+    Livewire::actingAs(userWithRole('admin'))
+        ->test(BlogTaxonomyManager::class, ['tab' => 'tags'])
+        ->call('delete', $tag->id)
+        ->assertHasNoErrors();
+
+    expect(Tag::whereKey($tag->id)->doesntExist())->toBeTrue()
+        ->and(DB::table('post_tag')->where('tag_id', $tag->id)->doesntExist())->toBeTrue()
+        ->and(Post::whereKey($post->id)->exists())->toBeTrue();
+});
+
+it('records a taxonomy deletion through the model trait', function (): void {
+    $tag = Tag::factory()->create(['name' => 'Recorded Tag']);
+
+    Livewire::actingAs(userWithRole('admin'))
+        ->test(BlogTaxonomyManager::class, ['tab' => 'tags'])
+        ->call('delete', $tag->id);
+
+    expect(Activity::query()
+        ->where('log_name', 'tag')
+        ->where('subject_id', $tag->id)
+        ->where('description', 'like', '%deleted')
+        ->exists()
+    )->toBeTrue();
+});
+
+it('refuses to delete a category without the delete permission', function (): void {
+    $admin = userWithRole('admin');
+    Role::findByName('admin')->revokePermissionTo('blog_categories.delete');
+    $category = BlogCategory::factory()->create();
+
+    Livewire::actingAs($admin->fresh())
+        ->test(BlogTaxonomyManager::class, ['tab' => 'categories'])
+        ->call('delete', $category->id)
+        ->assertForbidden();
+
+    expect(BlogCategory::whereKey($category->id)->exists())->toBeTrue();
+});
+
+it('refuses to delete a tag without the tag delete permission', function (): void {
+    $admin = userWithRole('admin');
+    Role::findByName('admin')->revokePermissionTo('blog_tags.delete');
+    $tag = Tag::factory()->create();
+
+    Livewire::actingAs($admin->fresh())
+        ->test(BlogTaxonomyManager::class, ['tab' => 'tags'])
+        ->call('delete', $tag->id)
+        ->assertForbidden();
+
+    expect(Tag::whereKey($tag->id)->exists())->toBeTrue();
 });

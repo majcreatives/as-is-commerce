@@ -4,7 +4,7 @@
         <x-page-header
             class="mb-0"
             title="Categories &amp; brands"
-            description="How the catalog is organised. Neither can be deleted — a category holding products or child categories is refused, so nothing is ever orphaned. Archive instead." />
+            description="How the catalog is organised. Archive retires a category or brand without destroying its history; Delete removes it permanently. A category holding products or child categories is refused, so nothing is ever orphaned. Archive instead." />
 
         <x-button wire:click="create" variant="primary" class="shrink-0">
             New {{ $tab === 'categories' ? 'category' : 'brand' }}
@@ -13,6 +13,10 @@
 
     @if (session('status'))
         <x-alert variant="success" class="mb-6">{{ session('status') }}</x-alert>
+    @endif
+
+    @if (session('error'))
+        <x-alert variant="danger" class="mb-6">{{ session('error') }}</x-alert>
     @endif
 
     <div class="mb-4 flex flex-wrap gap-1 border-b border-slate-200 pb-3" role="tablist">
@@ -122,6 +126,12 @@
                                         <x-button wire:click="setStatus({{ $row->id }}, 'archived')"
                                                   variant="ghost" size="sm">Archive</x-button>
                                     @endif
+
+                                    @can($tab === 'categories' ? 'categories.delete' : 'brands.delete')
+                                        <x-button wire:click="delete({{ $row->id }})"
+                                                  wire:confirm="Delete this {{ $tab === 'categories' ? 'category' : 'brand' }} permanently? {{ $tab === 'categories' ? 'Refused if it holds products or child categories.' : 'Products keep working without a brand.' }} This cannot be undone."
+                                                  variant="danger" size="sm">Delete</x-button>
+                                    @endcan
                                 </div>
                             </td>
                         </tr>

@@ -6,8 +6,10 @@ use App\Livewire\Admin\Content\ContentManager;
 use App\Models\BlogCategory;
 use App\Models\Post;
 use App\Models\Tag;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 use Livewire\Livewire;
+use Spatie\Activitylog\Models\Activity;
 use Spatie\Permission\Models\Role;
 
 /*
@@ -321,4 +323,63 @@ it('stores the body through the whitelist, not as typed', function (): void {
         ->and($post->body)->not->toContain('onclick')
         ->and($post->body)->toStartWith('<p>Fine <strong>text</strong>.</p>')
         ->and($post->body)->toEndWith('</p>');
+});
+
+/*
+ * A post delete is a permanent removal: the row, its image file, and every
+ * public surface that read it -- the site and therefore the sitemap -- stop
+ * showing it at once. A published post deleted this way never re-appears,
+ * which is what "permanent" means.
+ */
+
+it('deletes a post, its image file and its row together', function (): void {
+    Storage::fake('public');
+
+    $admin = userWithRole('admin');
+    $post = Post::factory()->published()->create(['slug' => 'doomed']);
+    $post->image_path = 'posts/doomed.jpg';
+    $post->save();
+    Storage::disk('public')->put('posts/doomed.jpg', 'x');
+
+    Livewire::actingAs($admin)
+        ->test(ContentManager::class, ['tab' => 'posts'])
+        ->call('delete', $post->id)
+        ->assertHasNoErrors();
+
+    expect(Post::where('slug', 'doomed')->doesntExist())->toBeTrue()
+        ->and(Storage::disk('public')->missing('posts/doomed.jpg'))->toBeTrue();
+
+    // Gone from the public blog the moment the row is gone.
+    $this->get(route('blog.show', ['post' => 'doomed']))->assertNotFound();
+});
+
+it('records a post deletion in the content activity log', function (): void {
+    $admin = userWithRole('admin');
+    $post = Post::factory()->published()->create(['slug' => 'logged-deletion']);
+
+    Livewire::actingAs($admin)
+        ->test(ContentManager::class, ['tab' => 'posts'])
+        ->call('delete', $post->id);
+
+    expect(Activity::query()
+        ->where('log_name', 'content')
+        ->where('description', 'deleted')
+        ->where('subject_type', Post::class)
+        ->where('subject_id', $post->id)
+        ->exists()
+    )->toBeTrue();
+});
+
+it('refuses to delete a post without the posts.delete permission', function (): void {
+    $admin = userWithRole('admin');
+    Role::findByName('admin')->revokePermissionTo('posts.delete');
+    $post = Post::factory()->create(['slug' => 'safe']);
+
+    Livewire::actingAs($admin->fresh())
+        ->test(ContentManager::class, ['tab' => 'posts'])
+        ->call('delete', $post->id)
+        ->assertForbidden();
+
+    expect(Post::whereKey($post->id)->exists())->toBeTrue()
+        ->and(Post::where('slug', 'safe')->exists())->toBeTrue();
 });

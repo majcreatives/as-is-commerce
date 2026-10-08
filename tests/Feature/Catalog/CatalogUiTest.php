@@ -16,6 +16,7 @@ use App\Models\Category;
 use App\Models\Product;
 use Database\Seeders\PermissionSeeder;
 use Livewire\Livewire;
+use Spatie\Permission\Models\Role;
 
 beforeEach(function (): void {
     seedPermissions();
@@ -488,4 +489,59 @@ it('rejects a duplicate brand name', function (): void {
         ->set('name', 'Northline')
         ->call('save')
         ->assertHasErrors('name');
+});
+
+it('refuses to delete a category that holds products', function (): void {
+    Product::factory()->active()->create(['category_id' => $this->category->id]);
+
+    Livewire::actingAs($this->admin)
+        ->test(TaxonomyManager::class)
+        ->call('delete', $this->category->id);
+
+    // The refusal is surfaced through a flashed error; the durable guarantee is
+    // that the category (and everything under it) survives unchanged.
+    expect(Category::whereKey($this->category->id)->exists())->toBeTrue();
+});
+
+it('refuses to delete a category that holds child categories', function (): void {
+    Category::factory()->childOf($this->category)->create();
+
+    Livewire::actingAs($this->admin)
+        ->test(TaxonomyManager::class)
+        ->call('delete', $this->category->id);
+
+    expect(Category::whereKey($this->category->id)->exists())->toBeTrue();
+});
+
+it('deletes a category that holds nothing', function (): void {
+    Livewire::actingAs($this->admin)
+        ->test(TaxonomyManager::class)
+        ->call('delete', $this->category->id)
+        ->assertHasNoErrors();
+
+    expect(Category::whereKey($this->category->id)->doesntExist())->toBeTrue();
+});
+
+it('deletes a brand and clears it from its products', function (): void {
+    Product::factory()->active()->create(['brand_id' => $this->brand->id]);
+
+    Livewire::actingAs($this->admin)
+        ->test(TaxonomyManager::class)
+        ->call('switchTab', 'brands')
+        ->call('delete', $this->brand->id)
+        ->assertHasNoErrors();
+
+    expect(Brand::whereKey($this->brand->id)->doesntExist())->toBeTrue()
+        ->and(Product::first()->brand_id)->toBeNull();
+});
+
+it('refuses a category delete without the delete permission', function (): void {
+    Role::findByName('admin')->revokePermissionTo('categories.delete');
+
+    Livewire::actingAs($this->admin->fresh())
+        ->test(TaxonomyManager::class)
+        ->call('delete', $this->category->id)
+        ->assertForbidden();
+
+    expect(Category::whereKey($this->category->id)->exists())->toBeTrue();
 });

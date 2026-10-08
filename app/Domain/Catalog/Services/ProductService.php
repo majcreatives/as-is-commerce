@@ -4,12 +4,16 @@ declare(strict_types=1);
 
 namespace App\Domain\Catalog\Services;
 
+use App\Domain\Catalog\Exceptions\InvalidProductDelete;
 use App\Domain\Catalog\Exceptions\InvalidProductTransition;
 use App\Enums\ProductStatus;
+use App\Models\CartItem;
+use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\User;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 /**
@@ -129,6 +133,55 @@ class ProductService
 
             return $product;
         });
+    }
+
+    /**
+     * Permanently delete a product that carries no surviving history.
+     *
+     * The refusals are exactly what the foreign keys already protect: auctions,
+     * order lines and inventory movements are append-only records that must
+     * outlive the product, and a customer's cart is user data a delete must not
+     * silently destroy. Deleting a product sitting in a cart races the customer
+     * against the checkout, so it is refused rather than resolved. The gallery
+     * images belong to the product itself, so their rows and files go with it --
+     * and only ever files this gallery could have written. `archive` is the
+     * documented alternative for any product this refuses.
+     */
+    public function delete(Product $product, ?User $actor = null): void
+    {
+        if ($this->isReferenced($product)) {
+            throw InvalidProductDelete::referenced();
+        }
+
+        DB::transaction(function () use ($product): void {
+            foreach ($product->images()->get() as $image) {
+                // The same guard ProductMediaService applies when a single
+                // image is removed: a hand-edited image_path must not turn
+                // "delete this product" into "delete some unrelated file".
+                if (Str::startsWith($image->image_path, 'products/')) {
+                    Storage::disk('public')->delete($image->image_path);
+                }
+            }
+
+            $product->images()->delete();
+
+            // The product's own LogsActivity trait records the `deleted` event
+            // with its full attributes, so the audit trail needs no manual
+            // entry here. `created_by`/`updated_by` reference users and are
+            // never the subject of a delete guard.
+            $product->delete();
+        });
+    }
+
+    /**
+     * Whether any surviving record points at this product.
+     */
+    private function isReferenced(Product $product): bool
+    {
+        return $product->auctions()->exists()
+            || $product->inventoryTransactions()->exists()
+            || OrderItem::where('product_id', $product->id)->exists()
+            || CartItem::where('product_id', $product->id)->exists();
     }
 
     /**

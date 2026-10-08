@@ -57,18 +57,21 @@ class PermissionSeeder extends Seeder
         'products.update',
         'products.activate',
         'products.archive',
+        'products.delete',
 
         'categories.view',
         'categories.create',
         'categories.update',
         'categories.activate',
         'categories.archive',
+        'categories.delete',
 
         'brands.view',
         'brands.create',
         'brands.update',
         'brands.activate',
         'brands.archive',
+        'brands.delete',
 
         'inventory.view',
         'inventory.adjust',
@@ -80,37 +83,43 @@ class PermissionSeeder extends Seeder
         // capability so an editor can prepare a record without being the person
         // who puts it in front of customers.
         //
-        // Deliberately not `*.delete`. There is nothing a partner or a story is
-        // referenced by that a delete could orphan, and retiring one is done by
-        // publishing `active` = false, which keeps the row and its history.
+        // `*.delete` is a real, permanent removal -- the row and its file are
+        // gone -- and is granted separately from `archive`, which retires the
+        // record without destroying its history.
         'partners.view',
         'partners.create',
         'partners.update',
         'partners.activate',
+        'partners.delete',
         'success_stories.view',
         'success_stories.create',
         'success_stories.update',
         'success_stories.activate',
+        'success_stories.delete',
         'posts.view',
         'posts.create',
         'posts.update',
         'posts.activate',
+        'posts.delete',
 
         // The blog's vocabulary, kept deliberately separate from the catalogue
         // categories and brands above: governing what a post is labelled with
-        // is not governing what a product is filed under. Same lifecycle -- no
-        // delete, archive instead -- and the front-facing category and tag
-        // pages read `active` rows only.
+        // is not governing what a product is filed under. Same lifecycle --
+        // `archive` retires a category or tag without destroying it, and
+        // `delete` is a permanent removal; either way the front-facing category
+        // and tag pages read `active` rows only.
         'blog_categories.view',
         'blog_categories.create',
         'blog_categories.update',
         'blog_categories.activate',
         'blog_categories.archive',
+        'blog_categories.delete',
         'blog_tags.view',
         'blog_tags.create',
         'blog_tags.update',
         'blog_tags.activate',
         'blog_tags.archive',
+        'blog_tags.delete',
 
         // Auction administration. Staff-only, all of them: `auctions.view`
         // means "see every auction, including drafts", which is not what a

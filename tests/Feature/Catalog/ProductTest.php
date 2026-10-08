@@ -2,16 +2,25 @@
 
 declare(strict_types=1);
 
+use App\Domain\Catalog\Exceptions\InvalidProductDelete;
 use App\Domain\Catalog\Exceptions\InvalidProductTransition;
 use App\Domain\Catalog\Services\ProductService;
 use App\Domain\Shared\Money\Money;
 use App\Enums\ProductCondition;
 use App\Enums\ProductStatus;
+use App\Models\Auction;
 use App\Models\Brand;
+use App\Models\Cart;
 use App\Models\Category;
+use App\Models\InventoryTransaction;
+use App\Models\Order;
 use App\Models\Product;
+use App\Models\ProductImage;
+use App\Models\User;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Spatie\Activitylog\Models\Activity;
 
 beforeEach(function (): void {
     seedRoles();
@@ -266,4 +275,103 @@ it('stores the Buy Now price as integer minor units', function (): void {
     // Straight from the database, so no cast could be hiding a float.
     $raw = DB::table('products')->where('id', $product->id)->first();
     expect($raw->buy_now_price_minor)->toEqual(550_000);
+});
+
+// -------------------------------------------------------------- Deleting
+/*
+ * Delete is the permanent end of a product's life, and it is refused whenever
+ * the row carries history the platform must keep: an auction, an order line, a
+ * stock movement, or a customer's cart. `archive` is the lifecycle that
+ * retires such a product without destroying any of it. These tests pin the
+ * refusals to the same references the database constraints protect, so a new
+ * reviewer cannot "simplify" the service into a delete that orphans ledger or
+ * user data.
+ */
+
+it('permanently deletes a product nothing references', function (): void {
+    $product = $this->products->create(productAttributes(['category_id' => $this->category->id]));
+    $productId = $product->id;
+
+    $this->products->delete($product);
+
+    expect(Product::whereKey($productId)->doesntExist())->toBeTrue();
+});
+
+it('refuses to delete a product an auction references', function (): void {
+    $product = $this->products->create(productAttributes(['category_id' => $this->category->id]));
+    $auction = Auction::factory()->forProduct($product)->create();
+
+    expect(fn () => $this->products->delete($product))
+        ->toThrow(InvalidProductDelete::class, 'Archive it instead.');
+
+    expect(Product::whereKey($product->id)->exists())->toBeTrue()
+        ->and(Auction::whereKey($auction->id)->exists())->toBeTrue();
+});
+
+it('refuses to delete a product an order line references', function (): void {
+    // Through the real checkout: an order line is written at checkout and is
+    // append-only (a database trigger refuses edits), so the reference this
+    // test pins is exactly the one production produces.
+    $product = stockedProduct();
+    $order = buyNowCheckout(bidder(0), $product);
+
+    expect(fn () => $this->products->delete($product))
+        ->toThrow(InvalidProductDelete::class);
+
+    expect(Product::whereKey($product->id)->exists())->toBeTrue()
+        ->and(Order::whereKey($order->id)->exists())->toBeTrue();
+});
+
+it('refuses to delete a product sitting in a customer cart', function (): void {
+    $product = $this->products->create(productAttributes(['category_id' => $this->category->id]));
+    Cart::create(['user_id' => User::factory()->create()->id])
+        ->items()
+        ->create(['product_id' => $product->id, 'quantity' => 1]);
+
+    expect(fn () => $this->products->delete($product))
+        ->toThrow(InvalidProductDelete::class);
+
+    expect(Product::whereKey($product->id)->exists())->toBeTrue();
+});
+
+it('refuses to delete a product with inventory history', function (): void {
+    $product = $this->products->create(productAttributes(['category_id' => $this->category->id]));
+    InventoryTransaction::factory()->create(['product_id' => $product->id]);
+
+    expect(fn () => $this->products->delete($product))
+        ->toThrow(InvalidProductDelete::class);
+
+    expect(Product::whereKey($product->id)->exists())->toBeTrue();
+});
+
+it('removes a product with its gallery files and rows', function (): void {
+    Storage::fake('public');
+
+    $product = $this->products->create(productAttributes(['category_id' => $this->category->id]));
+    $images = ProductImage::factory()->count(2)->create(['product_id' => $product->id]);
+
+    foreach ($images as $image) {
+        Storage::disk('public')->put($image->image_path, 'x');
+    }
+
+    $this->products->delete($product);
+
+    expect(Storage::disk('public')->allFiles())->toBe([])
+        ->and(ProductImage::where('product_id', $product->id)->doesntExist())->toBeTrue()
+        ->and(Product::whereKey($product->id)->doesntExist())->toBeTrue();
+});
+
+it('records a product deletion in the audit log', function (): void {
+    $product = $this->products->create(productAttributes(['category_id' => $this->category->id]));
+    $productId = $product->id;
+
+    $this->products->delete($product);
+
+    $entry = Activity::query()
+        ->where('log_name', 'product')
+        ->where('subject_id', $productId)
+        ->where('description', 'like', '%deleted')
+        ->first();
+
+    expect($entry)->not->toBeNull();
 });

@@ -12,7 +12,7 @@
         <x-page-header
             class="mb-0"
             title="Partners, stories &amp; posts"
-            description="The content shown on the public site. Records are saved unpublished — publishing is a separate action, so nothing goes in front of customers by being typed and forgotten. Nothing is deleted; unpublish to retire one." />
+            description="The content shown on the public site. Records are saved unpublished — publishing is a separate action, so nothing goes in front of customers by being typed and forgotten. Archive retires a record without destroying its history; Delete removes it permanently." />
 
         @if ($this->can('create'))
             <x-button wire:click="create" variant="primary" class="shrink-0">
@@ -356,6 +356,12 @@
                                             <x-button wire:click="togglePublished({{ $row->id }})"
                                                       variant="primary" size="sm">Publish</x-button>
                                         @endif
+                                    @endif
+
+                                    @if ($this->can('delete'))
+                                        <x-button wire:click="delete({{ $row->id }})"
+                                                  wire:confirm="Delete this {{ $tabLabel }} permanently? This cannot be undone."
+                                                  variant="danger" size="sm">Delete</x-button>
                                     @endif
                                 </div>
                             </td>

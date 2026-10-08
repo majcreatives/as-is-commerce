@@ -14,6 +14,7 @@ use App\Models\Product;
 use App\Support\RichText;
 use DomainException;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
@@ -209,6 +210,45 @@ class ProductManager extends Component
         }
 
         session()->flash('status', 'Product status updated.');
+    }
+
+    /**
+     * Permanently delete a product.
+     *
+     * Gated on `products.delete`, a capability that is separate from `archive`
+     * because they are different ends of the same choice: archive retires the
+     * listing while keeping its row and its history, delete removes the row
+     * entirely. {@see ProductService::delete()} refuses any product that is
+     * part of auction, order or stock history or is sitting in a customer's
+     * cart -- its `archive` status is the alternative for those. The query
+     * backstop turns a database constraint into the same readable answer if a
+     * reference slips past the service's own checks.
+     */
+    public function delete(int $id, ProductService $products): void
+    {
+        $this->authorize('products.delete');
+
+        try {
+            $products->delete(Product::findOrFail($id), auth()->user());
+        } catch (DomainException $e) {
+            $this->addError('lifecycle', $e->getMessage());
+
+            return;
+        } catch (QueryException $e) {
+            // SQLSTATE 23000 is an integrity constraint violation -- a row
+            // still references the product. Say exactly that, and point at the
+            // lifecycle that keeps the row instead.
+            if (($e->errorInfo[0] ?? null) === '23000') {
+                $this->addError('lifecycle', 'This product cannot be deleted because something still references it. Archive it instead.');
+
+                return;
+            }
+
+            throw $e;
+        }
+
+        session()->flash('status', 'Product deleted permanently.');
+        $this->resetPage();
     }
 
     /**

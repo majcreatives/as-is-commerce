@@ -62,11 +62,12 @@ class Home extends Component
             'trending' => $trending,
             'availability' => $availability,
             'gallery' => $gallery,
-            // Bounded by the query, and both are empty until an administrator
+            // Bounded by the query, and all are empty until an administrator
             // has published something. The view hides a section it is given
             // nothing for, rather than rendering an empty frame.
             'partners' => $content->homepagePartners(),
             'stories' => $content->homepageStories(),
+            'posts' => $content->homepagePosts(),
         ])->title(config('app.name').' — the shop, and the auction');
     }
 }

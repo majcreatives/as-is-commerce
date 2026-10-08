@@ -142,8 +142,9 @@ class AppServiceProvider extends ServiceProvider
             fn (User $user, string $ability): ?bool => $user->hasRole('super_admin') ? true : null
         );
 
-        // The company content screen has two tabs behind two separate permission
-        // sets, and holding either one is a legitimate reason to open it.
+        // The company content screen has three tabs behind three separate
+        // permission sets, and holding any one of them is a legitimate reason
+        // to open it.
         //
         // This exists as a Gate ability because `can:` cannot express that.
         // Illuminate\Auth\Middleware\Authorize::handle() takes the first segment
@@ -155,6 +156,7 @@ class AppServiceProvider extends ServiceProvider
             'content.view',
             fn (User $user): bool => $user->can('partners.view')
                 || $user->can('success_stories.view')
+                || $user->can('posts.view')
         );
 
         $this->registerRateLimiters();

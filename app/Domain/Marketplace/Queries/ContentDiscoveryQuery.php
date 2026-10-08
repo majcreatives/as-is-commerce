@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domain\Marketplace\Queries;
 
 use App\Models\Partner;
+use App\Models\Post;
 use App\Models\SuccessStory;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
@@ -39,6 +40,9 @@ class ContentDiscoveryQuery
 
     /** The homepage story block. Three is a row of cards, or a scroll of them on a phone. */
     public const HOME_STORY_LIMIT = 3;
+
+    /** The homepage blog strip. Four is a row across, or a scroll of cards on a phone. */
+    public const HOME_POST_LIMIT = 4;
 
     /**
      * @return LengthAwarePaginator<int, Partner>
@@ -78,5 +82,15 @@ class ContentDiscoveryQuery
     public function homepageStories(int $limit = self::HOME_STORY_LIMIT): EloquentCollection
     {
         return SuccessStory::featured()->limit($limit)->get();
+    }
+
+    /**
+     * Published posts for the homepage strip, newest first.
+     *
+     * @return EloquentCollection<int, Post>
+     */
+    public function homepagePosts(int $limit = self::HOME_POST_LIMIT): EloquentCollection
+    {
+        return Post::published()->latest('published_at')->limit($limit)->get();
     }
 }

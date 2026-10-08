@@ -1,14 +1,22 @@
+@php
+    $tabLabel = match ($tab) {
+        'partners' => 'partner',
+        'stories' => 'story',
+        default => 'post',
+    };
+@endphp
+
 <x-admin.shell>
 
     <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <x-page-header
             class="mb-0"
-            title="Partners &amp; stories"
-            description="The company content shown on the public site. Records are saved unpublished — publishing is a separate action, so nothing goes in front of customers by being typed and forgotten. Nothing is deleted; unpublish to retire one." />
+            title="Partners, stories &amp; posts"
+            description="The content shown on the public site. Records are saved unpublished — publishing is a separate action, so nothing goes in front of customers by being typed and forgotten. Nothing is deleted; unpublish to retire one." />
 
         @if ($this->can('create'))
             <x-button wire:click="create" variant="primary" class="shrink-0">
-                New {{ $tab === 'partners' ? 'partner' : 'story' }}
+                New {{ $tabLabel }}
             </x-button>
         @endif
     </div>
@@ -23,6 +31,7 @@
         @foreach ([
             'partners' => ['label' => 'Partners', 'permission' => 'partners.view'],
             'stories' => ['label' => 'Success stories', 'permission' => 'success_stories.view'],
+            'posts' => ['label' => 'Blog posts', 'permission' => 'posts.view'],
         ] as $key => $config)
             @continue(! auth()->user()->can($config['permission']))
 
@@ -37,7 +46,7 @@
     </div>
 
     @if ($showForm)
-        <x-card :title="($editingId ? 'Edit ' : 'New ').($tab === 'partners' ? 'partner' : 'story')" class="mb-6">
+        <x-card :title="($editingId ? 'Edit ' : 'New ').$tabLabel" class="mb-6">
             <form wire:submit="save" class="space-y-5">
                 <div class="grid gap-5 sm:grid-cols-2">
                     <x-field label="Name" name="name" :error="$errors->first('name')">
@@ -73,7 +82,7 @@
                                        class="block w-full text-sm text-slate-700 file:mr-4 file:rounded-lg file:border-0 file:bg-brand-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-brand-800 hover:file:bg-brand-100">
                             </x-field>
                         </div>
-                    @else
+                    @elseif ($tab === 'stories')
                         <div class="sm:col-span-2">
                             <x-field label="Title or location" name="storyTitle" :error="$errors->first('storyTitle')"
                                      hint="The line under the name — a role, or where they are.">
@@ -117,6 +126,44 @@
                                 </label>
                             </div>
                         @endif
+                    @else
+                        <div class="sm:col-span-2">
+                            <x-field label="Title" name="postTitle" :error="$errors->first('postTitle')">
+                                <x-input id="postTitle" wire:model="postTitle"
+                                         :error="$errors->has('postTitle')" required />
+                            </x-field>
+                        </div>
+
+                        <div class="sm:col-span-2">
+                            <x-field label="Slug" name="slug" :error="$errors->first('slug')"
+                                     hint="Lowercase letters, numbers and hyphens; the post's web address. Leave the shape of the URL in your control.">
+                                <x-input id="slug" wire:model="slug" :error="$errors->has('slug')" required />
+                            </x-field>
+                        </div>
+
+                        <div class="sm:col-span-2">
+                            <x-field label="Excerpt" name="excerpt" :error="$errors->first('excerpt')" optional
+                                     hint="One or two sentences shown on the blog list and homepage. Omit to lead with the first words of the body.">
+                                <textarea id="excerpt" wire:model="excerpt" rows="2"
+                                          class="block w-full rounded-lg border-0 bg-white px-3 py-2.5 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-inset focus:ring-brand-600 sm:text-sm @error('excerpt') ring-red-400 @enderror">{{ $excerpt }}</textarea>
+                            </x-field>
+                        </div>
+
+                        <div class="sm:col-span-2">
+                            <x-field label="Body" name="body" :error="$errors->first('body')"
+                                     hint="Plain text; blank lines become paragraph breaks.">
+                                <textarea id="body" wire:model="body" rows="10"
+                                          class="block w-full rounded-lg border-0 bg-white px-3 py-2.5 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-inset focus:ring-brand-600 sm:text-sm @error('body') ring-red-400 @enderror">{{ $body }}</textarea>
+                            </x-field>
+                        </div>
+
+                        <div class="sm:col-span-2">
+                            <x-field label="Featured image" name="image" :error="$errors->first('image')" optional
+                                     hint="JPEG, PNG, WebP or GIF, up to 2 MB. Optional — a post without one shows the words alone.">
+                                <input type="file" wire:model="image" accept="image/jpeg,image/png,image/webp,image/gif"
+                                       class="block w-full text-sm text-slate-700 file:mr-4 file:rounded-lg file:border-0 file:bg-brand-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-brand-800 hover:file:bg-brand-100">
+                            </x-field>
+                        </div>
                     @endif
                 </div>
 
@@ -138,16 +185,22 @@
             <table class="w-full min-w-[44rem] text-left text-sm">
                 <thead class="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                     <tr>
-                        <th scope="col" class="px-4 py-3 font-semibold">Name</th>
+                        <th scope="col" class="px-4 py-3 font-semibold">{{ $tab === 'posts' ? 'Title' : 'Name' }}</th>
 
                         @if ($tab === 'partners')
                             <th scope="col" class="px-4 py-3 font-semibold">Website</th>
-                        @else
+                        @elseif ($tab === 'stories')
                             <th scope="col" class="px-4 py-3 font-semibold">What they said</th>
                             <th scope="col" class="px-4 py-3 font-semibold">Homepage</th>
+                        @else
+                            <th scope="col" class="px-4 py-3 font-semibold">Slug</th>
                         @endif
 
-                        <th scope="col" class="px-4 py-3 text-right font-semibold">Order</th>
+                        @if ($tab === 'posts')
+                            <th scope="col" class="px-4 py-3 font-semibold">Published</th>
+                        @else
+                            <th scope="col" class="px-4 py-3 text-right font-semibold">Order</th>
+                        @endif
                         <th scope="col" class="px-4 py-3 font-semibold">Status</th>
                         <th scope="col" class="px-4 py-3 text-right font-semibold">Actions</th>
                     </tr>
@@ -156,10 +209,12 @@
                     @forelse ($records as $row)
                         <tr>
                             <td class="px-4 py-3">
-                                <span class="font-medium text-slate-900">{{ $row->name }}</span>
+                                <span class="font-medium text-slate-900">{{ $row->name ?? $row->title }}</span>
 
                                 @if ($row instanceof \App\Models\SuccessStory && $row->title)
                                     <span class="block text-xs text-slate-500">{{ $row->title }}</span>
+                                @elseif ($row instanceof \App\Models\Post && $row->excerpt)
+                                    <span class="block max-w-md truncate text-xs text-slate-500">{{ $row->excerpt }}</span>
                                 @endif
                             </td>
 
@@ -172,7 +227,7 @@
                                         <span class="text-slate-400">None</span>
                                     @endif
                                 </td>
-                            @else
+                            @elseif ($tab === 'stories')
                                 <td class="max-w-md px-4 py-3 text-slate-600">
                                     <span class="line-clamp-2">{{ $row->quote }}</span>
                                 </td>
@@ -183,15 +238,31 @@
                                         <span class="text-slate-400">—</span>
                                     @endif
                                 </td>
+                            @else
+                                <td class="px-4 py-3 font-mono text-xs text-slate-500">
+                                    <a href="{{ route('blog.show', $row->slug) }}" target="_blank" rel="noopener noreferrer"
+                                       class="text-brand-700 underline">/blog/{{ $row->slug }}</a>
+                                </td>
                             @endif
 
-                            <td class="px-4 py-3 text-right tabular-nums text-slate-600">{{ $row->sort_order }}</td>
+                            @if ($tab === 'posts')
+                                <td class="px-4 py-3 tabular-nums text-slate-600">
+                                    {{ $row->published_at?->format('M j, Y') ?? '—' }}
+                                </td>
+                            @else
+                                <td class="px-4 py-3 text-right tabular-nums text-slate-600">{{ $row->sort_order }}</td>
+                            @endif
 
                             <td class="px-4 py-3">
-                                <x-badge :classes="$row->active
+                                @php
+                                    $isLive = $tab === 'posts'
+                                        ? $row->active && $row->published_at !== null
+                                        : (bool) $row->active;
+                                @endphp
+                                <x-badge :classes="$isLive
                                     ? 'bg-emerald-50 text-emerald-800 ring-emerald-200'
                                     : 'bg-slate-100 text-slate-600 ring-slate-200'">
-                                    {{ $row->active ? 'Published' : 'Draft' }}
+                                    {{ $isLive ? 'Published' : 'Draft' }}
                                 </x-badge>
                             </td>
 
@@ -201,14 +272,21 @@
                                         <x-button wire:click="edit({{ $row->id }})"
                                                   variant="secondary" size="sm">Edit</x-button>
 
-                                        @if ($tab === 'partners' ? $row->logo_path : $row->image_path)
+                                        @php
+                                            $hasImage = match ($tab) {
+                                                'partners' => $row->logo_path,
+                                                'stories' => $row->image_path,
+                                                default => $row->image_path,
+                                            };
+                                        @endphp
+                                        @if ($hasImage)
                                             <x-button wire:click="removeImage({{ $row->id }})"
                                                       variant="ghost" size="sm">Remove image</x-button>
                                         @endif
                                     @endif
 
                                     @if ($this->can('activate'))
-                                        @if ($row->active)
+                                        @if ($isLive)
                                             <x-button wire:click="togglePublished({{ $row->id }})"
                                                       variant="ghost" size="sm">Unpublish</x-button>
                                         @else
@@ -221,12 +299,18 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="{{ $tab === 'partners' ? 6 : 7 }}" class="px-4 py-10">
+                            <td colspan="{{ $tab === 'partners' ? 6 : ($tab === 'stories' ? 7 : 6) }}" class="px-4 py-10">
                                 <x-empty-state
-                                    :title="$tab === 'partners' ? 'No partners yet' : 'No success stories yet'"
-                                    :description="$tab === 'partners'
-                                        ? 'Create one, then publish it when it is ready to appear on the site.'
-                                        : 'Create one, then publish it when it is ready to appear on the site.'" />
+                                    :title="match ($tab) {
+                                        'partners' => 'No partners yet',
+                                        'stories' => 'No success stories yet',
+                                        default => 'No blog posts yet',
+                                    }"
+                                    :description="match ($tab) {
+                                        'partners' => 'Create one, then publish it when it is ready to appear on the site.',
+                                        'stories' => 'Create one, then publish it when it is ready to appear on the site.',
+                                        default => 'Write one, then publish it when it is ready to appear on the site.',
+                                    }" />
                             </td>
                         </tr>
                     @endforelse

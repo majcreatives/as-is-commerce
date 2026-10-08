@@ -47,7 +47,7 @@
             ['Inventory', 'admin.inventory', 'admin.inventory', 'inventory.view'],
         ],
         'Content' => [
-            ['Partners & stories', 'admin.content', 'admin.content', ['partners.view', 'success_stories.view']],
+            ['Partners, stories &amp; posts', 'admin.content', 'admin.content', ['partners.view', 'success_stories.view', 'posts.view']],
         ],
         'Configuration' => [
             ['Auction rulesets', 'admin.rulesets.index', 'admin.rulesets.*', 'auction_rulesets.view'],

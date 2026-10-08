@@ -6,9 +6,11 @@ namespace App\Livewire\Admin\Content;
 
 use App\Domain\Content\Services\ContentMediaService;
 use App\Models\Partner;
+use App\Models\Post;
 use App\Models\SuccessStory;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
@@ -18,12 +20,12 @@ use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 use Livewire\WithFileUploads;
 
 /**
- * Partners and success stories, on one screen.
+ * Partners, success stories and blog posts, on one screen.
  *
  * They are kept together because they are the same kind of thing -- small
  * records an administrator publishes to the public site -- and splitting them
- * would mean two nearly identical screens. What differs is the fields, and the
- * tab decides which set applies.
+ * would mean several nearly identical screens. What differs is the fields, and
+ * the tab decides which set applies.
  *
  * THE ADMIN AREA IS A CONTROL SURFACE, NOT A SECOND IMPLEMENTATION. These
  * records carry no money, no credits and no inventory, so the rules are simply:
@@ -31,9 +33,10 @@ use Livewire\WithFileUploads;
  * goes through {@see ContentMediaService} rather than reaching for Storage
  * here, and every change is recorded in the activity log.
  *
- * THE TWO SETS OF PERMISSIONS ARE SEPARATE. Reaching this screen needs either
- * view permission, but `switchTab` re-checks the one for the tab being entered,
- * so holding `partners.manage` does not put a success story within reach.
+ * THE SETS OF PERMISSIONS ARE SEPARATE. Reaching this screen needs one of the
+ * view permissions, but `switchTab` re-checks the one for the tab being
+ * entered, so holding `partners.manage` does not put a success story or a blog
+ * post within reach.
  *
  * PUBLISHING IS NOT PART OF THE FORM. A record is always created unpublished --
  * `active` is not a form field at all -- and goes live through
@@ -44,9 +47,13 @@ use Livewire\WithFileUploads;
  *
  * NOTHING IS DELETED. `active` retires a record without destroying the row,
  * which is why a story that was once published keeps standing in the database.
+ *
+ * BLOG POSTS ARE NOT A CATALOGUE. A post has a title, a slug and a body rather
+ * than a position to sort into: the public blog lists by publish date, newest
+ * first, so `sort_order` does not exist here at all.
  */
 #[Layout('components.layouts.app')]
-#[Title('Partners & stories')]
+#[Title('Partners, stories & posts')]
 class ContentManager extends Component
 {
     use WithFileUploads;
@@ -54,16 +61,18 @@ class ContentManager extends Component
     /**
      * The tab names, and the permission prefix each one answers to.
      *
-     * The two vocabularies deliberately do not match: the stories tab is
-     * "stories" in the URL and "success_stories." in the permission set. Written
-     * out once here rather than reassembled at each check, because deriving one
-     * from the other is how a tab ends up authorizing the wrong thing.
+     * The three vocabularies deliberately do not match: the stories tab is
+     * "stories" in the URL and "success_stories." in the permission set, and
+     * the posts tab is "posts" both ways. Written out once here rather than
+     * reassembled at each check, because deriving one from the other is how a
+     * tab ends up authorizing the wrong thing.
      *
      * @var array<string, string>
      */
     private const TAB_PERMISSION_PREFIX = [
         'partners' => 'partners',
         'stories' => 'success_stories',
+        'posts' => 'posts',
     ];
 
     #[Url]
@@ -95,6 +104,19 @@ class ContentManager extends Component
 
     /** @var TemporaryUploadedFile|null */
     public $photo = null;
+
+    // Blog post fields. A post has no sort order -- the public blog lists by
+    // publish date, newest first -- so these are the fields and nothing else.
+    public string $postTitle = '';
+
+    public string $slug = '';
+
+    public ?string $excerpt = null;
+
+    public string $body = '';
+
+    /** @var TemporaryUploadedFile|null */
+    public $image = null;
 
     public function mount(): void
     {
@@ -143,9 +165,14 @@ class ContentManager extends Component
             'storyTitle',
             'quote',
             'featured',
+            'postTitle',
+            'slug',
+            'excerpt',
+            'body',
             'showForm',
             'logo',
             'photo',
+            'image',
         );
     }
 
@@ -167,18 +194,25 @@ class ContentManager extends Component
             $this->url = $partner->url ?? '';
             $this->description = $partner->description;
             $this->sortOrder = $partner->sort_order;
-        } else {
+        } elseif ($this->isStories()) {
             $story = SuccessStory::findOrFail($id);
             $this->name = $story->name;
             $this->storyTitle = $story->title;
             $this->quote = $story->quote;
             $this->sortOrder = $story->sort_order;
             $this->featured = $story->featured;
+        } else {
+            $post = Post::findOrFail($id);
+            $this->postTitle = $post->title;
+            $this->slug = $post->slug;
+            $this->excerpt = $post->excerpt;
+            $this->body = $post->body;
         }
 
         $this->editingId = $id;
         $this->logo = null;
         $this->photo = null;
+        $this->image = null;
         $this->showForm = true;
     }
 
@@ -186,7 +220,13 @@ class ContentManager extends Component
     {
         $this->authorizeTab($this->editingId === null ? 'create' : 'update');
 
-        $this->isPartners() ? $this->savePartner($media) : $this->saveStory($media);
+        if ($this->isPartners()) {
+            $this->savePartner($media);
+        } elseif ($this->isStories()) {
+            $this->saveStory($media);
+        } else {
+            $this->savePost($media);
+        }
     }
 
     /**
@@ -200,10 +240,24 @@ class ContentManager extends Component
     {
         $this->authorizeTab('activate');
 
-        $record = $this->isPartners() ? Partner::findOrFail($id) : SuccessStory::findOrFail($id);
+        $record = match ($this->tab) {
+            'partners' => Partner::findOrFail($id),
+            'stories' => SuccessStory::findOrFail($id),
+            default => Post::findOrFail($id),
+        };
+
         $publishing = ! $record->active;
 
         $record->active = $publishing;
+
+        // A post is public only when it is both active and dated. Publishing a
+        // post that has never been published stamps the date it went live, so a
+        // freshly published post is immediately readable rather than public-but-
+        // undated. Republishing an already-dated post keeps its original date.
+        if ($record instanceof Post && $publishing && $record->published_at === null) {
+            $record->published_at = now();
+        }
+
         $record->updated_by = auth()->id();
         $record->save();
 
@@ -239,7 +293,7 @@ class ContentManager extends Component
             $partner->save();
 
             $record = $partner;
-        } else {
+        } elseif ($this->isStories()) {
             $story = SuccessStory::findOrFail($id);
             $media->delete($story->image_path);
             $story->image_path = null;
@@ -247,6 +301,14 @@ class ContentManager extends Component
             $story->save();
 
             $record = $story;
+        } else {
+            $post = Post::findOrFail($id);
+            $media->delete($post->image_path);
+            $post->image_path = null;
+            $post->updated_by = auth()->id();
+            $post->save();
+
+            $record = $post;
         }
 
         activity('content')
@@ -264,18 +326,23 @@ class ContentManager extends Component
      * show all of them at once for `sort_order` to mean anything. The public
      * pages, which are open to anyone, are the ones that paginate.
      *
-     * @return Collection<int, Partner>|Collection<int, SuccessStory>
+     * Posts have no sort order -- the public blog lists by publish date, newest
+     * first -- so the posts tab orders by that instead.
+     *
+     * @return Collection<int, Partner>|Collection<int, SuccessStory>|Collection<int, Post>
      */
     public function records(): Collection
     {
-        return $this->isPartners()
-            ? Partner::query()->orderBy('sort_order')->orderBy('id')->get()
-            : SuccessStory::query()->orderBy('sort_order')->orderBy('id')->get();
+        return match ($this->tab) {
+            'partners' => Partner::query()->orderBy('sort_order')->orderBy('id')->get(),
+            'stories' => SuccessStory::query()->orderBy('sort_order')->orderBy('id')->get(),
+            default => Post::query()->orderByDesc('published_at')->orderByDesc('id')->get(),
+        };
     }
 
     public function can(string $action): bool
     {
-        return Gate::check($this->isPartners() ? "partners.{$action}" : "success_stories.{$action}");
+        return Gate::check($this->permissionPrefix().".{$action}");
     }
 
     public function render(): View
@@ -315,6 +382,13 @@ class ContentManager extends Component
                 'quote' => ['required', 'string', 'max:1200'],
                 'sortOrder' => ['required', 'integer', 'min:0', 'max:9999'],
                 'photo' => $image,
+            ],
+            'post' => [
+                'postTitle' => ['required', 'string', 'max:150'],
+                'slug' => ['required', 'string', 'max:190', 'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/'],
+                'excerpt' => ['nullable', 'string', 'max:250'],
+                'body' => ['required', 'string'],
+                'image' => $image,
             ],
         ];
     }
@@ -409,6 +483,74 @@ class ContentManager extends Component
         session()->flash('status', 'Success story saved. Publish it when it is ready.');
     }
 
+    private function savePost(ContentMediaService $media): void
+    {
+        $validated = $this->validate(
+            $this->rules()['post'],
+            [],
+            [
+                'postTitle' => 'title',
+                'slug' => 'slug',
+                'excerpt' => 'excerpt',
+                'body' => 'body',
+                'image' => 'image',
+            ],
+        );
+
+        $post = $this->editingId === null ? new Post : Post::findOrFail($this->editingId);
+
+        if (! $post->exists || $post->slug !== $validated['slug']) {
+            $this->assertSlugIsFree($validated['slug'], $post->id);
+        }
+
+        $post->fill([
+            'title' => $validated['postTitle'],
+            'slug' => $validated['slug'],
+            'excerpt' => $validated['excerpt'] !== '' ? $validated['excerpt'] : null,
+            'body' => $validated['body'],
+        ]);
+
+        if (! $post->exists) {
+            // Unpublished, always. Publishing is a separate authorized act. The
+            // slug check above guards the row being edited too, but it also
+            // runs here on create, because the database backstop is a crash,
+            // not a message.
+            $post->active = false;
+            $post->published_at = null;
+            $post->created_by = auth()->id();
+        }
+
+        $post->updated_by = auth()->id();
+
+        $this->replaceImage(
+            $post,
+            'image_path',
+            $this->image,
+            $media,
+            'posts',
+        );
+
+        $this->record($post, 'created', 'updated');
+
+        $this->cancel();
+        session()->flash('status', 'Blog post saved. Publish it when it is ready.');
+    }
+
+    private function assertSlugIsFree(string $slug, ?int $ignoringId): void
+    {
+        $query = Post::query()->where('slug', $slug);
+
+        if ($ignoringId !== null) {
+            $query->whereKeyNot($ignoringId);
+        }
+
+        if ($query->exists()) {
+            $this->addError('slug', 'That slug is already in use by another post.');
+
+            throw ValidationException::withMessages(['slug' => 'That slug is already in use by another post.']);
+        }
+    }
+
     /**
      * Swap a record's image for a newly uploaded one, or leave it alone.
      *
@@ -419,7 +561,7 @@ class ContentManager extends Component
      * @param  'logo_path'|'image_path'  $column
      */
     private function replaceImage(
-        Partner|SuccessStory $model,
+        Partner|SuccessStory|Post $model,
         string $column,
         ?TemporaryUploadedFile $upload,
         ContentMediaService $media,
@@ -445,7 +587,7 @@ class ContentManager extends Component
      * it is a business property of the record, and it decides whether a story
      * appears on the front page.
      */
-    private function record(Partner|SuccessStory $model, string $created, string $updated): void
+    private function record(Partner|SuccessStory|Post $model, string $created, string $updated): void
     {
         $properties = $model instanceof SuccessStory
             ? ['featured' => $model->featured]
@@ -466,8 +608,21 @@ class ContentManager extends Component
         $this->authorize(self::TAB_PERMISSION_PREFIX[$tab ?? $this->tab].".$action");
     }
 
+    /**
+     * The permission set the current tab answers to.
+     */
+    private function permissionPrefix(): string
+    {
+        return self::TAB_PERMISSION_PREFIX[$this->tab];
+    }
+
     private function isPartners(): bool
     {
         return $this->tab === 'partners';
+    }
+
+    private function isStories(): bool
+    {
+        return $this->tab === 'stories';
     }
 }

@@ -9,6 +9,7 @@ use App\Livewire\Admin\Content\ContentManager;
 use App\Livewire\Content\PartnerIndex;
 use App\Livewire\Content\SuccessStoryIndex;
 use App\Models\Partner;
+use App\Models\Post;
 use App\Models\SuccessStory;
 use App\Models\User;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
@@ -104,6 +105,7 @@ it('orders partners by the position an administrator set', function (): void {
 it('hides the homepage sections when nothing is published', function (): void {
     Partner::factory()->create(['name' => 'Draft Partner', 'active' => false]);
     SuccessStory::factory()->create(['name' => 'Draft Person', 'active' => false, 'featured' => true]);
+    Post::factory()->create(['title' => 'Draft Post', 'active' => false]);
 
     $response = $this->get(route('home'))->assertOk();
 
@@ -114,8 +116,10 @@ it('hides the homepage sections when nothing is published', function (): void {
     // which is a claim about the business rather than about this page.
     $response->assertDontSee('In their own words.');
     $response->assertDontSee('Businesses that work with us.');
+    $response->assertDontSee('What is happening at As-Is, in plain words.');
     $response->assertDontSee('All partners');
     $response->assertDontSee('All stories');
+    $response->assertDontSee('All posts');
 });
 
 it('shows a published partner on the homepage', function (): void {
@@ -164,11 +168,13 @@ it('keeps a published story off the homepage until it is featured', function ():
 it('bounds what the homepage reads from each table', function (): void {
     Partner::factory()->count(9)->create(['active' => true]);
     SuccessStory::factory()->count(5)->create(['active' => true, 'featured' => true]);
+    Post::factory()->count(10)->published()->create();
 
     $content = app(ContentDiscoveryQuery::class);
 
     expect($content->homepagePartners())->toHaveCount(6)
-        ->and($content->homepageStories())->toHaveCount(3);
+        ->and($content->homepageStories())->toHaveCount(3)
+        ->and($content->homepagePosts())->toHaveCount(4);
 });
 
 /*
@@ -406,12 +412,13 @@ it('keeps the component and the service agreed on the size limit', function (): 
 
     $for = static fn (string $tab, string $field): string => implode('|', (array) ($rules[$tab][$field] ?? []));
 
-    // Two places state this number today. The component's rule is friendlier to
-    // the person uploading; the service is what actually decides. If they drift,
-    // the admin sees a message the service does not enforce. Pin them together
-    // rather than trusting the copy to stay put.
+    // Three places state this number today. The component's rules are friendlier
+    // to the person uploading; the service is what actually decides. If they
+    // drift, the admin sees a message the service does not enforce. Pin them
+    // together rather than trusting the copy to stay put.
     expect($for('partner', 'logo'))->toContain('max:'.ContentMediaService::MAX_KILOBYTES)
-        ->and($for('story', 'photo'))->toContain('max:'.ContentMediaService::MAX_KILOBYTES);
+        ->and($for('story', 'photo'))->toContain('max:'.ContentMediaService::MAX_KILOBYTES)
+        ->and($for('post', 'image'))->toContain('max:'.ContentMediaService::MAX_KILOBYTES);
 });
 
 it('removes an image and clears the reference', function (): void {
@@ -504,15 +511,17 @@ it('refuses a role holder who has neither view permission', function (): void {
     $admin = userWithRole('admin');
     Role::findByName('admin')->revokePermissionTo('partners.view');
     Role::findByName('admin')->revokePermissionTo('success_stories.view');
+    Role::findByName('admin')->revokePermissionTo('posts.view');
 
     $this->actingAs($admin->fresh())
         ->get(route('admin.content'))
         ->assertForbidden();
 });
 
-it('opens the content screen to a role holder with one of the two permissions', function (): void {
+it('opens the content screen to a role holder with one of the three permissions', function (): void {
     $admin = userWithRole('admin');
     Role::findByName('admin')->revokePermissionTo('success_stories.view');
+    Role::findByName('admin')->revokePermissionTo('posts.view');
 
     // Either is a legitimate reason to be here; the screen opens and shows the
     // tab you may use. Asserted on the table's own columns rather than on the

@@ -374,7 +374,10 @@
 
     @if ($product->description)
         <x-card title="Description" class="mt-8">
-            <p class="whitespace-pre-line text-sm leading-relaxed text-slate-700">{{ $product->description }}</p>
+            {{-- Sanitized on the way in, so it is safe to render as written. --}}
+            <div class="prose prose-sm prose-slate max-w-none text-sm leading-relaxed text-slate-700">
+                {!! $product->description !!}
+            </div>
         </x-card>
     @endif
 

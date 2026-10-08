@@ -69,9 +69,10 @@
                         </div>
 
                         <div class="sm:col-span-2">
-                            <x-field label="Description" name="description" :error="$errors->first('description')" optional>
-                                <x-input id="description" wire:model="description"
-                                         :error="$errors->has('description')" />
+                            <x-field label="Description" name="description" :error="$errors->first('description')" optional
+                                     hint="A short paragraph about the partner. Plain text; blank lines become paragraphs.">
+                                <textarea id="description" wire:model="description" rows="3"
+                                          class="block w-full rounded-lg border-0 bg-white px-3 py-2.5 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-inset focus:ring-brand-600 sm:text-sm @error('description') ring-red-400 @enderror">{{ $description }}</textarea>
                             </x-field>
                         </div>
 
@@ -150,11 +151,73 @@
                         </div>
 
                         <div class="sm:col-span-2">
-                            <x-field label="Body" name="body" :error="$errors->first('body')"
-                                     hint="Plain text; blank lines become paragraph breaks.">
-                                <textarea id="body" wire:model="body" rows="10"
-                                          class="block w-full rounded-lg border-0 bg-white px-3 py-2.5 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-inset focus:ring-brand-600 sm:text-sm @error('body') ring-red-400 @enderror">{{ $body }}</textarea>
+                            <x-editor label="Body" name="body" state="body" :value="$body"
+                                      :error="$errors->first('body')"
+                                      hint="Format with the toolbar: headings, lists, quotes, links. Only the formatting offered here is stored, and nothing carries an inline style." />
+                        </div>
+
+                        <div class="sm:col-span-2">
+                            <x-field label="Category" name="categoryId" :error="$errors->first('categoryId')" optional
+                                     hint="Optional. Picked from existing categories — manage them under Blog categories & tags.">
+                                <select id="categoryId" wire:model="categoryId"
+                                        class="block w-full rounded-lg border-0 bg-white px-3 py-2.5 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-inset focus:ring-brand-600 sm:text-sm @error('categoryId') ring-red-400 @enderror">
+                                    <option value="">No category</option>
+                                    @foreach ($categoryOptions as $category)
+                                        <option value="{{ $category->id }}">{{ $category->name }}</option>
+                                    @endforeach
+                                </select>
                             </x-field>
+                        </div>
+
+                        <div class="sm:col-span-2">
+                            <x-field label="Tags" name="tags" :error="$errors->first('tags')" optional
+                                     hint="Up to ten, picked from existing active tags. A tag you want that is not listed must be created under Blog categories &amp; tags first.">
+                                <div class="grid gap-1.5 rounded-lg border border-slate-200 bg-white p-3 sm:grid-cols-2">
+                                    @forelse ($tagOptions as $tag)
+                                        <label class="flex items-center gap-2 text-sm text-slate-700">
+                                            <input type="checkbox" wire:model="tags" value="{{ $tag->id }}"
+                                                   class="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-600">
+                                            {{ $tag->name }}
+                                        </label>
+                                    @empty
+                                        <p class="text-sm text-slate-500">No tags yet. Create some under Blog categories &amp; tags.</p>
+                                    @endforelse
+                                </div>
+                            </x-field>
+                        </div>
+
+                        <div class="sm:col-span-2">
+                            <details class="group rounded-lg border border-slate-200 bg-white">
+                                <summary class="flex cursor-pointer select-none items-center justify-between px-4 py-3 text-sm font-medium text-slate-900">
+                                    Search engine listing
+                                    <span aria-hidden="true" class="text-slate-400 transition group-open:rotate-180">▾</span>
+                                </summary>
+                                <div class="space-y-4 border-t border-slate-100 px-4 py-4">
+                                    <x-field label="Meta title" name="metaTitle" :error="$errors->first('metaTitle')" optional
+                                             hint="The page's title tag, up to 150 characters. Omit to use the post title.">
+                                        <x-input id="metaTitle" wire:model="metaTitle" maxlength="150"
+                                                 :error="$errors->has('metaTitle')" />
+                                    </x-field>
+
+                                    <x-field label="Meta description" name="metaDescription" :error="$errors->first('metaDescription')" optional
+                                             hint="The short summary shown under the title in search results, up to 300 characters. Omit to use the excerpt.">
+                                        <textarea id="metaDescription" wire:model="metaDescription" rows="3"
+                                                  class="block w-full rounded-lg border-0 bg-white px-3 py-2.5 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-inset focus:ring-brand-600 sm:text-sm @error('metaDescription') ring-red-400 @enderror">{{ $metaDescription }}</textarea>
+                                    </x-field>
+
+                                    <x-field label="Primary keyword" name="primaryKeyword" :error="$errors->first('primaryKeyword')" optional
+                                             hint="The one phrase the post targets, up to 100 characters.">
+                                        <x-input id="primaryKeyword" wire:model="primaryKeyword" maxlength="100"
+                                                 :error="$errors->has('primaryKeyword')" />
+                                    </x-field>
+
+                                    <x-field label="Secondary keywords" name="secondaryKeywords" :error="$errors->first('secondaryKeywords')" optional
+                                             hint="Comma-separated. Stored as structured data alongside the primary keyword — up to ten.">
+                                        <x-input id="secondaryKeywords" wire:model="secondaryKeywords"
+                                                 :error="$errors->has('secondaryKeywords')" />
+                                    </x-field>
+                                </div>
+                            </details>
                         </div>
 
                         <div class="sm:col-span-2">

@@ -24,6 +24,18 @@
         <lastmod>{{ $entry['lastmod'] }}</lastmod>
     </url>
 @endforeach
+@foreach ($blogCategories as $entry)
+    <url>
+        <loc>{{ $entry['loc'] }}</loc>
+        <lastmod>{{ $entry['lastmod'] }}</lastmod>
+    </url>
+@endforeach
+@foreach ($blogTags as $entry)
+    <url>
+        <loc>{{ $entry['loc'] }}</loc>
+        <lastmod>{{ $entry['lastmod'] }}</lastmod>
+    </url>
+@endforeach
 @foreach ($notes as $note)
     {{-- A comment, so a truncated map never reads as a complete one. Kept free
          of a double hyphen, which XML does not allow inside a comment. --}}

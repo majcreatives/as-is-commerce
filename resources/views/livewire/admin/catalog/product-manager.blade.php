@@ -94,10 +94,9 @@
                     </div>
 
                     <div class="sm:col-span-2">
-                        <x-field label="Description" name="description" :error="$errors->first('description')" optional>
-                            <textarea id="description" wire:model="description" rows="5"
-                                      class="block w-full rounded-lg border-0 bg-white px-3 py-2.5 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-inset focus:ring-brand-600 sm:text-sm"></textarea>
-                        </x-field>
+                        <x-editor label="Description" name="description" state="description" :value="$description"
+                                  :error="$errors->first('description')"
+                                  hint="The full write-up on the product page. Format with the toolbar; only that formatting is stored." />
                     </div>
                 </div>
 

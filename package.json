@@ -8,7 +8,12 @@
         "test:js": "node --test resources/js/*.test.mjs"
     },
     "devDependencies": {
+        "@tailwindcss/typography": "^0.5.20",
         "@tailwindcss/vite": "^4.0.0",
+        "@tiptap/core": "^3.31.4",
+        "@tiptap/extension-link": "^3.31.4",
+        "@tiptap/extension-underline": "^3.31.4",
+        "@tiptap/starter-kit": "^3.31.4",
         "concurrently": "^10.0.3",
         "laravel-echo": "^2.4.0",
         "laravel-vite-plugin": "^3.1",

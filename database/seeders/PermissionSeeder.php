@@ -96,6 +96,22 @@ class PermissionSeeder extends Seeder
         'posts.update',
         'posts.activate',
 
+        // The blog's vocabulary, kept deliberately separate from the catalogue
+        // categories and brands above: governing what a post is labelled with
+        // is not governing what a product is filed under. Same lifecycle -- no
+        // delete, archive instead -- and the front-facing category and tag
+        // pages read `active` rows only.
+        'blog_categories.view',
+        'blog_categories.create',
+        'blog_categories.update',
+        'blog_categories.activate',
+        'blog_categories.archive',
+        'blog_tags.view',
+        'blog_tags.create',
+        'blog_tags.update',
+        'blog_tags.activate',
+        'blog_tags.archive',
+
         // Auction administration. Staff-only, all of them: `auctions.view`
         // means "see every auction, including drafts", which is not what a
         // customer browsing the public listing is doing.

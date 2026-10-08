@@ -5,11 +5,15 @@ declare(strict_types=1);
 namespace App\Livewire\Admin\Content;
 
 use App\Domain\Content\Services\ContentMediaService;
+use App\Models\BlogCategory;
 use App\Models\Partner;
 use App\Models\Post;
 use App\Models\SuccessStory;
+use App\Models\Tag;
+use App\Support\RichText;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use Livewire\Attributes\Layout;
@@ -118,6 +122,23 @@ class ContentManager extends Component
     /** @var TemporaryUploadedFile|null */
     public $image = null;
 
+    // Blog post taxonomy. A post belongs to at most one category and may carry
+    // several existing tags; the tags are picked, never typed.
+    public ?int $categoryId = null;
+
+    /** @var list<int> */
+    public array $tags = [];
+
+    // Blog post search fields. `secondaryKeywords` is the form's comma-separated
+    // text; it is stored as a JSON list on the row.
+    public ?string $metaTitle = null;
+
+    public ?string $metaDescription = null;
+
+    public ?string $primaryKeyword = null;
+
+    public string $secondaryKeywords = '';
+
     public function mount(): void
     {
         // $tab is bound from the query string, so it cannot be assumed to be one
@@ -169,6 +190,12 @@ class ContentManager extends Component
             'slug',
             'excerpt',
             'body',
+            'categoryId',
+            'tags',
+            'metaTitle',
+            'metaDescription',
+            'primaryKeyword',
+            'secondaryKeywords',
             'showForm',
             'logo',
             'photo',
@@ -207,6 +234,12 @@ class ContentManager extends Component
             $this->slug = $post->slug;
             $this->excerpt = $post->excerpt;
             $this->body = $post->body;
+            $this->categoryId = $post->category_id;
+            $this->tags = $post->tags()->pluck('tags.id')->all();
+            $this->metaTitle = $post->meta_title;
+            $this->metaDescription = $post->meta_description;
+            $this->primaryKeyword = $post->primary_keyword;
+            $this->secondaryKeywords = implode(', ', $post->secondary_keywords ?? []);
         }
 
         $this->editingId = $id;
@@ -351,6 +384,8 @@ class ContentManager extends Component
 
         return view('livewire.admin.content.content-manager', [
             'records' => $records,
+            'categoryOptions' => BlogCategory::query()->active()->orderBy('name')->get(['id', 'name']),
+            'tagOptions' => Tag::query()->active()->orderBy('name')->get(['id', 'name']),
         ]);
     }
 
@@ -362,7 +397,7 @@ class ContentManager extends Component
      * enforces it -- these rules only decide what the person uploading is told
      * before that happens.
      *
-     * @return array<string, array<string, list<string>>>
+     * @return array<string, array<string, list<string|\Illuminate\Validation\Rules\Exists>>>
      */
     public function rules(): array
     {
@@ -387,7 +422,14 @@ class ContentManager extends Component
                 'postTitle' => ['required', 'string', 'max:150'],
                 'slug' => ['required', 'string', 'max:190', 'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/'],
                 'excerpt' => ['nullable', 'string', 'max:250'],
-                'body' => ['required', 'string'],
+                'body' => ['required', 'string', 'max:20000'],
+                'categoryId' => ['nullable', 'integer', Rule::exists('blog_categories', 'id')],
+                'tags' => ['array', 'max:10'],
+                'tags.*' => ['integer', Rule::exists('tags', 'id')],
+                'metaTitle' => ['nullable', 'string', 'max:150'],
+                'metaDescription' => ['nullable', 'string', 'max:300'],
+                'primaryKeyword' => ['nullable', 'string', 'max:100'],
+                'secondaryKeywords' => ['nullable', 'string', 'max:500'],
                 'image' => $image,
             ],
         ];
@@ -493,6 +535,11 @@ class ContentManager extends Component
                 'slug' => 'slug',
                 'excerpt' => 'excerpt',
                 'body' => 'body',
+                'categoryId' => 'category',
+                'metaTitle' => 'meta title',
+                'metaDescription' => 'meta description',
+                'primaryKeyword' => 'primary keyword',
+                'secondaryKeywords' => 'secondary keywords',
                 'image' => 'image',
             ],
         );
@@ -507,7 +554,14 @@ class ContentManager extends Component
             'title' => $validated['postTitle'],
             'slug' => $validated['slug'],
             'excerpt' => $validated['excerpt'] !== '' ? $validated['excerpt'] : null,
-            'body' => $validated['body'],
+            // The body is rich text and it is rendered with {!! !!}, so nothing
+            // reaches the column except through the whitelist.
+            'body' => RichText::clean($validated['body']),
+            'category_id' => $validated['categoryId'],
+            'meta_title' => $validated['metaTitle'],
+            'meta_description' => $validated['metaDescription'],
+            'primary_keyword' => $validated['primaryKeyword'],
+            'secondary_keywords' => $this->keywordsList($validated['secondaryKeywords']),
         ]);
 
         if (! $post->exists) {
@@ -530,10 +584,39 @@ class ContentManager extends Component
             'posts',
         );
 
+        // Tags are a link on a real row, so they are synced after the post has
+        // been persisted (the pivot needs the id on a fresh create). The rule
+        // above has already confined the selection to rows that exist.
+        $post->tags()->sync($validated['tags']);
+
         $this->record($post, 'created', 'updated');
 
         $this->cancel();
         session()->flash('status', 'Blog post saved. Publish it when it is ready.');
+    }
+
+    /**
+     * Split the form's comma-separated keyword text into a clean JSON list.
+     *
+     * Empty input becomes null so the row, the meta tag and the JSON-LD all
+     * agree that no keywords were supplied. A repeated keyword is not stored
+     * twice, and a whitespace-only fragment is dropped rather than persisted.
+     *
+     * @return list<string>|null
+     */
+    private function keywordsList(string $input): ?array
+    {
+        $keywords = array_values(array_filter(
+            array_map(
+                static fn (string $keyword): string => trim($keyword),
+                explode(',', $input),
+            ),
+            static fn (string $keyword): bool => $keyword !== '',
+        ));
+
+        $keywords = array_values(array_unique($keywords));
+
+        return $keywords === [] ? null : $keywords;
     }
 
     private function assertSlugIsFree(string $slug, ?int $ignoringId): void

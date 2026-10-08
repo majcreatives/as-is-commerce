@@ -11,6 +11,7 @@ use App\Enums\ProductStatus;
 use App\Models\Brand;
 use App\Models\Category;
 use App\Models\Product;
+use App\Support\RichText;
 use DomainException;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
@@ -167,7 +168,7 @@ class ProductManager extends Component
             'name' => $validated['name'],
             'slug' => $validated['slug'] !== '' ? $validated['slug'] : $validated['name'],
             'short_description' => $validated['short_description'] !== '' ? $validated['short_description'] : null,
-            'description' => $validated['description'] !== '' ? $validated['description'] : null,
+            'description' => $validated['description'] !== '' ? RichText::clean($validated['description']) : null,
             'category_id' => $validated['category_id'],
             'brand_id' => $validated['brand_id'],
             'condition' => $validated['condition'],

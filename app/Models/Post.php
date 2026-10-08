@@ -8,6 +8,8 @@ use Database\Factories\PostFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Support\Facades\Storage;
 
 class Post extends Model
@@ -20,6 +22,11 @@ class Post extends Model
         'title',
         'excerpt',
         'body',
+        'category_id',
+        'meta_title',
+        'meta_description',
+        'primary_keyword',
+        'secondary_keywords',
         'image_path',
         'active',
         'published_at',
@@ -30,7 +37,49 @@ class Post extends Model
     protected $casts = [
         'active' => 'boolean',
         'published_at' => 'datetime',
+        'secondary_keywords' => 'array',
     ];
+
+    /**
+     * @return BelongsTo<BlogCategory, $this>
+     */
+    public function category(): BelongsTo
+    {
+        return $this->belongsTo(BlogCategory::class, 'category_id');
+    }
+
+    /**
+     * @return BelongsToMany<Tag, $this>
+     */
+    public function tags(): BelongsToMany
+    {
+        return $this->belongsToMany(Tag::class);
+    }
+
+    /**
+     * The post's search keywords, as one deduplicated list.
+     *
+     * Null when no keyword has been supplied, so the layout can decide not to
+     * emit a meta keywords tag rather than inventing one.
+     *
+     * @return list<string>|null
+     */
+    public function seoKeywords(): ?array
+    {
+        $keywords = [];
+
+        if ($this->primary_keyword !== null && $this->primary_keyword !== '') {
+            $keywords[] = $this->primary_keyword;
+        }
+
+        foreach (($this->secondary_keywords ?? []) as $keyword) {
+            if (is_string($keyword) && trim($keyword) !== '' && ! in_array(trim($keyword), $keywords, true)) {
+                $keywords[] = trim($keyword);
+            }
+        }
+
+        return $keywords === [] ? null : $keywords;
+    }
 
     public function getRouteKeyName(): string
     {

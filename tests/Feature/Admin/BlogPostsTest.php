@@ -3,7 +3,9 @@
 declare(strict_types=1);
 
 use App\Livewire\Admin\Content\ContentManager;
+use App\Models\BlogCategory;
 use App\Models\Post;
+use App\Models\Tag;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 use Livewire\Livewire;
 use Spatie\Permission\Models\Role;
@@ -209,4 +211,114 @@ it('opens the posts tab to a role holder who only holds the post permissions', f
         ->assertSee('Slug')
         ->assertDontSee('Website')
         ->assertDontSee('What they said');
+});
+
+/*
+ * The post's taxonomy and search-engine metadata, saved in one pass.
+ *
+ * A post belongs to at most one existing category and carries existing tags
+ * picked rather than typed, and the meta fields shape what the public page
+ * says about itself -- so the form has to persist all of them together with
+ * the body, and refuse a reference to a row that does not exist.
+ */
+
+it('persists the category, tags and search metadata with the post', function (): void {
+    $category = BlogCategory::factory()->create(['name' => 'Guides']);
+    $tagA = Tag::factory()->create(['name' => 'Tips']);
+    $tagB = Tag::factory()->create(['name' => 'Ghana']);
+
+    Livewire::actingAs(userWithRole('admin'))
+        ->test(ContentManager::class, ['tab' => 'posts'])
+        ->call('create')
+        ->set('postTitle', 'SEO Ready')
+        ->set('slug', 'seo-ready')
+        ->set('body', '<p>Body.</p>')
+        ->set('categoryId', $category->id)
+        ->set('tags', [$tagA->id, $tagB->id])
+        ->set('metaTitle', 'SEO Ready — Revisited')
+        ->set('metaDescription', 'A tidy description.')
+        ->set('primaryKeyword', 'credit')
+        ->set('secondaryKeywords', 'auction, ghana, credit')
+        ->call('save')
+        ->assertHasNoErrors();
+
+    $post = Post::firstWhere('slug', 'seo-ready');
+
+    expect($post)->not->toBeNull()
+        ->and($post->category_id)->toBe($category->id)
+        ->and($post->tags()->pluck('tags.id')->sort()->values()->all())->toBe([$tagA->id, $tagB->id])
+        ->and($post->meta_title)->toBe('SEO Ready — Revisited')
+        ->and($post->meta_description)->toBe('A tidy description.')
+        ->and($post->primary_keyword)->toBe('credit')
+        ->and($post->secondary_keywords)->toBe(['auction', 'ghana', 'credit']);
+});
+
+it('replaces the tag set when the post is saved again', function (): void {
+    $post = Post::factory()->published()->create(['slug' => 'retag']);
+    $old = Tag::factory()->create(['name' => 'Old']);
+    $new = Tag::factory()->create(['name' => 'New']);
+
+    $post->tags()->attach($old);
+
+    Livewire::actingAs(userWithRole('admin'))
+        ->test(ContentManager::class, ['tab' => 'posts'])
+        ->call('edit', $post->id)
+        ->set('tags', [$new->id])
+        ->call('save')
+        ->assertHasNoErrors();
+
+    expect($post->fresh()->tags()->pluck('tags.id')->all())->toBe([$new->id]);
+});
+
+it('refuses a tag that does not exist', function (): void {
+    Livewire::actingAs(userWithRole('admin'))
+        ->test(ContentManager::class, ['tab' => 'posts'])
+        ->call('create')
+        ->set('postTitle', 'Bad Tag')
+        ->set('slug', 'bad-tag')
+        ->set('body', '<p>Body.</p>')
+        ->set('tags', [999_999])
+        ->call('save')
+        ->assertHasErrors('tags.0');
+
+    expect(Post::where('slug', 'bad-tag')->doesntExist())->toBeTrue();
+});
+
+it('refuses a category that does not exist', function (): void {
+    Livewire::actingAs(userWithRole('admin'))
+        ->test(ContentManager::class, ['tab' => 'posts'])
+        ->call('create')
+        ->set('postTitle', 'Bad Category')
+        ->set('slug', 'bad-category')
+        ->set('body', '<p>Body.</p>')
+        ->set('categoryId', 999_999)
+        ->call('save')
+        ->assertHasErrors('categoryId');
+});
+
+/*
+ * The body's one path into the database.
+ *
+ * A post body is rich text rendered with `{!! !!}`, so it stores whatever the
+ * whitelist allowed and nothing else: dangerous markup never survives, and the
+ * allowed formatting does. The form cleans on the way in, not at render time,
+ * so a hostile paste is defused once, at the write.
+ */
+
+it('stores the body through the whitelist, not as typed', function (): void {
+    Livewire::actingAs(userWithRole('admin'))
+        ->test(ContentManager::class, ['tab' => 'posts'])
+        ->call('create')
+        ->set('postTitle', 'Clean Me')
+        ->set('slug', 'clean-me')
+        ->set('body', '<p>Fine <strong>text</strong>.</p><script>alert(1)</script><p onclick="h()">Bad</p>')
+        ->call('save')
+        ->assertHasNoErrors();
+
+    $post = Post::firstWhere('slug', 'clean-me');
+
+    expect($post->body)->not->toContain('script')
+        ->and($post->body)->not->toContain('onclick')
+        ->and($post->body)->toStartWith('<p>Fine <strong>text</strong>.</p>')
+        ->and($post->body)->toEndWith('</p>');
 });

@@ -14,6 +14,7 @@ import { resolveEcho } from './echo.js';
 import { listenToAuction } from './auction-stream.js';
 import { productGallery } from './product-gallery.js';
 import { newsletterPrompt } from './newsletter-prompt.js';
+import { richTextEditor } from './rich-text-editor.js';
 
 // Alpine ships inside Livewire, and components have to be registered before it
 // starts. Nothing on a page depends on this having happened: the markup the
@@ -21,6 +22,7 @@ import { newsletterPrompt } from './newsletter-prompt.js';
 document.addEventListener('alpine:init', () => {
     window.Alpine?.data('productGallery', productGallery);
     window.Alpine?.data('newsletterPrompt', newsletterPrompt);
+    window.Alpine?.data('richTextEditor', richTextEditor);
 });
 
 const subscriptions = new WeakMap();

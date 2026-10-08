@@ -91,6 +91,10 @@ class ContentDiscoveryQuery
      */
     public function homepagePosts(int $limit = self::HOME_POST_LIMIT): EloquentCollection
     {
-        return Post::published()->latest('published_at')->limit($limit)->get();
+        return Post::published()
+            ->with(['category', 'tags'])
+            ->latest('published_at')
+            ->limit($limit)
+            ->get();
     }
 }

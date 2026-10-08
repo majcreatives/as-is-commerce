@@ -21,6 +21,7 @@ class PostIndex extends Component
     {
         $posts = Post::query()
             ->published()
+            ->with(['category', 'tags'])
             ->orderByDesc('published_at')
             ->orderByDesc('id')
             ->paginate(12);

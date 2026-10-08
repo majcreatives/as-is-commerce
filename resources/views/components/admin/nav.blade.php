@@ -48,6 +48,7 @@
         ],
         'Content' => [
             ['Partners, stories &amp; posts', 'admin.content', 'admin.content', ['partners.view', 'success_stories.view', 'posts.view']],
+            ['Blog categories &amp; tags', 'admin.blog-taxonomy', 'admin.blog-taxonomy', ['blog_categories.view', 'blog_tags.view']],
         ],
         'Configuration' => [
             ['Auction rulesets', 'admin.rulesets.index', 'admin.rulesets.*', 'auction_rulesets.view'],

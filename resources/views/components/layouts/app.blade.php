@@ -24,6 +24,13 @@
     <title>{{ $pageTitle }}</title>
     <meta name="description" content="{{ Str::limit(strip_tags($pageDescription), 160) }}">
 
+    {{-- Truthful keywords only. Nothing decides this page's keywords except a
+         page that named some itself; `$keywords` arrives from layoutData as a
+         list or not at all, and `@isset` refuses a null. --}}
+    @isset($keywords)
+        <meta name="keywords" content="{{ is_array($keywords) ? implode(', ', $keywords) : $keywords }}">
+    @endisset
+
     {{-- The page's own address, so a listing reached through filters or
          pagination does not read as a separate page to a search engine. --}}
     <link rel="canonical" href="{{ url()->current() }}">

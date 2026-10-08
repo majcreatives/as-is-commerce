@@ -5,8 +5,12 @@ declare(strict_types=1);
 namespace App\Domain\Marketplace\Queries;
 
 use App\Models\Auction;
+use App\Models\BlogCategory;
 use App\Models\Post;
 use App\Models\Product;
+use App\Models\Tag;
+use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 
 /**
@@ -72,6 +76,9 @@ class SitemapQuery
      *     static: list<string>,
      *     products: list<array{loc: string, lastmod: string}>,
      *     auctions: list<array{loc: string, lastmod: string}>,
+     *     posts: list<array{loc: string, lastmod: string}>,
+     *     blogCategories: list<array{loc: string, lastmod: string}>,
+     *     blogTags: list<array{loc: string, lastmod: string}>,
      *     notes: list<string>
      * }
      */
@@ -86,6 +93,8 @@ class SitemapQuery
             'products' => $products,
             'auctions' => $auctions,
             'posts' => $posts,
+            'blogCategories' => $this->categoryEntries(),
+            'blogTags' => $this->tagEntries(),
             'notes' => array_values(array_filter([
                 $productsCapped ? 'Catalog is truncated at '.self::MAX_PRODUCTS.' listings. Split this into a sitemap index before raising the cap.' : null,
                 $auctionsCapped ? 'Auctions are truncated at '.self::MAX_AUCTIONS.' listings. Split this into a sitemap index before raising the cap.' : null,
@@ -207,6 +216,64 @@ class SitemapQuery
             fn (Post $post): string => route('blog.show', $post->slug),
             $rows->count() > $limit,
         );
+    }
+
+    /**
+     * Blog category pages that are actually pages.
+     *
+     * Only an active category with at least one published post earns a URL:
+     * the booked-but-empty category dir `/blog/category/{slug}` converts to
+     * nothing a crawler should visit, and an archived category 404s outright.
+     * `lastmod` is the newest post's `updated_at` -- the category page changes
+     * when its newest post changes, not when the category row did.
+     *
+     * @return list<array{loc: string, lastmod: string}>
+     */
+    public function categoryEntries(): array
+    {
+        return BlogCategory::query()
+            ->active()
+            ->whereHas('posts', fn ($query): Builder => $query
+                // The same two clauses as Post::scopePublished -- a paged
+                // category is a page only if something published shows on it.
+                ->where('active', true)
+                ->whereNotNull('published_at'))
+            ->withMax('posts', 'updated_at')
+            ->orderBy('name')
+            ->get()
+            ->map(fn (BlogCategory $category): array => [
+                'loc' => route('blog.category', $category),
+                'lastmod' => Carbon::parse($category->posts_max_updated_at)->toAtomString(),
+            ])
+            ->all();
+    }
+
+    /**
+     * Blog tag pages that are actually pages.
+     *
+     * The same rule as {@see self::categoryEntries()}: active and holding at
+     * least one published post. A tag with no published posts has that empty
+     * page for whoever lands on it by hand; it does not spend a crawl visit.
+     *
+     * @return list<array{loc: string, lastmod: string}>
+     */
+    public function tagEntries(): array
+    {
+        return Tag::query()
+            ->active()
+            ->whereHas('posts', fn ($query): Builder => $query
+                // The same two clauses as Post::scopePublished -- a tag page is
+                // a page only if something published shows on it.
+                ->where('active', true)
+                ->whereNotNull('published_at'))
+            ->withMax('posts', 'updated_at')
+            ->orderBy('name')
+            ->get()
+            ->map(fn (Tag $tag): array => [
+                'loc' => route('blog.tag', $tag),
+                'lastmod' => Carbon::parse($tag->posts_max_updated_at)->toAtomString(),
+            ])
+            ->all();
     }
 
     /**

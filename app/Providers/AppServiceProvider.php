@@ -159,6 +159,16 @@ class AppServiceProvider extends ServiceProvider
                 || $user->can('posts.view')
         );
 
+        // The blog taxonomy screen has two tabs behind two permission sets, and
+        // holding either one is a legitimate reason to open it -- the same shape
+        // as `content.view`, and the same reason it cannot be expressed with
+        // `can:` directly.
+        Gate::define(
+            'blog_taxonomy.view',
+            fn (User $user): bool => $user->can('blog_categories.view')
+                || $user->can('blog_tags.view')
+        );
+
         $this->registerRateLimiters();
     }
 

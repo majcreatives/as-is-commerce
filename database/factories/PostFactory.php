@@ -22,6 +22,11 @@ class PostFactory extends Factory
             'title' => $title,
             'excerpt' => fake()->paragraph(2),
             'body' => fake()->paragraphs(5, true),
+            'category_id' => null,
+            'meta_title' => null,
+            'meta_description' => null,
+            'primary_keyword' => null,
+            'secondary_keywords' => null,
             'image_path' => null,
             'active' => false,
             'published_at' => null,
@@ -51,6 +56,19 @@ class PostFactory extends Factory
         return $this->state(fn () => [
             'active' => true,
             'published_at' => null,
+        ]);
+    }
+
+    public function withSeo(): self
+    {
+        return $this->state(fn (): array => [
+            'meta_title' => fake()->sentence(6),
+            'meta_description' => fake()->paragraph(1),
+            'primary_keyword' => Str::lower(fake()->words(2, true)),
+            'secondary_keywords' => [
+                Str::lower(fake()->word()),
+                Str::lower(fake()->word()),
+            ],
         ]);
     }
 }

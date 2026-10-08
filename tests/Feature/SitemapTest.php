@@ -5,8 +5,10 @@ declare(strict_types=1);
 use App\Enums\AuctionStatus;
 use App\Enums\ProductStatus;
 use App\Models\Auction;
+use App\Models\BlogCategory;
 use App\Models\Post;
 use App\Models\Product;
+use App\Models\Tag;
 
 /*
  * /sitemap.xml
@@ -160,6 +162,47 @@ it('omits a post that is not public yet', function (string $state): void {
     'active but undated' => ['undated'],
 ]);
 
+it('lists an active category that a published post sits under', function (): void {
+    $category = BlogCategory::factory()->create(['name' => 'Guides']);
+
+    Post::factory()->published()->create(['category_id' => $category->id]);
+
+    expect(sitemapLocations(test()->get('/sitemap.xml')->getContent()))
+        ->toContain(route('blog.category', $category));
+});
+
+it('omits a category page the public cannot reach', function (string $state): void {
+    $category = BlogCategory::factory()->{$state}()->create();
+
+    Post::factory()->published()->create(['category_id' => $category->id]);
+
+    // The archived category 404s even with published posts under it, so listing
+    // the URL would be advertising a page that does not exist.
+    expect(sitemapLocations(test()->get('/sitemap.xml')->getContent()))
+        ->not->toContain(route('blog.category', $category));
+})->with(['inactive', 'archived']);
+
+it('omits a category with nothing published under it', function (): void {
+    $category = BlogCategory::factory()->create(['name' => 'Empty']);
+
+    Post::factory()->create(['category_id' => $category->id, 'active' => false]);
+
+    expect(sitemapLocations(test()->get('/sitemap.xml')->getContent()))
+        ->not->toContain(route('blog.category', $category));
+});
+
+it('lists an active tag a published post carries, and omits an archived one', function (): void {
+    $active = Tag::factory()->create(['name' => 'Tips']);
+    $archived = Tag::factory()->archived()->create();
+
+    Post::factory()->published()->create()->tags()->attach([$active->id, $archived->id]);
+
+    $locations = sitemapLocations(test()->get('/sitemap.xml')->getContent());
+
+    expect($locations)->toContain(route('blog.tag', $active))
+        ->not->toContain(route('blog.tag', $archived));
+});
+
 it('never lists a private path', function (string $path): void {
     // Not one mechanism but two: robots.txt keeps crawlers off, and the route
     // sends noindex. A sitemap that advertised either would be handing a
@@ -215,6 +258,11 @@ it('lists only urls that actually resolve', function (): void {
     Auction::factory()->live()->create();
     Auction::factory()->scheduled()->create();
     Post::factory()->published()->create();
+
+    $category = BlogCategory::factory()->create(['name' => 'Guides']);
+    $tag = Tag::factory()->create(['name' => 'Tips']);
+
+    Post::factory()->published()->create(['category_id' => $category->id])->tags()->attach($tag);
 
     $locations = sitemapLocations(test()->get('/sitemap.xml')->getContent());
 

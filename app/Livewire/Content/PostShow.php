@@ -20,31 +20,53 @@ class PostShow extends Component
         if (! $this->post->active || $this->post->published_at === null) {
             abort(404);
         }
+
+        $this->post->loadMissing(['category', 'tags']);
     }
 
     public function render(): View
     {
+        // A page that names itself for search engines: the explicitly-written
+        // meta fields win, the editorial fields fill in, and the body is the
+        // last resort -- so a short post never advertises a blank line.
+        $title = $this->post->meta_title ?: $this->post->title;
+        $description = $this->post->meta_description
+            ?? $this->post->excerpt
+            ?? str()->limit(strip_tags($this->post->body), 160);
+
+        $keywords = $this->post->seoKeywords();
         $publishedAt = $this->post->published_at;
-        $description = $this->post->excerpt ?? str()->limit(strip_tags($this->post->body), 160);
+
+        $layoutData = [
+            'description' => $description,
+            'ogImage' => $this->post->imageUrl(),
+            'structuredData' => $this->buildStructuredData($description, $publishedAt),
+            'ogType' => 'article',
+        ];
+
+        // A meta keywords tag is only ever emitted when the post actually names
+        // keywords; the layout skips a null, so nothing is invented here.
+        if ($keywords !== null) {
+            $layoutData['keywords'] = $keywords;
+        }
 
         return view('livewire.content.post-show', [
             'post' => $this->post,
         ])
-            ->title($this->post->title)
-            ->layoutData([
-                'description' => $description,
-                'ogImage' => $this->post->imageUrl(),
-                'structuredData' => $this->buildStructuredData($description, $publishedAt),
-                'ogType' => 'article',
-            ]);
+            ->title($title)
+            ->layoutData($layoutData);
     }
 
     /**
+     * Truthful structured data only. `keywords` and `about` describe what the
+     * post itself declared; `articleSection` is the category a reader can see;
+     * nothing is derived that the post did not say.
+     *
      * @return array<string, mixed>
      */
     private function buildStructuredData(string $description, ?Carbon $publishedAt): array
     {
-        return array_filter([
+        $data = [
             '@context' => 'https://schema.org',
             '@type' => 'BlogPosting',
             'headline' => $this->post->title,
@@ -52,10 +74,30 @@ class PostShow extends Component
             'dateModified' => $this->post->updated_at->toIso8601String(),
             'image' => $this->post->imageUrl(),
             'description' => $description,
+            'mainEntityOfPage' => [
+                '@type' => 'WebPage',
+                '@id' => url()->current(),
+            ],
+            'inLanguage' => app()->getLocale(),
             'publisher' => [
                 '@type' => 'Organization',
                 'name' => config('app.name'),
             ],
-        ]);
+        ];
+
+        $keywords = $this->post->seoKeywords();
+        if ($keywords !== null) {
+            $data['keywords'] = implode(', ', $keywords);
+        }
+
+        if ($this->post->category) {
+            $data['articleSection'] = $this->post->category->name;
+            $data['about'] = [
+                '@type' => 'Thing',
+                'name' => $this->post->category->name,
+            ];
+        }
+
+        return $data;
     }
 }

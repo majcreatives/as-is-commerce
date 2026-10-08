@@ -16,6 +16,7 @@ use App\Livewire\Admin\Catalog\InventoryManager;
 use App\Livewire\Admin\Catalog\ProductManager;
 use App\Livewire\Admin\Catalog\ProductMediaManager;
 use App\Livewire\Admin\Catalog\TaxonomyManager;
+use App\Livewire\Admin\Content\BlogTaxonomyManager;
 use App\Livewire\Admin\Content\ContentManager;
 use App\Livewire\Admin\Customers\CustomerDetail;
 use App\Livewire\Admin\Customers\CustomerIndex;
@@ -50,10 +51,12 @@ use App\Livewire\Catalog\CartPage;
 use App\Livewire\Catalog\ProductCatalog;
 use App\Livewire\Catalog\ProductDetail;
 use App\Livewire\Checkout\CheckoutPage;
+use App\Livewire\Content\CategoryPosts;
 use App\Livewire\Content\PartnerIndex;
 use App\Livewire\Content\PostIndex;
 use App\Livewire\Content\PostShow;
 use App\Livewire\Content\SuccessStoryIndex;
+use App\Livewire\Content\TagPosts;
 use App\Livewire\Credits\CreditPackages;
 use App\Livewire\Credits\PurchaseHistory;
 use App\Livewire\Delivery\AddressBookPage;
@@ -132,6 +135,12 @@ Route::view('/cookies', 'pages.cookie')->name('cookies');
 // there is simply nothing published on it yet.
 Route::get('/partners', PartnerIndex::class)->name('partners.index');
 Route::get('/blog', PostIndex::class)->name('blog.index');
+
+// Blog taxonomy pages. Declared before /blog/{post:slug} so the extra segment
+// (a category or tag name) is never swallowed by the individual post route.
+// Only active categories and tags resolve; archived ones 404.
+Route::get('/blog/category/{category:slug}', CategoryPosts::class)->name('blog.category');
+Route::get('/blog/tag/{tag:slug}', TagPosts::class)->name('blog.tag');
 Route::get('/blog/{post:slug}', PostShow::class)->name('blog.show');
 Route::get('/success-stories', SuccessStoryIndex::class)->name('success-stories.index');
 
@@ -416,6 +425,14 @@ Route::middleware(['noindex', 'auth', 'role:admin|super_admin'])
         Route::get('/content', ContentManager::class)
             ->middleware('can:content.view')
             ->name('content');
+
+        // The blog's vocabulary. Same two-tab shape as the catalogue taxonomy
+        // above and governed by its own permission set, so a person who runs
+        // the catalogue does not implicitly run the blog. Gated on the
+        // `blog_taxonomy.view` Gate ability, the OR of the two tab permissions.
+        Route::get('/blog-taxonomy', BlogTaxonomyManager::class)
+            ->middleware('can:blog_taxonomy.view')
+            ->name('blog-taxonomy');
 
         // The newsletter list. Read-only and gated on newsletter.view. Note the
         // singular `can:newsletter.view`: a comma there would authorize

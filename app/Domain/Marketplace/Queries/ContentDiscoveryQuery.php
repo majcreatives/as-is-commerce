@@ -8,6 +8,7 @@ use App\Models\Partner;
 use App\Models\Post;
 use App\Models\SuccessStory;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 
 /**
@@ -96,5 +97,48 @@ class ContentDiscoveryQuery
             ->latest('published_at')
             ->limit($limit)
             ->get();
+    }
+
+    /**
+     * Posts worth reading next to this one, newest first.
+     *
+     * Same category first (a reader inside a topic wants more of it), then
+     * posts sharing any of its tags -- deterministic, built from the taxonomy
+     * an administrator already maintains, and read-only like everything here.
+     * The opened post is never among them, drafts never are, and the count is
+     * bounded by `$limit` so the section stays a fixed amount of space.
+     *
+     * @return EloquentCollection<int, Post>
+     */
+    public function relatedPosts(Post $post, int $limit = self::HOME_POST_LIMIT): EloquentCollection
+    {
+        $query = Post::published()
+            ->with(['category', 'tags'])
+            ->whereKeyNot($post->id)
+            ->latest('published_at')
+            ->latest('id');
+
+        $sameCategory = new EloquentCollection;
+
+        if ($post->category_id !== null) {
+            $sameCategory = (clone $query)
+                ->where('category_id', $post->category_id)
+                ->limit($limit)
+                ->get();
+        }
+
+        if ($sameCategory->count() >= $limit || $post->tags->isEmpty()) {
+            return $sameCategory;
+        }
+
+        $tagIds = $post->tags->pluck('id')->all();
+
+        $byTag = (clone $query)
+            ->whereHas('tags', fn (Builder $tags): Builder => $tags->whereIn('tags.id', $tagIds))
+            ->whereNotIn('id', $sameCategory->modelKeys())
+            ->limit($limit - $sameCategory->count())
+            ->get();
+
+        return $sameCategory->concat($byTag);
     }
 }

@@ -387,7 +387,19 @@
 
             <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 @foreach ($related as $other)
-                    <x-product-card :product="$other" />
+                    <x-product-card :product="$other" :availability="$relatedAvailability[$other->id] ?? null" />
+                @endforeach
+            </div>
+        </section>
+    @endif
+
+    @if ($recentlyViewed->isNotEmpty())
+        <section class="mt-10">
+            <h2 class="mb-4 text-lg font-semibold text-slate-900">Recently viewed</h2>
+
+            <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                @foreach ($recentlyViewed as $other)
+                    <x-product-card :product="$other" :availability="$relatedAvailability[$other->id] ?? null" />
                 @endforeach
             </div>
         </section>

@@ -256,6 +256,26 @@ it('shows a live auction figure on a product card', function (): void {
         ->assertSee('180');
 });
 
+it('does not call a similar product unavailable on the product page', function (): void {
+    $product = Product::factory()->active()->withStock(1)->create(['name' => 'Similar Headline']);
+    $similar = Product::factory()->active()->create([
+        'name' => 'Similar Auctioned',
+        'category_id' => $product->category_id,
+    ]);
+    $auction = liveAuction(product: $similar);
+    placeBid($auction, bidder(500 * CreditAmount::SUBCREDITS_PER_CREDIT), 180 * CreditAmount::SUBCREDITS_PER_CREDIT);
+
+    // The unit the auction holds has zero available stock, so in the "More in
+    // {category}" strip its card must resolve authoritative availability (a
+    // live bid to join) rather than fall back to the catalog and read
+    // "Currently unavailable".
+    $this->get(route('products.show', $product->slug))
+        ->assertOk()
+        ->assertSee('Similar Auctioned')
+        ->assertSee('Highest Bid (Credits)')
+        ->assertDontSee('Currently unavailable');
+});
+
 // ------------------------------------------------------------- The homepage
 
 it('shows a guest a shop-first front page with the auction way in', function (): void {

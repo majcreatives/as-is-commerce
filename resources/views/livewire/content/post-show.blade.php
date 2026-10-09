@@ -52,4 +52,16 @@
             </div>
         </footer>
     @endif
+
+    @if ($related->isNotEmpty())
+        <section class="pt-2">
+            <h2 class="mb-4 text-lg font-semibold text-slate-900">Related articles</h2>
+
+            <div class="grid gap-6 sm:grid-cols-2">
+                @foreach ($related as $other)
+                    <x-post-card :post="$other" />
+                @endforeach
+            </div>
+        </section>
+    @endif
 </x-container>

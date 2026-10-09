@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Livewire\Content;
 
+use App\Domain\Marketplace\Queries\ContentDiscoveryQuery;
 use App\Models\Post;
 use Carbon\Carbon;
 use Illuminate\Contracts\View\View;
@@ -24,7 +25,7 @@ class PostShow extends Component
         $this->post->loadMissing(['category', 'tags']);
     }
 
-    public function render(): View
+    public function render(ContentDiscoveryQuery $content): View
     {
         // A page that names itself for search engines: the explicitly-written
         // meta fields win, the editorial fields fill in, and the body is the
@@ -52,6 +53,9 @@ class PostShow extends Component
 
         return view('livewire.content.post-show', [
             'post' => $this->post,
+            // The reader is already inside the topic, so the trail of what
+            // they read next, newest first, is shown where it is useful.
+            'related' => $content->relatedPosts($this->post),
         ])
             ->title($title)
             ->layoutData($layoutData);

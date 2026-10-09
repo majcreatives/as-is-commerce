@@ -7,6 +7,7 @@ namespace App\Livewire\Catalog;
 use App\Domain\Auction\Services\AuctionClock;
 use App\Domain\Catalog\Actions\AddToCart;
 use App\Domain\Marketplace\Queries\ProductDiscoveryQuery;
+use App\Domain\Marketplace\RecentlyViewed;
 use App\Domain\Marketplace\ValueObjects\ListingAvailability;
 use App\Models\Product;
 use DomainException;
@@ -61,13 +62,19 @@ class ProductDetail extends Component
      */
     public int $quantity = 1;
 
-    public function mount(string $slug): void
+    public function mount(string $slug, RecentlyViewed $recently): void
     {
         $this->product = Product::query()
             ->publiclyVisible()
             ->with(['brand', 'category.parent', 'images'])
             ->where('slug', $slug)
             ->firstOrFail();
+
+        // A page that was actually served is the one fact that reliably means
+        // "visited". Mount runs once per page load -- render would also run on
+        // every livewire update -- and re-runs on wire:navigate navigation, so
+        // the history follows visits and never double-records one.
+        $recently->remember($this->product);
     }
 
     /**
@@ -109,10 +116,24 @@ class ProductDetail extends Component
         return redirect()->route('cart.show');
     }
 
-    public function render(ProductDiscoveryQuery $products, AuctionClock $clock): View
-    {
+    public function render(
+        ProductDiscoveryQuery $products,
+        AuctionClock $clock,
+        RecentlyViewed $recently,
+    ): View {
         $auction = $products->activeAuctionFor($this->product);
         $availability = ListingAvailability::for($this->product, $auction);
+
+        // The visitor's own path, newest first, with the open product left out
+        // because it already has the whole page. Read-only over the session.
+        $recentlyViewed = $recently->recent(excludeId: $this->product->id);
+
+        $related = $products->related($this->product);
+
+        // ONE batched pass reads availability for every card below -- similar
+        // and recently viewed -- so a unit that an auction is holding shows the
+        // bid instead of an "unavailable" label whichever strip it appears in.
+        $cardAvailability = $products->availabilityFor($related->concat($recentlyViewed));
 
         return view('livewire.catalog.product-detail', [
             'availability' => $availability,
@@ -125,7 +146,9 @@ class ProductDetail extends Component
             // rather than a zero that would read as "closing".
             'secondsRemaining' => $auction === null ? null : $clock->secondsRemaining($auction),
 
-            'related' => $products->related($this->product),
+            'related' => $related,
+            'relatedAvailability' => $cardAvailability,
+            'recentlyViewed' => $recentlyViewed,
         ])
             ->title($this->product->name)
             ->layoutData([

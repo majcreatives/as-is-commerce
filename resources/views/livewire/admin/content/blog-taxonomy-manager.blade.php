@@ -111,7 +111,7 @@
                                     @endif
 
                                     @can($tab === 'categories' ? 'blog_categories.delete' : 'blog_tags.delete')
-                                        <x-button wire:click="delete({{ $row->id }})"
+                                        <x-button wire:click="deleteRecord({{ $row->id }})"
                                                   wire:confirm="Delete this {{ $tab === 'categories' ? 'category' : 'tag' }} permanently? Posts are left intact. This cannot be undone."
                                                   variant="danger" size="sm">Delete</x-button>
                                     @endcan

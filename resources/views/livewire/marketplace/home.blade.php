@@ -140,6 +140,32 @@
         @endif
     </section>
 
+    {{-- From the blog. Only published posts reach here, newest first, and only
+         four. It disappears entirely when nothing qualifies, for the same
+         reason as the stories below: a heading over nothing would read as an
+         absent blog rather than an empty section of the page. --}}
+    @if ($posts->isNotEmpty())
+        <section class="mt-12">
+            <div class="flex flex-wrap items-end justify-between gap-3">
+                <div>
+                    <h2 class="text-xl font-bold tracking-tight text-slate-900">From the blog</h2>
+                    <p class="mt-1 text-sm text-slate-600">
+                        What is happening at As-Is, in plain words.
+                    </p>
+                </div>
+
+                <a href="{{ route('blog.index') }}" wire:navigate
+                   class="text-sm font-semibold text-brand-800 underline">All posts</a>
+            </div>
+
+            <x-scroll-row label="Blog posts">
+                @foreach ($posts as $post)
+                    <x-post-card :post="$post" />
+                @endforeach
+            </x-scroll-row>
+        </section>
+    @endif
+
     {{-- What people have actually done with these products lately: units on
          paid orders and accepted bids, read from the ledger, never invented.
          No promise about what the activity means -- it is a signal that the
@@ -167,32 +193,6 @@
             </x-scroll-row>
         @endif
     </section>
-
-    {{-- From the blog. Only published posts reach here, newest first, and only
-         four. It disappears entirely when nothing qualifies, for the same
-         reason as the stories below: a heading over nothing would read as an
-         absent blog rather than an empty section of the page. --}}
-    @if ($posts->isNotEmpty())
-        <section class="mt-12">
-            <div class="flex flex-wrap items-end justify-between gap-3">
-                <div>
-                    <h2 class="text-xl font-bold tracking-tight text-slate-900">From the blog</h2>
-                    <p class="mt-1 text-sm text-slate-600">
-                        What is happening at As-Is, in plain words.
-                    </p>
-                </div>
-
-                <a href="{{ route('blog.index') }}" wire:navigate
-                   class="text-sm font-semibold text-brand-800 underline">All posts</a>
-            </div>
-
-            <x-scroll-row label="Blog posts">
-                @foreach ($posts as $post)
-                    <x-post-card :post="$post" />
-                @endforeach
-            </x-scroll-row>
-        </section>
-    @endif
 
     {{-- What customers have said. Only published, featured stories reach here,
          and only three. The section disappears entirely when nothing qualifies:

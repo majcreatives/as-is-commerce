@@ -47,7 +47,7 @@ it('deletes a product with its gallery files and rows through the screen', funct
 
     Livewire::actingAs($this->admin)
         ->test(ProductManager::class)
-        ->call('delete', $this->product->id)
+        ->call('deleteRecord', $this->product->id)
         ->assertHasNoErrors();
 
     expect(Product::whereKey($this->product->id)->doesntExist())->toBeTrue()
@@ -60,7 +60,7 @@ it('refuses a product an auction references, with a readable answer', function (
 
     Livewire::actingAs($this->admin)
         ->test(ProductManager::class)
-        ->call('delete', $this->product->id)
+        ->call('deleteRecord', $this->product->id)
         ->assertHasErrors('lifecycle');
 
     expect(Product::whereKey($this->product->id)->exists())->toBeTrue();
@@ -73,7 +73,7 @@ it('refuses a product sitting in a customer cart', function (): void {
 
     Livewire::actingAs($this->admin)
         ->test(ProductManager::class)
-        ->call('delete', $this->product->id)
+        ->call('deleteRecord', $this->product->id)
         ->assertHasErrors('lifecycle');
 
     expect(Product::whereKey($this->product->id)->exists())->toBeTrue();
@@ -86,7 +86,7 @@ it('refuses a product an order line references', function (): void {
 
     Livewire::actingAs($this->admin)
         ->test(ProductManager::class)
-        ->call('delete', $product->id)
+        ->call('deleteRecord', $product->id)
         ->assertHasErrors('lifecycle');
 
     expect(Product::whereKey($product->id)->exists())->toBeTrue();
@@ -97,7 +97,7 @@ it('refuses a product delete without the products.delete permission', function (
 
     Livewire::actingAs($this->admin->fresh())
         ->test(ProductManager::class)
-        ->call('delete', $this->product->id)
+        ->call('deleteRecord', $this->product->id)
         ->assertForbidden();
 
     expect(Product::whereKey($this->product->id)->exists())->toBeTrue();

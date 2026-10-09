@@ -212,7 +212,7 @@ class TaxonomyManager extends Component
      * brand's product reference is nullable, so deleting one only clears the
      * brand from whatever carries it.
      */
-    public function delete(int $id): void
+    public function deleteRecord(int $id): void
     {
         $this->authorize($this->isCategories() ? 'categories.delete' : 'brands.delete');
 

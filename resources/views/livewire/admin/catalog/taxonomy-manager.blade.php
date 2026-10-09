@@ -128,7 +128,7 @@
                                     @endif
 
                                     @can($tab === 'categories' ? 'categories.delete' : 'brands.delete')
-                                        <x-button wire:click="delete({{ $row->id }})"
+                                        <x-button wire:click="deleteRecord({{ $row->id }})"
                                                   wire:confirm="Delete this {{ $tab === 'categories' ? 'category' : 'brand' }} permanently? {{ $tab === 'categories' ? 'Refused if it holds products or child categories.' : 'Products keep working without a brand.' }} This cannot be undone."
                                                   variant="danger" size="sm">Delete</x-button>
                                     @endcan

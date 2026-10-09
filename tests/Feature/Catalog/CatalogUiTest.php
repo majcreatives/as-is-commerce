@@ -496,7 +496,7 @@ it('refuses to delete a category that holds products', function (): void {
 
     Livewire::actingAs($this->admin)
         ->test(TaxonomyManager::class)
-        ->call('delete', $this->category->id);
+        ->call('deleteRecord', $this->category->id);
 
     // The refusal is surfaced through a flashed error; the durable guarantee is
     // that the category (and everything under it) survives unchanged.
@@ -508,7 +508,7 @@ it('refuses to delete a category that holds child categories', function (): void
 
     Livewire::actingAs($this->admin)
         ->test(TaxonomyManager::class)
-        ->call('delete', $this->category->id);
+        ->call('deleteRecord', $this->category->id);
 
     expect(Category::whereKey($this->category->id)->exists())->toBeTrue();
 });
@@ -516,7 +516,7 @@ it('refuses to delete a category that holds child categories', function (): void
 it('deletes a category that holds nothing', function (): void {
     Livewire::actingAs($this->admin)
         ->test(TaxonomyManager::class)
-        ->call('delete', $this->category->id)
+        ->call('deleteRecord', $this->category->id)
         ->assertHasNoErrors();
 
     expect(Category::whereKey($this->category->id)->doesntExist())->toBeTrue();
@@ -528,7 +528,7 @@ it('deletes a brand and clears it from its products', function (): void {
     Livewire::actingAs($this->admin)
         ->test(TaxonomyManager::class)
         ->call('switchTab', 'brands')
-        ->call('delete', $this->brand->id)
+        ->call('deleteRecord', $this->brand->id)
         ->assertHasNoErrors();
 
     expect(Brand::whereKey($this->brand->id)->doesntExist())->toBeTrue()
@@ -540,7 +540,7 @@ it('refuses a category delete without the delete permission', function (): void 
 
     Livewire::actingAs($this->admin->fresh())
         ->test(TaxonomyManager::class)
-        ->call('delete', $this->category->id)
+        ->call('deleteRecord', $this->category->id)
         ->assertForbidden();
 
     expect(Category::whereKey($this->category->id)->exists())->toBeTrue();

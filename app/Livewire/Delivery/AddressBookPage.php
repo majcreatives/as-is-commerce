@@ -151,7 +151,7 @@ class AddressBookPage extends Component
         }
     }
 
-    public function delete(int $addressId, AddressBook $addresses): void
+    public function deleteRecord(int $addressId, AddressBook $addresses): void
     {
         $this->authorize('addresses.manage');
 

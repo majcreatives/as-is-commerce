@@ -217,7 +217,7 @@
                                     @endcan
 
                                     @can('products.delete')
-                                        <x-button wire:click="delete({{ $product->id }})"
+                                        <x-button wire:click="deleteRecord({{ $product->id }})"
                                                   wire:confirm="Delete {{ $product->name }} permanently? Refused if it is part of any history. This cannot be undone."
                                                   variant="danger" size="sm">Delete</x-button>
                                     @endcan

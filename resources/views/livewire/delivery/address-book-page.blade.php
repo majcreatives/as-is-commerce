@@ -127,7 +127,7 @@
                             <x-button size="sm" variant="ghost" wire:click="makeDefault({{ $address->id }})" wire:loading.attr="disabled">
                                 Make default
                             </x-button>
-                            <x-button size="sm" variant="ghost" wire:click="delete({{ $address->id }})" wire:loading.attr="disabled">
+                            <x-button size="sm" variant="ghost" wire:click="deleteRecord({{ $address->id }})" wire:loading.attr="disabled">
                                 Delete
                             </x-button>
                         @endunless

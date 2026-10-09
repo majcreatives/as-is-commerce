@@ -206,7 +206,7 @@ it('deletes a category and clears it from its posts', function (): void {
 
     Livewire::actingAs(userWithRole('admin'))
         ->test(BlogTaxonomyManager::class, ['tab' => 'categories'])
-        ->call('delete', $category->id)
+        ->call('deleteRecord', $category->id)
         ->assertHasNoErrors();
 
     expect(BlogCategory::whereKey($category->id)->doesntExist())->toBeTrue()
@@ -222,7 +222,7 @@ it('deletes a tag and the links posts hold to it', function (): void {
 
     Livewire::actingAs(userWithRole('admin'))
         ->test(BlogTaxonomyManager::class, ['tab' => 'tags'])
-        ->call('delete', $tag->id)
+        ->call('deleteRecord', $tag->id)
         ->assertHasNoErrors();
 
     expect(Tag::whereKey($tag->id)->doesntExist())->toBeTrue()
@@ -235,7 +235,7 @@ it('records a taxonomy deletion through the model trait', function (): void {
 
     Livewire::actingAs(userWithRole('admin'))
         ->test(BlogTaxonomyManager::class, ['tab' => 'tags'])
-        ->call('delete', $tag->id);
+        ->call('deleteRecord', $tag->id);
 
     expect(Activity::query()
         ->where('log_name', 'tag')
@@ -252,7 +252,7 @@ it('refuses to delete a category without the delete permission', function (): vo
 
     Livewire::actingAs($admin->fresh())
         ->test(BlogTaxonomyManager::class, ['tab' => 'categories'])
-        ->call('delete', $category->id)
+        ->call('deleteRecord', $category->id)
         ->assertForbidden();
 
     expect(BlogCategory::whereKey($category->id)->exists())->toBeTrue();
@@ -265,7 +265,7 @@ it('refuses to delete a tag without the tag delete permission', function (): voi
 
     Livewire::actingAs($admin->fresh())
         ->test(BlogTaxonomyManager::class, ['tab' => 'tags'])
-        ->call('delete', $tag->id)
+        ->call('deleteRecord', $tag->id)
         ->assertForbidden();
 
     expect(Tag::whereKey($tag->id)->exists())->toBeTrue();

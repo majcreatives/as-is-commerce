@@ -224,7 +224,7 @@ class ProductManager extends Component
      * backstop turns a database constraint into the same readable answer if a
      * reference slips past the service's own checks.
      */
-    public function delete(int $id, ProductService $products): void
+    public function deleteRecord(int $id, ProductService $products): void
     {
         $this->authorize('products.delete');
 

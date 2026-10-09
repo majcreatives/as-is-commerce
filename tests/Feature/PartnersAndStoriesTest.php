@@ -722,7 +722,7 @@ it('deletes a partner, its logo file and its row', function (): void {
 
     Livewire::actingAs($admin)
         ->test(ContentManager::class, ['tab' => 'partners'])
-        ->call('delete', $partner->id)
+        ->call('deleteRecord', $partner->id)
         ->assertHasNoErrors();
 
     expect(Partner::whereKey($partner->id)->doesntExist())->toBeTrue()
@@ -744,7 +744,7 @@ it('deletes a success story, its file and its row', function (): void {
 
     Livewire::actingAs($admin)
         ->test(ContentManager::class, ['tab' => 'stories'])
-        ->call('delete', $story->id)
+        ->call('deleteRecord', $story->id)
         ->assertHasNoErrors();
 
     expect(SuccessStory::whereKey($story->id)->doesntExist())->toBeTrue()
@@ -757,7 +757,7 @@ it('leaves the label on the audit entry when a record is deleted', function (): 
 
     Livewire::actingAs($admin)
         ->test(ContentManager::class, ['tab' => 'partners'])
-        ->call('delete', $partner->id);
+        ->call('deleteRecord', $partner->id);
 
     $entry = Activity::query()
         ->where('description', 'deleted')
@@ -777,7 +777,7 @@ it('refuses a delete without the tab\'s delete permission', function (): void {
 
     Livewire::actingAs($admin->fresh())
         ->test(ContentManager::class, ['tab' => 'partners'])
-        ->call('delete', $partner->id)
+        ->call('deleteRecord', $partner->id)
         ->assertForbidden();
 
     expect(Partner::whereKey($partner->id)->exists())->toBeTrue();

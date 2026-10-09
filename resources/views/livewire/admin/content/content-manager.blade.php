@@ -359,7 +359,7 @@
                                     @endif
 
                                     @if ($this->can('delete'))
-                                        <x-button wire:click="delete({{ $row->id }})"
+                                        <x-button wire:click="deleteRecord({{ $row->id }})"
                                                   wire:confirm="Delete this {{ $tabLabel }} permanently? This cannot be undone."
                                                   variant="danger" size="sm">Delete</x-button>
                                     @endif

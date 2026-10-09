@@ -370,7 +370,7 @@ class ContentManager extends Component
      * active record can be deleted outright -- but the confirmation dialog is
      * the moment that decision is made deliberately.
      */
-    public function delete(int $id, ContentMediaService $media): void
+    public function deleteRecord(int $id, ContentMediaService $media): void
     {
         $this->authorizeTab('delete');
 

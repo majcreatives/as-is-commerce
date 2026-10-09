@@ -35,7 +35,7 @@ class Home extends Component
     public function render(ProductDiscoveryQuery $products, ContentDiscoveryQuery $content): View
     {
         $featured = $products->featured(8);
-        $trending = $products->trending(8);
+        $trending = $products->trending(4);
 
         // One batched availability pass for the whole page, so each product
         // appears once with the auction that is actually relevant to it.

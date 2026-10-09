@@ -300,3 +300,16 @@ it('will not save an address with nothing to deliver to', function (): void {
 
     expect(User::find($customer->id)->addresses()->count())->toBe(0);
 });
+
+it('lets a customer permanently remove one of their own addresses', function (): void {
+    $customer = userWithRole('customer');
+
+    $address = $this->book->create($customer, addressFields());
+
+    Livewire::actingAs($customer)
+        ->test(AddressBookPage::class)
+        ->call('deleteRecord', $address->id)
+        ->assertHasNoErrors();
+
+    expect($customer->addresses()->count())->toBe(0);
+});

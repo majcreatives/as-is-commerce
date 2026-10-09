@@ -212,7 +212,7 @@ class BlogTaxonomyManager extends Component
      * go with the row -- and both log a `deleted` activity entry through their
      * model trait.
      */
-    public function delete(int $id): void
+    public function deleteRecord(int $id): void
     {
         $this->authorize($this->isCategories() ? 'blog_categories.delete' : 'blog_tags.delete');
 

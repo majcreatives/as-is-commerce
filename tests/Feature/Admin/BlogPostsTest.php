@@ -343,7 +343,7 @@ it('deletes a post, its image file and its row together', function (): void {
 
     Livewire::actingAs($admin)
         ->test(ContentManager::class, ['tab' => 'posts'])
-        ->call('delete', $post->id)
+        ->call('deleteRecord', $post->id)
         ->assertHasNoErrors();
 
     expect(Post::where('slug', 'doomed')->doesntExist())->toBeTrue()
@@ -359,7 +359,7 @@ it('records a post deletion in the content activity log', function (): void {
 
     Livewire::actingAs($admin)
         ->test(ContentManager::class, ['tab' => 'posts'])
-        ->call('delete', $post->id);
+        ->call('deleteRecord', $post->id);
 
     expect(Activity::query()
         ->where('log_name', 'content')
@@ -377,7 +377,7 @@ it('refuses to delete a post without the posts.delete permission', function (): 
 
     Livewire::actingAs($admin->fresh())
         ->test(ContentManager::class, ['tab' => 'posts'])
-        ->call('delete', $post->id)
+        ->call('deleteRecord', $post->id)
         ->assertForbidden();
 
     expect(Post::whereKey($post->id)->exists())->toBeTrue()

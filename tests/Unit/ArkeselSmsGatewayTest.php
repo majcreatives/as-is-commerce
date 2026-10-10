@@ -27,7 +27,7 @@ use Illuminate\Support\Facades\Log;
  * Built against the swapped factory rather than a private one: a fake on a
  * different instance than the gateway holds is a fake nothing sees.
  */
-function arkeselGateway(?string $apiKey = 'test-api-key', ?string $senderId = 'AsIs'): ArkeselSmsGateway
+function arkeselGateway(?string $apiKey = 'test-api-key', ?string $senderId = 'AsIs', bool $sandbox = false): ArkeselSmsGateway
 {
     return new ArkeselSmsGateway(
         http: app(HttpFactory::class),
@@ -35,6 +35,7 @@ function arkeselGateway(?string $apiKey = 'test-api-key', ?string $senderId = 'A
         senderId: $senderId,
         baseUrl: 'https://sms.arkesel.com',
         timeout: 10,
+        sandbox: $sandbox,
     );
 }
 
@@ -78,6 +79,39 @@ it('accepts an explicit success', function (): void {
     arkeselGateway()->send('+233244123456', 'Your code is 123456');
 
     Http::assertSentCount(1);
+});
+
+it('omits the sandbox switch from a normal send', function (): void {
+    fakeHttp(['*' => Http::response(['status' => 'success'], 200)]);
+
+    arkeselGateway()->send('+233244123456', 'Your code is 123456');
+
+    // The live payload is exactly the fields a real message needs. A stray
+    // sandbox key would change nothing in production, but the payload is the
+    // thing a probing tool reads, so it should not be carrying test switches.
+    Http::assertSent(fn (Request $request): bool => ! isset($request['sandbox']));
+});
+
+it('flags a sandboxed send for validation without delivery', function (): void {
+    fakeHttp(['*' => Http::response(['status' => 'success'], 200)]);
+
+    arkeselGateway(sandbox: true)->send('+233244123456', 'Your code is 123456');
+
+    // Arkesel validates a sandboxed request as a real send would, but never
+    // bills it and never puts it on a network -- the staging proof that the
+    // key and sender are authentic before a sender ID is registered.
+    Http::assertSent(fn (Request $request): bool => $request['sandbox'] === true);
+});
+
+it('still requires an api key and sender for a sandboxed send', function (): void {
+    fakeHttp(['*' => Http::response(['status' => 'success'], 200)]);
+
+    expect(fn () => arkeselGateway(apiKey: null, sandbox: true)->send('+233244123456', 'x'))
+        ->toThrow(SmsGatewayError::class, 'not configured');
+    expect(fn () => arkeselGateway(senderId: '', sandbox: true)->send('+233244123456', 'x'))
+        ->toThrow(SmsGatewayError::class, 'not configured');
+
+    Http::assertNothingSent();
 });
 
 it('treats a 200 that is not a success as a failure', function (): void {

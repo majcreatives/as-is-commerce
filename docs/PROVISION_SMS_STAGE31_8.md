@@ -46,9 +46,16 @@ SMS_API_KEY=<arkesel key>
 SMS_SENDER_ID=<registered sender>
 SMS_BASE_URL=https://sms.arkesel.com
 SMS_TIMEOUT=10
+SMS_SANDBOX=false
 ```
 
 Never commit these. `.env.example` documents the block; `.env` is not in Git.
+
+`SMS_SANDBOX` is **false by default everywhere**. When set `true`, every send
+carries Arkesel's `sandbox` switch: the request is validated exactly as a real
+send would be, but it is not billed and is never forwarded to a network, so it
+cannot reach a handset. It is a pre-flight check, not a delivery mode, and it
+must never be left on in an environment that expects real messages.
 
 ### 2.3 Enable the channel
 
@@ -72,6 +79,29 @@ php artisan config:clear && php artisan config:cache
 
 A stale `config:cache` is what made Paystack read as "not configured" in 20.5B.
 Do not skip this.
+
+---
+
+## 2.7 Prove the wire contract in sandbox first
+
+Before paying for or waiting on a sender ID, prove that the key and the request
+shape are hours-of-the-day correct against Arkesel's sandbox. Confirm with
+Arkesel which (key, sender) combination passes; an invalid API key is rejected
+even in sandbox, which is exactly the check wanted.
+
+1. Set `SMS_SANDBOX=true` and `SMS_API_KEY` to the real key, `SMS_SENDER_ID` to
+   the sender that is at least registered (approval not needed for the wire
+   check, but do not expect a handset message either way).
+2. Clear the config cache (2.4).
+3. Request a code and confirm the request is accepted by Arkesel (no
+   `SmsGatewayError` in the logs), and that the flow still creates no
+   `otp_codes` row and answers the customer neutrally if it fails.
+4. Confirm in Arkesel's SMS history that the message is visible there as a
+   sandbox message -- visible in history, on no handset.
+5. Set `SMS_SANDBOX=false` before any real-message verification.
+
+A sandbox success proves the key, the sender and the payload. It proves nothing
+about a handset receiving text, which is what 3. below is for.
 
 ---
 

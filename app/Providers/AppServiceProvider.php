@@ -78,6 +78,12 @@ class AppServiceProvider extends ServiceProvider
             senderId: config('sms.sender_id'),
             baseUrl: (string) config('sms.base_url'),
             timeout: (int) config('sms.timeout'),
+            // OFF by default. Sandbox validates a send against Arkesel without
+            // billing or delivering it, so a staging environment can prove the
+            // wire contract before a sender ID is registered -- but a sandboxed
+            // message reaches no handset, so it must never be switched on
+            // implicitly in an environment that expects real delivery.
+            sandbox: (bool) config('sms.sandbox'),
         ));
 
         // A singleton so the per-request settings snapshot is shared across

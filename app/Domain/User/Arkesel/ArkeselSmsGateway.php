@@ -42,6 +42,7 @@ final class ArkeselSmsGateway implements SmsGateway
         private readonly ?string $senderId,
         private readonly string $baseUrl = 'https://sms.arkesel.com',
         private readonly int $timeout = 10,
+        private readonly bool $sandbox = false,
     ) {}
 
     public function send(string $e164Phone, string $message): void
@@ -67,6 +68,14 @@ final class ArkeselSmsGateway implements SmsGateway
                     'source' => $this->senderId,
                     'message' => $message,
                     'type' => 'normal',
+                    // Arkesel's sandbox switch, present only when enabled. In
+                    // sandbox Arkesel validates the request as a real send
+                    // would but never bills it nor puts it on a network, so a
+                    // staging deployment can prove the key, the sender and the
+                    // wire contract without spending a message or texting a
+                    // handset. `false` omitting the key entirely (rather than
+                    // sending it) keeps the live payload unchanged.
+                    ...($this->sandbox ? ['sandbox' => true] : []),
                 ]);
         } catch (ConnectionException $e) {
             // Logged without the body: the body carries the one-time code.

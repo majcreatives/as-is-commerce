@@ -41,4 +41,18 @@ return [
      | transaction open.
      */
     'timeout' => (int) env('SMS_TIMEOUT', 10),
+
+    /*
+     | Arkesel sandbox mode. When true, requests carry `sandbox: true`: Arkesel
+     | validates the authenticated request exactly as a real send would, but
+     | does not bill it or put a message on the networks, and it never reaches a
+     | handset. This is how the key, the sender and the wire contract are proven
+     | before a sender ID is registered, and how a staging environment de-risks
+     | its first real message.
+     |
+     | OFF BY DEFAULT EVERYWHERE. A sandbox message is invisible to its
+     | recipient, so flipping this on in a real environment would make delivery
+     | silently stop; nothing here enables it implicitly.
+     */
+    'sandbox' => (bool) env('SMS_SANDBOX', false),
 ];

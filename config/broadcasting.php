@@ -41,12 +41,12 @@ return [
 
         /*
          * Reverb speaks the Pusher protocol, so the application broadcasts
-         * through `pusher/pusher-php-server` and needs no Reverb package of
-         * its own. `laravel/reverb` is the *server*, and is deliberately not
-         * installed: it cannot run on the current plan, and installing a
-         * daemon that cannot start would be documentation pretending to be
-         * infrastructure. It is one `composer require` on the day a VPS
-         * exists.
+         * through `pusher/pusher-php-server` and Reverb's own `laravel/reverb`
+         * package is the *server*. Stage 32.23 installed it for the
+         * production-shaped staging VPS, where Supervisor actually runs
+         * `php artisan reverb:start` (docs/STAGING_VPS.md). On Hostinger
+         * Premium nothing starts it and BROADCAST_CONNECTION=null, so the
+         * package rides in the deployable inert.
          */
         'reverb' => [
             'driver' => 'reverb',

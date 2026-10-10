@@ -68,15 +68,18 @@ jobs:
           # and built assets — never a git repo, never tests, never local or
           # derived state, and never any environment file.
           #
-          # The two templates are INCLUDED and the rest of `.env*` is not.
+          # The three templates are INCLUDED and the rest of `.env*` is not.
           # rsync takes the first matching rule, so each include has to precede
           # the excludes. `.env.production.example` is the template an operator
-          # is supposed to build production from; if it were left to the blanket
-          # `.env.*` exclude it would simply be absent from the release, and
-          # nobody would find out until they were standing on the server.
+          # is supposed to build production from, and `.env.staging-vps.example`
+          # is the template for the production-shaped staging VPS; if they were
+          # left to the blanket `.env.*` exclude they would simply be absent
+          # from the release, and nobody would find out until they were standing
+          # on the server.
           rsync -a \
             --include '.env.example' \
             --include '.env.production.example' \
+            --include '.env.staging-vps.example' \
             --exclude '.env' \
             --exclude '.env.*' \
             --exclude '.git' \
@@ -137,3 +140,64 @@ jobs:
           name: ${{ env.artifact_name }}
           path: ${{ env.artifact_path }}
           retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # Deploy to the production-shaped staging VPS (docs/STAGING_VPS.md).
+  #
+  # GATED BY A REPOSITORY VARIABLE, so it is dormant until the droplet actually
+  # exists: unless the `STAGING_VPS_HOST` variable is set, this job evaluates to
+  # a no-op skip and tag pushes keep deploying to Hostinger staging exactly as
+  # before. When the VPS is provisioned and the variable + key are set, every
+  # pushed `stage*` tag is deployed automatically from the same GitHub-built
+  # release -- GitHub stays in the loop, nothing is built on the server.
+  #
+  # (`vars`, not `secrets`, because a job-level `if` is only guaranteed the
+  # `github`, `needs`, `vars` and `inputs` contexts. The hostname is not
+  # sensitive; only the deploy key is a secret.)
+  #
+  # The remote swap lives in `ops/deploy-staging-vps.sh` (versioned, reviewed
+  # like any other code) rather than being inlined here. It is UNEXERCISED code
+  # until the first droplet deploy at the move; the runbook calls that out.
+  # ---------------------------------------------------------------------------
+  deploy-staging-vps:
+    name: Deploy to staging VPS
+    needs: build
+    if: github.ref_type == 'tag' && vars.STAGING_VPS_HOST != ''
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release download "$GITHUB_REF_NAME" \
+            --pattern "as-is-commerce-${GITHUB_REF_NAME}.zip" \
+            --repo "$GITHUB_REPOSITORY"
+
+      - name: Install deploy key
+        env:
+          STAGING_VPS_SSH_KEY: ${{ secrets.STAGING_VPS_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "${STAGING_VPS_SSH_KEY}" > "$HOME/.ssh/id_ed25519_vps"
+          chmod 600 "$HOME/.ssh/id_ed25519_vps"
+
+      - name: Copy archive and run the staged swap
+        env:
+          STAGING_VPS_HOST: ${{ vars.STAGING_VPS_HOST }}
+          STAGING_VPS_USER: ${{ vars.STAGING_VPS_USER }}
+        run: |
+          set -euo pipefail
+          artifact="as-is-commerce-${GITHUB_REF_NAME}.zip"
+          scp -i "$HOME/.ssh/id_ed25519_vps" \
+            -o StrictHostKeyChecking=accept-new \
+            ops/deploy-staging-vps.sh "$artifact" \
+            "${STAGING_VPS_USER}@${STAGING_VPS_HOST}:/tmp/"
+          ssh -i "$HOME/.ssh/id_ed25519_vps" \
+            -o StrictHostKeyChecking=accept-new \
+            "${STAGING_VPS_USER}@${STAGING_VPS_HOST}" \
+            "bash /tmp/deploy-staging-vps.sh ${GITHUB_REF_NAME}"

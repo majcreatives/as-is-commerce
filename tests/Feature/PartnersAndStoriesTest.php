@@ -8,6 +8,8 @@ use App\Domain\Marketplace\Queries\ContentDiscoveryQuery;
 use App\Livewire\Admin\Content\ContentManager;
 use App\Livewire\Content\PartnerIndex;
 use App\Livewire\Content\SuccessStoryIndex;
+use App\Livewire\Marketplace\HomePartners;
+use App\Livewire\Marketplace\HomeSuccessStories;
 use App\Models\Partner;
 use App\Models\Post;
 use App\Models\SuccessStory;
@@ -107,25 +109,53 @@ it('hides the homepage sections when nothing is published', function (): void {
     SuccessStory::factory()->create(['name' => 'Draft Person', 'active' => false, 'featured' => true]);
     Post::factory()->create(['title' => 'Draft Post', 'active' => false]);
 
+    // The two blocks are Lazy components: on the home page they render only a
+    // scroll-into-placeholder, so nothing about them appears in the initial
+    // HTML at all. Assert the placeholder wiring is present (so a future edit
+    // cannot silently re-eager-load the sections and start paying for the
+    // queries again), but assert the real emptiness guarantee on the
+    // components themselves.
     $response = $this->get(route('home'))->assertOk();
+
+    expect($response->getContent())->toContain('__lazyLoad');
 
     // The SECTION copy must be absent, not just the records. Asserting on the
     // heading text would hit the footer link, which is on every page by design,
     // so this checks the subheading that exists only inside the section. A
     // "Success stories" heading over nothing reads as an absence of customers,
-    // which is a claim about the business rather than about this page.
-    $response->assertDontSee('In their own words.');
-    $response->assertDontSee('Businesses that work with us.');
+    // which is a claim about the business rather than about this page. With the
+    // lazy loading turned off for the component under test, this decides
+    // whether the block would draw anything were it actually reached.
+    Livewire::withoutLazyLoading()->test(HomeSuccessStories::class)
+        ->assertOk()
+        ->assertDontSee('In their own words.')
+        ->assertDontSee('All stories');
+
+    Livewire::withoutLazyLoading()->test(HomePartners::class)
+        ->assertOk()
+        ->assertDontSee('Businesses that work with us.')
+        ->assertDontSee('All partners');
+
+    // The blog strip is not lazy: content is server-rendered for crawlers, so
+    // the absence of any published post is still asserted against the page
+    // itself, and the placeholders for the other two blocks must not have
+    // leaked section copy in either.
     $response->assertDontSee('What is happening at As-Is, in plain words.');
-    $response->assertDontSee('All partners');
-    $response->assertDontSee('All stories');
     $response->assertDontSee('All posts');
+    $response->assertDontSee('In their own words.');
+    $response->assertDontSee('All stories');
+    $response->assertDontSee('Businesses that work with us.');
+    $response->assertDontSee('All partners');
 });
 
 it('shows a published partner on the homepage', function (): void {
     Partner::factory()->create(['name' => 'Published Partner', 'active' => true]);
 
-    $this->get(route('home'))
+    // The block is lazy: its content is fetched only when a visitor scrolls to
+    // it, so the initial home page HTML holds the placeholder, not the strip.
+    // The real contract lives in the component, which must draw the published
+    // partner and the block's own heading once it is actually reached.
+    Livewire::withoutLazyLoading()->test(HomePartners::class)
         ->assertOk()
         ->assertSee('Published Partner')
         ->assertSee('Businesses that work with us.')
@@ -140,7 +170,7 @@ it('shows a featured published story on the homepage', function (): void {
         'featured' => true,
     ]);
 
-    $this->get(route('home'))
+    Livewire::withoutLazyLoading()->test(HomeSuccessStories::class)
         ->assertOk()
         ->assertSee('Featured Person')
         ->assertSee('In their own words.')
@@ -154,9 +184,12 @@ it('keeps a published story off the homepage until it is featured', function ():
         'featured' => false,
     ]);
 
-    $this->get(route('home'))
+    // Lazy or not, the block is not reached for an unfeatured story: its own
+    // query is what decides, and the query here is the contract under test.
+    Livewire::withoutLazyLoading()->test(HomeSuccessStories::class)
         ->assertOk()
-        ->assertDontSee('Listed Only Person');
+        ->assertDontSee('Listed Only Person')
+        ->assertDontSee('In their own words.');
 
     // Still on its own page, which is the point of being published without
     // being featured.

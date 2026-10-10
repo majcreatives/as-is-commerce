@@ -16,7 +16,7 @@
 <x-card>
     <div class="flex items-start gap-4">
         @if ($logo)
-            <img src="{{ $logo }}" alt="{{ $partner->name }}" loading="lazy"
+            <img src="{{ $logo }}" alt="{{ $partner->name }}" loading="lazy" decoding="async"
                  class="h-14 w-14 shrink-0 rounded-lg border border-slate-200 bg-white object-contain p-1" />
         @endif
 

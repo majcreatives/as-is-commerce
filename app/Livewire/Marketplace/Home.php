@@ -62,11 +62,13 @@ class Home extends Component
             'trending' => $trending,
             'availability' => $availability,
             'gallery' => $gallery,
-            // Bounded by the query, and all are empty until an administrator
-            // has published something. The view hides a section it is given
-            // nothing for, rather than rendering an empty frame.
-            'partners' => $content->homepagePartners(),
-            'stories' => $content->homepageStories(),
+            // A bounded query, and it stays eager: the blog strip is the one
+            // below-the-fold section that is still server-rendered into the
+            // initial HTML, because it is the only one a crawler can make use
+            // of in that markup. The success stories and partners blocks are
+            // their own Lazy components (HomeSuccessStories and HomePartners),
+            // so the homepage does not carry their queries until a visitor
+            // scrolls to them.
             'posts' => $content->homepagePosts(),
         ])->title(config('app.name').' — the shop, and the auction');
     }

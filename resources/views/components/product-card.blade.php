@@ -31,7 +31,7 @@
     <div class="relative flex aspect-4/3 items-center justify-center rounded-t-xl bg-slate-100">
         @if ($product->image())
             <img src="{{ $product->image() }}" alt="{{ $product->name }}"
-                 class="h-full w-full rounded-t-xl object-cover" loading="lazy">
+                 class="h-full w-full rounded-t-xl object-cover" loading="lazy" decoding="async">
         @else
             <span class="text-xs font-medium text-slate-400">No image</span>
         @endif

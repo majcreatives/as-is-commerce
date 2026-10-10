@@ -9,7 +9,7 @@
    class="group flex flex-col rounded-xl border-[5px] border-white/25 bg-white shadow-sm transition hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600">
     <div class="relative flex aspect-4/3 items-center justify-center rounded-t-xl bg-slate-100">
         @if ($post->imageUrl())
-            <img src="{{ $post->imageUrl() }}" alt="{{ $post->title }}" class="h-full w-full rounded-t-xl object-cover" loading="lazy" />
+            <img src="{{ $post->imageUrl() }}" alt="{{ $post->title }}" class="h-full w-full rounded-t-xl object-cover" loading="lazy" decoding="async" />
         @else
             <span class="text-xs font-medium text-slate-400">No image</span>
         @endif

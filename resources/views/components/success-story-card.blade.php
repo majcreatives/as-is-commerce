@@ -18,7 +18,7 @@
         @if ($image)
             {{-- Decorative: the words carry the story, so the photo repeats
                  nothing for a screen reader. --}}
-            <img src="{{ $image }}" alt="" loading="lazy"
+            <img src="{{ $image }}" alt="" loading="lazy" decoding="async"
                  class="mb-4 h-40 w-full rounded-lg border border-slate-200 bg-slate-50 object-cover" />
         @endif
 

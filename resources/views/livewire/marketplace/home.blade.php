@@ -141,9 +141,11 @@
     </section>
 
     {{-- From the blog. Only published posts reach here, newest first, and only
-         four. It disappears entirely when nothing qualifies, for the same
-         reason as the stories below: a heading over nothing would read as an
-         absent blog rather than an empty section of the page. --}}
+         four. It disappears entirely when nothing qualifies: a heading over
+         nothing would read as an absent blog rather than an empty section of
+         the page. EAGER on purpose -- the one below-the-fold section crawled
+         into the initial HTML, because it is the only one a reader's page
+         request already pays for and it is what a crawler can make use of. --}}
     @if ($posts->isNotEmpty())
         <section class="mt-12">
             <div class="flex flex-wrap items-end justify-between gap-3">
@@ -194,57 +196,13 @@
         @endif
     </section>
 
-    {{-- What customers have said. Only published, featured stories reach here,
-         and only three. The section disappears entirely when nothing qualifies:
-         a "Success stories" heading over nothing reads as an absence of
-         customers rather than an absence of content, which is not the same
-         claim and is not one we get to make. --}}
-    @if ($stories->isNotEmpty())
-        <section class="mt-12">
-            <div class="flex flex-wrap items-end justify-between gap-3">
-                <div>
-                    <h2 class="text-xl font-bold tracking-tight text-slate-900">Success stories</h2>
-                    <p class="mt-1 text-sm text-slate-600">
-                        In their own words.
-                    </p>
-                </div>
-
-                <a href="{{ route('success-stories.index') }}" wire:navigate
-                   class="text-sm font-semibold text-brand-800 underline">All stories</a>
-            </div>
-
-            <div class="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                @foreach ($stories as $story)
-                    <x-success-story-card :story="$story" />
-                @endforeach
-            </div>
-        </section>
-    @endif
-
-    {{-- Who we work with. Hidden for the same reason as the stories above: an
-         empty strip of partner logos would imply there are no partners, which
-         is a statement about the business rather than about this page. --}}
-    @if ($partners->isNotEmpty())
-        <section class="mt-12">
-            <div class="flex flex-wrap items-end justify-between gap-3">
-                <div>
-                    <h2 class="text-xl font-bold tracking-tight text-slate-900">Partners</h2>
-                    <p class="mt-1 text-sm text-slate-600">
-                        Businesses that work with us.
-                    </p>
-                </div>
-
-                <a href="{{ route('partners.index') }}" wire:navigate
-                   class="text-sm font-semibold text-brand-800 underline">All partners</a>
-            </div>
-
-            <div class="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                @foreach ($partners as $partner)
-                    <x-partner-card :partner="$partner" />
-                @endforeach
-            </div>
-        </section>
-    @endif
+    {{-- What customers have said, and who we work with. Both requested only
+         when a reader actually reaches them: below the fold, supplemental to
+         the shop, and self-hiding when empty. Each is its own Lazy component,
+         so the homepage does not pay their query cost for a block that may
+         never be scrolled to. See those components for the full reasoning. --}}
+    <livewire:marketplace.home-success-stories />
+    <livewire:marketplace.home-partners />
 
     {{-- The three trust cards that sat here explained how the platform works
          rather than giving a reason to shop, and were repeated in full on the
